@@ -94,7 +94,7 @@ show "PP-D-E2E-ACCEPT" "$acc"
 assert "call is accept" "$(echo "$acc" | jq '.decision.call == "accept"')"
 assert "no tracking number invented" "$(echo "$acc" | jq '(.draft.response | test("[0-9][A-Z0-9]{9,}")) | not')"
 
-echo '== changing c from 15.00 to 2.00 flips the $9 case to fight'
+echo "== changing c from 15.00 to 2.00 flips the 9 dollar case to fight"
 low=$(desk "http://${H}/api/cases/PP-D-E2E-ACCEPT/analysis?c=2")
 echo "$low" | jq -r '.decision.terms[]' | sed 's/^/  /'
 assert "call flips to fight" "$(echo "$low" | jq '.decision.call == "fight"')"

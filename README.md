@@ -140,7 +140,7 @@ before recording so both are open.
 | 0:00-0:20 | Show the grid sorted by Days left. | A dispute is a deadline, an amount and no clear answer. |
 | 0:20-0:50 | Filter Reason and Status, use the quick filter, look at the timeline, search `tracking`. | Cases sorted by deadline; Postgres full-text finds past cases by what was said. |
 | 0:50-1:40 | Open `PP-D-E2E-FIGHT` ($120, not received, tracking on file). | Precedents with outcomes, p from the prior and those outcomes, every EV term, the call: fight. The draft cites the UPS tracking number that is on the case and flags what is missing. |
-| 1:40-2:10 | Click Submit evidence, confirm. Then open `PP-D-E2E-ACCEPT` ($9 digital download). | The case moves to UNDER_REVIEW. For $9 the call is accept. Set c from $15 to $2: `0.35 x 9 = 3.15 > 2`, margin +$1.15, the call flips to fight (marginal). |
+| 1:40-2:10 | Click Submit evidence, confirm. Then open `PP-D-E2E-ACCEPT` ($9 digital download). | The case moves to UNDER_REVIEW. For $9 the call is accept. Set c from $15 to $2: with the table prior alone (`0.35 x 9 = 3.15 > 2`, margin +$1.15) the call flips to fight (marginal); with the seeded precedent in the index p is 0.48 and the margin is +$2.32. Override p0 to 0.35 to show +$1.15. |
 | 2:10-2:40 | Show `nix run .#cluster-up`, `deploy`, `e2e` and this README. | Runs from a clone with Nix; k3d with CNPG Postgres; data is synthetic and writes need confirmation. |
 
 ## Secrets
