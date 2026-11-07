@@ -20,7 +20,15 @@ let
       pkgs.curl
       pkgs.jq
     ];
-    text = builtins.readFile ../scripts/e2e.sh;
+    text = builtins.readFile ../scripts/lib.sh + builtins.readFile ../scripts/e2e.sh;
+  };
+  demoReset = pkgs.writeShellApplication {
+    name = "demo-reset";
+    runtimeInputs = [
+      pkgs.curl
+      pkgs.jq
+    ];
+    text = builtins.readFile ../scripts/lib.sh + builtins.readFile ../scripts/demo-reset.sh;
   };
   # contracts/ is the canonical fixture; the crate and the desk each carry a copy
   # because their sources are built from their own directories.
@@ -65,6 +73,7 @@ in
     postgres.enable = true;
     otel.enable = true;
     extraPackages.e2e = e2e;
+    extraPackages.demo-reset = demoReset;
     extraChecks = decide.passthru.checks // desk.passthru.checks // { inherit fixtureCopiesMatch; };
   };
 }

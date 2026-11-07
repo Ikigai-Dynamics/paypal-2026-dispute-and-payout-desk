@@ -61,8 +61,8 @@ export function buildChecklist(c: CaseView): ChecklistItem[] {
       return [
         item(
           "Listing description",
-          c.items.length > 0,
-          "The disputed items are listed on the case.",
+          notesMatch(c, /listing|description|described/i),
+          "An evidence note refers to the listing description.",
           "No item description is on the case.",
         ),
         item(

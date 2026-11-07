@@ -117,6 +117,29 @@ describe("fallback draft", () => {
     ]);
     assert.equal(items("OTHER").length, 2);
   });
+
+  it("marks the listing description present only when evidence mentions it", () => {
+    const listing = (c: CaseView) =>
+      buildChecklist({
+        ...c,
+        reason: "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED",
+      }).find((i) => i.item === "Listing description");
+    // items exist but no evidence mentions the listing
+    assert.equal(base.items.length > 0, true);
+    assert.equal(listing(base)?.status, "missing");
+    assert.equal(listing(withTracking)?.status, "missing");
+    const withListing: CaseView = {
+      ...base,
+      evidences: [
+        {
+          evidence_type: "OTHER",
+          evidence_info: {},
+          notes: "Screenshot of the listing description as published.",
+        },
+      ],
+    };
+    assert.equal(listing(withListing)?.status, "present");
+  });
 });
 
 describe("draftResponse", () => {
