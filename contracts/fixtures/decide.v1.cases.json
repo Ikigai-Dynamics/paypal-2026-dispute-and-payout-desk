@@ -1,0 +1,293 @@
+[
+  {
+    "name": "proposal-120-fight",
+    "note": "",
+    "request": {
+      "contract": "decide.v1",
+      "amount_cents": 12000,
+      "currency": "USD",
+      "reason": "MERCHANDISE_OR_SERVICE_NOT_RECEIVED",
+      "stage": "INQUIRY",
+      "evidence_on_file": true,
+      "prior": 0.55,
+      "handling_cost_cents": 1500,
+      "fee_if_lost_cents": 0,
+      "precedents": []
+    },
+    "expect": {
+      "p0": 0.55,
+      "k": 4,
+      "wins": 0,
+      "n": 0,
+      "p": 0.55,
+      "ev_accept_cents": -12000,
+      "ev_fight_cents": -6900,
+      "margin_cents": 5100,
+      "marginal": false,
+      "call": "fight"
+    }
+  },
+  {
+    "name": "proposal-9-accept",
+    "note": "",
+    "request": {
+      "contract": "decide.v1",
+      "amount_cents": 900,
+      "currency": "USD",
+      "reason": "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED",
+      "stage": "INQUIRY",
+      "evidence_on_file": false,
+      "prior": 0.35,
+      "handling_cost_cents": 1500,
+      "fee_if_lost_cents": 0,
+      "precedents": []
+    },
+    "expect": {
+      "p0": 0.35,
+      "k": 4,
+      "wins": 0,
+      "n": 0,
+      "p": 0.35,
+      "ev_accept_cents": -900,
+      "ev_fight_cents": -2085,
+      "margin_cents": -1185,
+      "marginal": false,
+      "call": "accept"
+    }
+  },
+  {
+    "name": "proposal-64-marginal-fight",
+    "note": "",
+    "request": {
+      "contract": "decide.v1",
+      "amount_cents": 6400,
+      "currency": "USD",
+      "reason": "CANCELED_RECURRING_BILLING",
+      "stage": "INQUIRY",
+      "evidence_on_file": false,
+      "prior": 0.3,
+      "handling_cost_cents": 1500,
+      "fee_if_lost_cents": 0,
+      "precedents": []
+    },
+    "expect": {
+      "p0": 0.3,
+      "k": 4,
+      "wins": 0,
+      "n": 0,
+      "p": 0.3,
+      "ev_accept_cents": -6400,
+      "ev_fight_cents": -5980,
+      "margin_cents": 420,
+      "marginal": true,
+      "call": "fight"
+    }
+  },
+  {
+    "name": "nine-dollars-low-cost-flips-to-fight",
+    "note": "",
+    "request": {
+      "contract": "decide.v1",
+      "amount_cents": 900,
+      "currency": "USD",
+      "reason": "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED",
+      "stage": "INQUIRY",
+      "evidence_on_file": false,
+      "prior": 0.35,
+      "handling_cost_cents": 200,
+      "fee_if_lost_cents": 0,
+      "precedents": []
+    },
+    "expect": {
+      "p0": 0.35,
+      "k": 4,
+      "wins": 0,
+      "n": 0,
+      "p": 0.35,
+      "ev_accept_cents": -900,
+      "ev_fight_cents": -785,
+      "margin_cents": 115,
+      "marginal": true,
+      "call": "fight"
+    }
+  },
+  {
+    "name": "precedents-smooth-the-prior",
+    "note": "",
+    "request": {
+      "contract": "decide.v1",
+      "amount_cents": 12000,
+      "currency": "USD",
+      "reason": "MERCHANDISE_OR_SERVICE_NOT_RECEIVED",
+      "stage": "INQUIRY",
+      "evidence_on_file": true,
+      "prior": 0.55,
+      "handling_cost_cents": 1500,
+      "fee_if_lost_cents": 0,
+      "precedents": [
+        {
+          "dispute_id": "PP-D-0",
+          "won": true
+        },
+        {
+          "dispute_id": "PP-D-1",
+          "won": true
+        },
+        {
+          "dispute_id": "PP-D-2",
+          "won": true
+        },
+        {
+          "dispute_id": "PP-D-3",
+          "won": false
+        }
+      ]
+    },
+    "expect": {
+      "p0": 0.55,
+      "k": 4,
+      "wins": 3,
+      "n": 4,
+      "p": 0.65,
+      "ev_accept_cents": -12000,
+      "ev_fight_cents": -5700,
+      "margin_cents": 6300,
+      "marginal": false,
+      "call": "fight"
+    }
+  },
+  {
+    "name": "unauthorised-with-fee-if-lost",
+    "note": "",
+    "request": {
+      "contract": "decide.v1",
+      "amount_cents": 20000,
+      "currency": "USD",
+      "reason": "UNAUTHORISED",
+      "stage": "CHARGEBACK",
+      "evidence_on_file": false,
+      "prior": null,
+      "handling_cost_cents": 1500,
+      "fee_if_lost_cents": 1500,
+      "precedents": [
+        {
+          "dispute_id": "PP-D-0",
+          "won": false
+        },
+        {
+          "dispute_id": "PP-D-1",
+          "won": false
+        },
+        {
+          "dispute_id": "PP-D-2",
+          "won": true
+        }
+      ]
+    },
+    "expect": {
+      "p0": 0.25,
+      "k": 4,
+      "wins": 1,
+      "n": 3,
+      "p": 0.2857142857142857,
+      "ev_accept_cents": -20000,
+      "ev_fight_cents": -16857,
+      "margin_cents": 3143,
+      "marginal": false,
+      "call": "fight"
+    }
+  },
+  {
+    "name": "table-prior-with-evidence",
+    "note": "",
+    "request": {
+      "contract": "decide.v1",
+      "amount_cents": 15000,
+      "currency": "USD",
+      "reason": "MERCHANDISE_OR_SERVICE_NOT_RECEIVED",
+      "stage": "INQUIRY",
+      "evidence_on_file": true,
+      "prior": null,
+      "handling_cost_cents": 1500,
+      "fee_if_lost_cents": 0,
+      "precedents": [
+        {
+          "dispute_id": "PP-D-0",
+          "won": true
+        },
+        {
+          "dispute_id": "PP-D-1",
+          "won": false
+        }
+      ]
+    },
+    "expect": {
+      "p0": 0.6,
+      "k": 4,
+      "wins": 1,
+      "n": 2,
+      "p": 0.5666666666666667,
+      "ev_accept_cents": -15000,
+      "ev_fight_cents": -8000,
+      "margin_cents": 7000,
+      "marginal": false,
+      "call": "fight"
+    }
+  },
+  {
+    "name": "table-prior-other-reason",
+    "note": "",
+    "request": {
+      "contract": "decide.v1",
+      "amount_cents": 5000,
+      "currency": "USD",
+      "reason": "OTHER",
+      "stage": "INQUIRY",
+      "evidence_on_file": false,
+      "prior": null,
+      "handling_cost_cents": 1500,
+      "fee_if_lost_cents": 0,
+      "precedents": []
+    },
+    "expect": {
+      "p0": 0.35,
+      "k": 4,
+      "wins": 0,
+      "n": 0,
+      "p": 0.35,
+      "ev_accept_cents": -5000,
+      "ev_fight_cents": -4750,
+      "margin_cents": 250,
+      "marginal": true,
+      "call": "fight"
+    }
+  },
+  {
+    "name": "rounding-half-away-from-zero",
+    "note": "",
+    "request": {
+      "contract": "decide.v1",
+      "amount_cents": 5,
+      "currency": "USD",
+      "reason": "DUPLICATE_TRANSACTION",
+      "stage": "INQUIRY",
+      "evidence_on_file": false,
+      "prior": 0.7,
+      "handling_cost_cents": 0,
+      "fee_if_lost_cents": 0,
+      "precedents": []
+    },
+    "expect": {
+      "p0": 0.7,
+      "k": 4,
+      "wins": 0,
+      "n": 0,
+      "p": 0.7,
+      "ev_accept_cents": -5,
+      "ev_fight_cents": -2,
+      "margin_cents": 3,
+      "marginal": true,
+      "call": "fight"
+    }
+  }
+]
