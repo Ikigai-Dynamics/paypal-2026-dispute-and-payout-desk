@@ -1,0 +1,21 @@
+{
+  "name": "desk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && rm -rf dist/public && cp -r public dist/public",
+    "start": "node dist/server.js",
+    "test": "tsc -p tsconfig.test.json && node --test \"dist-test/**/*.test.js\""
+  },
+  "dependencies": {
+    "ag-grid-community": "^36.0.0",
+    "pg": "^8.13.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.11.0",
+    "typescript": "^5.9.0"
+  }
+}
