@@ -79,19 +79,33 @@ describe("sync and writes against the in-process mock", () => {
         r.status === "WAITING_FOR_SELLER_RESPONSE" &&
         r.reason === "MERCHANDISE_OR_SERVICE_NOT_RECEIVED",
     )!;
-    const row = await submitEvidence(paypal, sink, open.dispute_id, "Shipped.", {
-      evidence: [
-        {
-          item: "Tracking",
-          evidence_type: "PROOF_OF_FULFILLMENT",
-          notes: "Shipped with UPS",
-          tracking: { carrier: "UPS", number: "1Z 999" },
-        },
-      ],
-      files: [{ name: "label.png", content_type: "image/png", data_base64: "iVBORw0KGgo=" }],
-    });
+    const row = await submitEvidence(
+      paypal,
+      sink,
+      open.dispute_id,
+      "Shipped.",
+      {
+        evidence: [
+          {
+            item: "Tracking",
+            evidence_type: "PROOF_OF_FULFILLMENT",
+            notes: "Shipped with UPS",
+            tracking: { carrier: "UPS", number: "1Z 999" },
+          },
+        ],
+        files: [
+          {
+            name: "label.png",
+            content_type: "image/png",
+            data_base64: "iVBORw0KGgo=",
+          },
+        ],
+      },
+    );
     assert.equal(row.status, "UNDER_REVIEW");
-    const tn = buildChecklist(toView(row)).find((c) => c.item === "Tracking number");
+    const tn = buildChecklist(toView(row)).find(
+      (c) => c.item === "Tracking number",
+    );
     assert.equal(tn?.status, "present");
   });
 });

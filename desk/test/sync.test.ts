@@ -106,7 +106,11 @@ describe("precedents", () => {
 
 describe("evidence validation", () => {
   const ev = { item: "Tracking", evidence_type: "OTHER", notes: "n" };
-  const file = { name: "a.png", content_type: "image/png", data_base64: "AAAA" };
+  const file = {
+    name: "a.png",
+    content_type: "image/png",
+    data_base64: "AAAA",
+  };
   it("accepts a good payload and nothing", () => {
     assert.equal(parseExtra({}), undefined);
     const x = parseExtra({

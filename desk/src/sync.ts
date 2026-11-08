@@ -163,7 +163,10 @@ export function parseExtra(b: Record<string, unknown>): Extra | undefined {
       const e = obj(raw);
       if (!str(e["item"], 1, 80))
         throw bad("evidence item must be 1 to 80 characters");
-      if (typeof e["evidence_type"] !== "string" || !TYPES.includes(e["evidence_type"]))
+      if (
+        typeof e["evidence_type"] !== "string" ||
+        !TYPES.includes(e["evidence_type"])
+      )
         throw bad(`evidence_type must be one of ${TYPES.join(", ")}`);
       if (!str(e["notes"], 1, 2000))
         throw bad("evidence notes must be 1 to 2000 characters");
@@ -193,7 +196,10 @@ export function parseExtra(b: Record<string, unknown>): Extra | undefined {
       const f = obj(raw);
       if (!str(f["name"], 1, 100) || /[/\\]/.test(f["name"]))
         throw bad("file name must be 1 to 100 characters without slashes");
-      if (typeof f["content_type"] !== "string" || !FILE_TYPES.includes(f["content_type"]))
+      if (
+        typeof f["content_type"] !== "string" ||
+        !FILE_TYPES.includes(f["content_type"])
+      )
         throw bad(`file type must be one of ${FILE_TYPES.join(", ")}`);
       const data = f["data_base64"];
       if (typeof data !== "string" || !/^[A-Za-z0-9+/]+={0,2}$/.test(data))
