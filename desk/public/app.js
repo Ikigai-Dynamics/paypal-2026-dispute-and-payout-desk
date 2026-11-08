@@ -217,8 +217,7 @@ const missedDeadline = (c) =>
 const needing = () =>
   allCases.filter((c) => needsResponse(c) && !missedDeadline(c)).sort(byDue);
 const missedList = () => allCases.filter(missedDeadline).sort(byDue);
-const urgent = (c) =>
-  c.due_at && Date.parse(c.due_at) - Date.now() <= 3 * DAY;
+const urgent = (c) => c.due_at && Date.parse(c.due_at) - Date.now() <= 3 * DAY;
 
 function renderSituation() {
   const n = needing();
@@ -406,7 +405,10 @@ function recSentence(d, c, cost) {
 }
 const unbracket = (t) => String(t ?? "").replace(/[[\]]/g, "");
 // seller messages may join several points with "; "
-const lines = (t) => String(t ?? "").split("; ").filter(Boolean);
+const lines = (t) =>
+  String(t ?? "")
+    .split("; ")
+    .filter(Boolean);
 
 function renderAnalysis(a, fresh) {
   const c = a.case;
@@ -434,7 +436,10 @@ function renderAnalysis(a, fresh) {
         m.posted_by === "BUYER"
           ? `<div class="msg"><b>Buyer</b>: ${esc(m.content)}</div>`
           : lines(m.content)
-              .map((l, i) => `<div class="msg">${i ? "" : "<b>You</b>: "}${esc(l)}</div>`)
+              .map(
+                (l, i) =>
+                  `<div class="msg">${i ? "" : "<b>You</b>: "}${esc(l)}</div>`,
+              )
               .join(""),
       )
       .join("") || '<p class="muted">No messages.</p>';
@@ -692,7 +697,8 @@ function act(kind) {
       `Send your response and ${n} evidence item${n === 1 ? "" : "s"} to PayPal for the ${amt} dispute with ${c.buyer}?`;
     $("confirm-ok").textContent = "Send to PayPal";
   } else {
-    $("confirm-text").textContent = `Refund ${amt} to ${c.buyer} and close the case?`;
+    $("confirm-text").textContent =
+      `Refund ${amt} to ${c.buyer} and close the case?`;
     $("confirm-ok").textContent = "Refund";
   }
   $("confirm").hidden = false;
@@ -758,7 +764,11 @@ let lastCall = null; // `at` of the newest call seen
 let calls = [];
 const ago = (iso) => {
   const t = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000));
-  return t < 60 ? `${t} s ago` : t < 3600 ? `${Math.round(t / 60)} min ago` : `${Math.round(t / 3600)} h ago`;
+  return t < 60
+    ? `${t} s ago`
+    : t < 3600
+      ? `${Math.round(t / 60)} min ago`
+      : `${Math.round(t / 3600)} h ago`;
 };
 const shortPath = (p) => String(p).replace(/(\/disputes\/)[^/]+/, "$1…");
 function renderActivity() {
@@ -844,12 +854,16 @@ async function init() {
   };
   const info = await api("/api/info").catch(() => null);
   if (info) {
-    const env = { sandbox: "PayPal Sandbox", mock: "PayPal test data" }[info.paypalEnv];
+    const env = { sandbox: "PayPal Sandbox", mock: "PayPal test data" }[
+      info.paypalEnv
+    ];
     $("env-pill").hidden = !env;
     $("env-pill").textContent = env ?? "";
     const on = !!info.llm?.online;
     $("ai-pill").hidden = false;
-    $("ai-pill").textContent = on ? "AI drafting on" : "AI offline: template drafts";
+    $("ai-pill").textContent = on
+      ? "AI drafting on"
+      : "AI offline: template drafts";
     $("ai-pill").className = "pill " + (on ? "green" : "grey");
     $("unreachable").hidden = !info.sync?.error;
   }
