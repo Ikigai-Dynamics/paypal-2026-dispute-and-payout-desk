@@ -86,3 +86,14 @@ export interface Draft {
   model?: string;
   error?: string;
 }
+
+/** Validated structured evidence and files sent with a response. */
+export interface Extra {
+  evidence: {
+    item: string;
+    evidence_type: string;
+    notes: string;
+    tracking?: { carrier: string; number: string };
+  }[];
+  files: { name: string; content_type: string; data_base64: string }[];
+}

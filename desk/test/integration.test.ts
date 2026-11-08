@@ -9,6 +9,8 @@ import {
   syncAll,
   type Sink,
 } from "../src/sync.js";
+import { toView } from "../src/analysis.js";
+import { buildChecklist } from "../src/draft.js";
 
 class MemorySink implements Sink {
   rows = new Map<string, CaseRow>();
@@ -69,5 +71,27 @@ describe("sync and writes against the in-process mock", () => {
     const row = await acceptClaim(paypal, sink, open.dispute_id, "ok");
     assert.equal(row.status, "RESOLVED");
     assert.equal(row.outcome, "RESOLVED_BUYER_FAVOUR");
+  });
+
+  it("evidence with a tracking item and a PNG reaches the mock and fills the checklist", async () => {
+    const open = [...sink.rows.values()].find(
+      (r) =>
+        r.status === "WAITING_FOR_SELLER_RESPONSE" &&
+        r.reason === "MERCHANDISE_OR_SERVICE_NOT_RECEIVED",
+    )!;
+    const row = await submitEvidence(paypal, sink, open.dispute_id, "Shipped.", {
+      evidence: [
+        {
+          item: "Tracking",
+          evidence_type: "PROOF_OF_FULFILLMENT",
+          notes: "Shipped with UPS",
+          tracking: { carrier: "UPS", number: "1Z 999" },
+        },
+      ],
+      files: [{ name: "label.png", content_type: "image/png", data_base64: "iVBORw0KGgo=" }],
+    });
+    assert.equal(row.status, "UNDER_REVIEW");
+    const tn = buildChecklist(toView(row)).find((c) => c.item === "Tracking number");
+    assert.equal(tn?.status, "present");
   });
 });

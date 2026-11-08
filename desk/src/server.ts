@@ -12,7 +12,14 @@ import pg from "pg";
 import { analyse, decideFor, findPrecedents, toView } from "./analysis.js";
 import { DEFAULT_HANDLING_CENTS } from "./decide-client.js";
 import { PgStore } from "./db.js";
-import { acceptClaim, submitEvidence, syncAll } from "./sync.js";
+import { list as listCalls, record } from "./activity.js";
+import {
+  acceptClaim,
+  parseExtra,
+  submitEvidence,
+  syncAll,
+  ValidationError,
+} from "./sync.js";
 
 const port = Number(process.env["PORT"] ?? 8080);
 const decideUrl = process.env["DECIDE_URL"] ?? "http://decide";
@@ -28,6 +35,46 @@ const agGrid = join(
 );
 
 const paypal = createPayPalClient();
+// PayPal activity log for the page; the sync's per-case gets are skipped, its list calls are kept
+let syncing = false;
+function logged<A extends unknown[], R>(
+  method: string,
+  path: (...a: A) => string,
+  fn: (...a: A) => Promise<R>,
+  quietInSync = false,
+): (...a: A) => Promise<R> {
+  return async (...a) => {
+    const t = Date.now();
+    let status = 200;
+    try {
+      return await fn(...a);
+    } catch (e) {
+      status = e instanceof PayPalApiError ? e.status : 0;
+      throw e;
+    } finally {
+      if (!(quietInSync && syncing))
+        record({ method, path: path(...a), status, ms: Date.now() - t });
+    }
+  };
+}
+const D = "/v1/customer/disputes";
+const d = paypal.disputes;
+const rawList = d.list.bind(d);
+const rawGet = d.get.bind(d);
+const rawEvidence = d.provideEvidence.bind(d);
+const rawAccept = d.acceptClaim.bind(d);
+d.list = logged("GET", () => D, rawList);
+d.get = logged("GET", (id: string) => `${D}/${id}`, rawGet, true);
+d.provideEvidence = logged(
+  "POST",
+  (id: string, ..._: unknown[]) => `${D}/${id}/provide-evidence`,
+  rawEvidence,
+);
+d.acceptClaim = logged(
+  "POST",
+  (id: string, ..._: unknown[]) => `${D}/${id}/accept-claim`,
+  rawAccept,
+);
 const llm = createLlm();
 const pool = new pg.Pool({
   connectionString: process.env["DATABASE_URL"],
@@ -92,6 +139,7 @@ async function warmDecisions(): Promise<void> {
 
 async function runSync(): Promise<number> {
   syncState.attempts++;
+  syncing = true;
   try {
     const n = await syncAll(paypal, store);
     syncState.lastOk = new Date().toISOString();
@@ -106,6 +154,8 @@ async function runSync(): Promise<number> {
     syncState.error = e instanceof Error ? e.message : String(e);
     log({ msg: "sync failed", error: syncState.error });
     throw e;
+  } finally {
+    syncing = false;
   }
 }
 
@@ -142,11 +192,21 @@ class HttpError extends Error {
   }
 }
 
+const MAX_BODY = 1024 * 1024;
+const MAX_EVIDENCE_BODY = 8 * 1024 * 1024;
+
 async function readJson(
   req: IncomingMessage,
+  cap = MAX_BODY,
 ): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
-  for await (const c of req) chunks.push(c as Buffer);
+  let size = 0;
+  for await (const c of req) {
+    size += (c as Buffer).length;
+    if (size > cap)
+      throw new HttpError(413, "too_large", "request body is too large");
+    chunks.push(c as Buffer);
+  }
   const text = Buffer.concat(chunks).toString("utf8");
   try {
     return text ? (JSON.parse(text) as Record<string, unknown>) : {};
@@ -213,6 +273,8 @@ async function route(
         pod: process.env["POD_NAME"] ?? null,
       },
     };
+  if (m === "GET" && p === "/api/paypal-activity")
+    return { status: 200, body: { calls: listCalls(20) } };
   if (m === "POST" && p === "/api/sync") {
     const n = await runSync();
     return { status: 200, body: { synced: n } };
@@ -280,7 +342,10 @@ async function route(
       return { status: 200, body: out };
     }
     if (m === "POST" && (a[2] === "evidence" || a[2] === "accept")) {
-      const b = await readJson(req);
+      const b = await readJson(
+        req,
+        a[2] === "evidence" ? MAX_EVIDENCE_BODY : MAX_BODY,
+      );
       if (b["confirm"] !== true)
         throw new HttpError(
           400,
@@ -292,7 +357,15 @@ async function route(
       if (a[2] === "evidence") {
         const text = typeof b["text"] === "string" ? b["text"].trim() : "";
         if (!text) throw new HttpError(400, "bad_request", "text is required");
-        row = await submitEvidence(paypal, store, id, text);
+        let extra;
+        try {
+          extra = parseExtra(b);
+        } catch (e) {
+          if (e instanceof ValidationError)
+            throw new HttpError(400, "bad_request", e.message);
+          throw e;
+        }
+        row = await submitEvidence(paypal, store, id, text, extra);
       } else {
         const note =
           typeof b["note"] === "string" && b["note"].trim()
