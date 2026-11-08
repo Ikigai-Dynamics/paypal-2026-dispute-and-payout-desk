@@ -106,7 +106,7 @@ export interface Draft {
   checklist: ChecklistItem[];
   explanation: string;
   source: "llm" | "fallback";
-  /** "AI (model)" or "offline fallback", to show next to the text */
+  /** "AI draft", "AI draft, updated with your evidence" or "Template draft (AI unavailable)", shown verbatim next to the text */
   label: string;
   model?: string;
   error?: string;

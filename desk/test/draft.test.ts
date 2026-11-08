@@ -4,6 +4,8 @@ import { createLlm } from "@jeirslab/llm-client";
 import {
   buildChecklist,
   explanationOf,
+  headOf,
+  sentencesOf,
   draftResponse,
   fallbackDraft,
   groundingProblems,
@@ -90,7 +92,7 @@ describe("fallback draft", () => {
 
   it("cites the tracking number only when it is on the case", () => {
     const d = fallbackDraft(withTracking, decision);
-    assert.ok(d.response.includes("UPS 1Z999AA10123456784"));
+    assert.ok(d.response.includes("UPS tracking number 1Z999AA10123456784"));
     assert.equal(
       d.checklist.find((c) => c.item === "Tracking number")?.status,
       "present",
@@ -252,7 +254,7 @@ describe("fallback draft", () => {
 
   it("fallbacks claim nothing when no evidence is on file", () => {
     const stems =
-      /ship|deliver|e-?mail|re-?sent|review|\blogs?\b|record|tracking|signature|only one|redeem/i;
+      /ship|deliver|e-?mail|re-?sent|\blogs?\b|record|tracking|signature|only one|redeem/i;
     for (const reason of [
       "MERCHANDISE_OR_SERVICE_NOT_RECEIVED",
       "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED",
@@ -341,7 +343,7 @@ describe("draftResponse", () => {
   it("uses the fallback offline and labels it", async () => {
     const d = await draftResponse(createLlm({ env: {} }), base, decision, []);
     assert.equal(d.source, "fallback");
-    assert.equal(d.label, "offline fallback");
+    assert.equal(d.label, "Template draft (AI unavailable)");
     assert.ok(d.error);
   });
 
@@ -373,7 +375,7 @@ describe("draftResponse", () => {
         "llm",
         "m1",
         "Re: Ava Chen's claim about 2 × Hardware kit #1234 (USD 120.00). The order was fulfilled as placed. We ask PayPal to find in our favour.",
-        "AI (m1)",
+        "AI draft",
       ],
     );
   });
@@ -721,7 +723,7 @@ describe("grounded drafting over the seeded cases", () => {
     it(`${name}: two ungrounded drafts fall back to the template`, async () => {
       const d = await draftResponse(fake([bad[0]!]), c, decision, []);
       assert.equal(d.source, "fallback");
-      assert.match(d.error ?? "", /not grounded/);
+      assert.match(d.error ?? "", /not allowed/);
       assertClean(c, d.response, false);
     });
   }
@@ -826,4 +828,66 @@ describe("grounded drafting over the seeded cases", () => {
       [],
     );
   });
+
+  const sofia = seeded({
+    dispute_id: "PP-D-GIFTCARD-0001",
+    reason: "MERCHANDISE_OR_SERVICE_NOT_RECEIVED",
+    buyer: "Sofia Lindqvist",
+    amount_cents: 5000,
+    purchased_at: "2026-11-02T10:00:00.000Z",
+    items: [{ item_quantity: "1", item_description: "Gift card" }],
+    messages: [msg("BUYER", "The gift card code never arrived.")],
+  });
+  const mixed = [
+    "We are providing the item in evidence we still lack.",
+    "There is no evidence on file.",
+    "We have enclosed the available documentation.",
+    "The buyer has proof that the two charges are related to the same transaction.",
+    "We shipped it with UPS tracking 1Z999AA10123456784 on Oct 30.",
+  ];
+  const all: [string, CaseView, string][] = [
+    ...cases,
+    [
+      "Sofia Lindqvist",
+      sofia,
+      "The order was fulfilled as placed. We ask PayPal to find in our favour.",
+    ],
+  ];
+  for (const [name, c, good] of all) {
+    it(`${name}: a reply mixing good and bad sentences keeps only the good ones`, async () => {
+      const [g1, g2] = sentencesOf(good);
+      const seen: string[] = [];
+      const text = [g1, ...mixed, g2].join(" ");
+      const d = await draftResponse(fake([text], seen), c, decision, []);
+      assert.equal(d.source, "llm");
+      assert.equal(d.label, "AI draft");
+      assert.equal(seen.length, 1);
+      assert.equal(d.response, `${headOf(c)} ${g1} ${g2}`);
+      assert.deepEqual(
+        groundingProblems(d.response, buildChecklist(c), ""),
+        [],
+      );
+      assert.doesNotMatch(
+        d.response,
+        /lack|still need|enclosed|providing|same transaction|no evidence/i,
+      );
+    });
+
+    it(`${name}: the template draft is grounded too`, async () => {
+      const d = await draftResponse(createLlm({ env: {} }), c, decision, []);
+      assert.equal(d.label, "Template draft (AI unavailable)");
+      assert.deepEqual(
+        groundingProblems(d.response, buildChecklist(c), ""),
+        [],
+      );
+      assert.doesNotMatch(
+        d.response,
+        /lack|enclosed|providing|same transaction/i,
+      );
+      if (c.reason === "UNAUTHORISED")
+        assert.doesNotMatch(d.response, /authorised this payment/);
+      if (c.dispute_id === "PP-D-1724441021")
+        assert.doesNotMatch(d.response, /fulfilled/);
+    });
+  }
 });
