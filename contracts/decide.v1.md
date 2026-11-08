@@ -47,4 +47,6 @@ a flake check).
   taken to 4 decimals.
 - When `prior` is absent, p0 comes from the table in `decide/src/priors.rs` (an assumption, labelled in `p0_source`):
   not received 0.45 (0.60 with evidence), not as described 0.35 (0.45 with evidence), unauthorised 0.25, duplicate
-  transaction and credit not processed 0.30, cancelled recurring billing 0.40, anything else 0.35.
+  transaction and credit not processed 0.30 with evidence on file, cancelled recurring billing 0.40, anything else 0.35.
+  A duplicate charge with nothing on file: the buyer is usually right, so we start at 5%. A refund owed (credit not
+  processed) with nothing on file: we start at 8%.

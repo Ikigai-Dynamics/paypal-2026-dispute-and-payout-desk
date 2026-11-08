@@ -11,7 +11,10 @@ pub fn prior_bp(reason: &str, evidence_on_file: bool) -> u32 {
         ("MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED", true) => 4500,
         ("MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED", false) => 3500,
         ("UNAUTHORISED", _) => 2500,
-        ("DUPLICATE_TRANSACTION", _) | ("CREDIT_NOT_PROCESSED", _) => 3000,
+        // The buyer is almost always right and the seller has nothing on file.
+        ("DUPLICATE_TRANSACTION", false) => 500,
+        ("CREDIT_NOT_PROCESSED", false) => 800,
+        ("DUPLICATE_TRANSACTION", true) | ("CREDIT_NOT_PROCESSED", true) => 3000,
         ("CANCELED_RECURRING_BILLING", _) => 4000,
         _ => 3500,
     }
