@@ -160,7 +160,7 @@ export class PgStore {
       `select dispute_id, outcome, amount_cents::float8 as amount_cents,
               ts_rank(doc, query) as rank,
               ts_headline('english', coalesce(raw->>'search_text',''), query,
-                'StartSel=,StopSel=,MaxFragments=1,MaxWords=16,MinWords=6') as snippet
+                'StartSel="",StopSel="",MaxFragments=1,MaxWords=16,MinWords=6') as snippet
        from cases, to_tsquery('english', $3) query
        where reason = $1 and status = 'RESOLVED' and outcome is not null and dispute_id <> $2
        order by rank desc, dispute_id
