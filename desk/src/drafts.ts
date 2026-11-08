@@ -37,7 +37,7 @@ export class DraftCache {
           .digest("hex")
           .slice(0, 12)
       : "";
-    const key = `v4|${c.dispute_id}|${c.updated_at}|${decision?.call ?? "none"}|${extra}`;
+    const key = `v5|${c.dispute_id}|${c.updated_at}|${decision?.call ?? "none"}|${extra}`;
     const knobs = `${o.prior ?? ""}|${o.handlingCostCents ?? ""}|${o.feeIfLostCents ?? ""}`;
     const hit = this.done.get(key);
     if (hit) {
