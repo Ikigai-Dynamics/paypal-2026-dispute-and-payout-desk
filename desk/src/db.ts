@@ -1,5 +1,5 @@
 import type pg from "pg";
-import type { CaseRow } from "./types.js";
+import type { Added, CaseRow } from "./types.js";
 
 const SCHEMA = [
   `create table if not exists cases (
@@ -12,7 +12,23 @@ const SCHEMA = [
   `create table if not exists paypal_calls (
     id bigserial primary key, at timestamptz not null default now(),
     method text, path text, status int, ms int)`,
+  `create table if not exists case_work (dispute_id text primary key, added jsonb not null default '[]', draft_text text, draft_label text, edited boolean not null default false, updated_at timestamptz not null default now())`,
+  `create table if not exists case_sent (id bigserial primary key, dispute_id text not null, at timestamptz not null default now(), text text not null, added jsonb not null default '[]', vouched jsonb not null default '[]')`,
 ];
+
+export interface CaseWork {
+  added: Added[];
+  draft_text: string | null;
+  draft_label: string | null;
+  edited: boolean;
+  updated_at: string;
+}
+export interface CaseSent {
+  at: string;
+  text: string;
+  added: Added[];
+  vouched: string[];
+}
 
 export interface SearchHit {
   dispute_id: string;
@@ -182,5 +198,89 @@ export class PgStore {
       amount_cents: Number(x.amount_cents),
       snippet: String(x.snippet),
     }));
+  }
+
+  async getWork(id: string): Promise<CaseWork | null> {
+    const r = await this.pool.query(
+      "select added, draft_text, draft_label, edited, updated_at from case_work where dispute_id=$1",
+      [id],
+    );
+    const x = r.rows[0];
+    return x
+      ? {
+          added: x.added as Added[],
+          draft_text: x.draft_text ?? null,
+          draft_label: x.draft_label ?? null,
+          edited: Boolean(x.edited),
+          updated_at: new Date(x.updated_at).toISOString(),
+        }
+      : null;
+  }
+
+  /** Upsert; a field left undefined keeps its saved value. `label: null` clears the label. */
+  async putWork(
+    id: string,
+    w: {
+      added?: Added[];
+      text?: string;
+      label?: string | null;
+      edited?: boolean;
+    },
+  ): Promise<CaseWork> {
+    await this.pool.query(
+      `insert into case_work (dispute_id, added, draft_text, draft_label, edited)
+       values ($1, coalesce($2::jsonb,'[]'::jsonb), $3, $4, coalesce($5,false))
+       on conflict (dispute_id) do update set
+         added = coalesce($2::jsonb, case_work.added),
+         draft_text = coalesce($3, case_work.draft_text),
+         draft_label = case when $6 then $4 else case_work.draft_label end,
+         edited = coalesce($5, case_work.edited),
+         updated_at = now()`,
+      [
+        id,
+        w.added ? JSON.stringify(w.added) : null,
+        w.text ?? null,
+        w.label ?? null,
+        w.edited ?? null,
+        w.label !== undefined,
+      ],
+    );
+    return (await this.getWork(id))!;
+  }
+
+  async deleteWork(id: string): Promise<void> {
+    await this.pool.query("delete from case_work where dispute_id=$1", [id]);
+  }
+
+  async recordSent(
+    id: string,
+    text: string,
+    added: Added[],
+    vouched: string[],
+  ): Promise<void> {
+    await this.pool.query(
+      "insert into case_sent (dispute_id, text, added, vouched) values ($1,$2,$3::jsonb,$4::jsonb)",
+      [id, text, JSON.stringify(added), JSON.stringify(vouched)],
+    );
+  }
+
+  async getSent(id: string): Promise<CaseSent | null> {
+    const r = await this.pool.query(
+      "select at, text, added, vouched from case_sent where dispute_id=$1 order by id desc limit 1",
+      [id],
+    );
+    const x = r.rows[0];
+    return x
+      ? {
+          at: new Date(x.at).toISOString(),
+          text: x.text,
+          added: x.added as Added[],
+          vouched: x.vouched as string[],
+        }
+      : null;
+  }
+
+  async resetWork(): Promise<void> {
+    await this.pool.query("truncate case_work, case_sent");
   }
 }

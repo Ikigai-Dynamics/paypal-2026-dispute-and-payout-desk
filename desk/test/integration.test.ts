@@ -10,6 +10,7 @@ import {
   type Sink,
 } from "../src/sync.js";
 import { toView } from "../src/analysis.js";
+import { gateEvidence } from "../src/factcheck.js";
 import { buildChecklist } from "../src/draft.js";
 
 class MemorySink implements Sink {
@@ -110,5 +111,27 @@ describe("sync and writes against the in-process mock", () => {
     // the first item is the tracking number, or the email log for digital goods
     const first = buildChecklist(toView(row))[0];
     assert.equal(first?.status, "present");
+  });
+
+  it("the invented-fact gate blocks the UPS sentence and passes it once vouched", async () => {
+    const open = [...sink.rows.values()].find(
+      (r) => r.status === "WAITING_FOR_SELLER_RESPONSE",
+    )!;
+    const sentence =
+      "UPS tracking 1Z999AA10123456784 shows the order was delivered Oct 30.";
+    const proof = "1 sleeping bag";
+    const blocked = gateEvidence(`We shipped it. ${sentence}`, proof, []);
+    assert.deepEqual(
+      blocked.unsupported.map((u) => u.sentence),
+      [sentence],
+    );
+    const ok = gateEvidence(`We shipped it. ${sentence}`, proof, [sentence]);
+    assert.equal(ok.unsupported.length, 0);
+    assert.match(
+      ok.sentText,
+      /Merchant confirms they hold this evidence: UPS tracking/,
+    );
+    const row = await submitEvidence(paypal, sink, open.dispute_id, ok.sentText);
+    assert.equal(row.status, "UNDER_REVIEW");
   });
 });

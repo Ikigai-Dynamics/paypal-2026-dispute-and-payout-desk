@@ -187,6 +187,10 @@ describe("cleanSnippet", () => {
       `duplicate ${"word ".repeat(60)}`,
       "DUPLICATE_TRANSACTION",
     );
-    assert.ok(long.length <= 141 && long.endsWith("word…"));
+    assert.equal(
+      cleanSnippet("First sentence. Second one is longer and runs on " + "x ".repeat(200), "OTHER"),
+      "First sentence.",
+    );
+    assert.ok(long.length <= 201 && long.endsWith("word…"));
   });
 });

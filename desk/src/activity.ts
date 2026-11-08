@@ -6,6 +6,10 @@ export interface Call {
   path: string;
   status: number;
   ms: number;
+  dispute_id: string | null;
+  buyer: string | null;
+  amount_cents: number | null;
+  currency: string | null;
 }
 
 const KEEP = 200;
@@ -17,7 +21,9 @@ export function init(p: pg.Pool): void {
 }
 
 /** Fire and forget: a failed write is logged, never thrown. */
-export function record(c: Omit<Call, "at">): void {
+export function record(
+  c: Pick<Call, "method" | "path" | "status" | "ms">,
+): void {
   if (!pool) return;
   const p = pool;
   void p
@@ -42,7 +48,10 @@ export function record(c: Omit<Call, "at">): void {
 export async function list(limit = 20): Promise<Call[]> {
   if (!pool) return [];
   const r = await pool.query(
-    "select at, method, path, status, ms from paypal_calls order by id desc limit $1",
+    `select p.at, p.method, p.path, p.status, p.ms, c.dispute_id, c.buyer, c.amount_cents::float8 as amount_cents, c.currency
+     from paypal_calls p
+     left join cases c on c.dispute_id = substring(p.path from '/v1/customer/disputes/([^/?]+)')
+     order by p.id desc limit $1`,
     [limit],
   );
   return r.rows.map((x) => ({
@@ -51,5 +60,9 @@ export async function list(limit = 20): Promise<Call[]> {
     path: x.path,
     status: Number(x.status),
     ms: Number(x.ms),
+    dispute_id: x.dispute_id ?? null,
+    buyer: x.buyer ?? null,
+    amount_cents: x.amount_cents === null ? null : Number(x.amount_cents),
+    currency: x.currency ?? null,
   }));
 }

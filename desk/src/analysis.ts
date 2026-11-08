@@ -6,7 +6,14 @@ import {
 } from "./decide-client.js";
 import type { PgStore } from "./db.js";
 import { draftResponse } from "./draft.js";
-import type { CaseRow, CaseView, Decision, Draft, Precedent } from "./types.js";
+import type {
+  Added,
+  CaseRow,
+  CaseView,
+  Decision,
+  Draft,
+  Precedent,
+} from "./types.js";
 
 const STOP = new Set(
   "the a an and or of to in on for with is it was my i we you that this have has not no but be are were from at as by me our your they their them its been had".split(
@@ -39,8 +46,11 @@ export function cleanSnippet(snippet: string, reason: string): string {
   const lead = reason.toLowerCase().split("_")[0] ?? "";
   const first = s.split(" ")[0] ?? "";
   if (lead && first.toLowerCase() === lead) s = s.slice(first.length).trim();
-  if (s.length <= 140) return s;
-  const cut = s.slice(0, 140);
+  const ends = [...s.slice(0, 200).matchAll(/[.!?](?=\s|$)/g)];
+  const last = ends[ends.length - 1];
+  if (last) return s.slice(0, last.index! + 1);
+  if (s.length <= 200) return s;
+  const cut = s.slice(0, 200);
   return `${cut.slice(0, Math.max(cut.lastIndexOf(" "), 1)).replace(/[\s,;:.]+$/, "")}…`;
 }
 
@@ -68,6 +78,8 @@ export function buyerHistory(row: CaseRow, others: CaseRow[]) {
   const seen = new Set([tx?.seller_transaction_id]);
   return others
     .flatMap((o) => {
+      // shortcut: every order here comes from a dispute row; one still open is itself in dispute, so it is no proof
+      if (o.status !== "RESOLVED") return [];
       const t = o.raw.disputed_transactions[0];
       if (!t || !tx || seen.has(t.seller_transaction_id)) return [];
       seen.add(t.seller_transaction_id);
@@ -120,6 +132,7 @@ export interface AnalysisDeps {
     decision: Decision | null,
     precedents: Precedent[],
     o: DecideOptions,
+    added?: Added[],
   ) => Promise<Draft>;
 }
 
@@ -174,18 +187,20 @@ export async function analyse(
   deps: AnalysisDeps,
   row: CaseRow,
   o: DecideOptions,
+  added: Added[] = [],
 ): Promise<Analysis> {
   const precedents = await findPrecedents(deps.store, row);
   const decision = await decideFor(deps, row, precedents, o);
   const view = await viewOf(deps.store, row);
   const draft = deps.draft
-    ? await deps.draft(view, decision, precedents, o)
+    ? await deps.draft(view, decision, precedents, o, added)
     : await draftResponse(
         deps.llm,
         view,
         decision,
         precedents,
         o.handlingCostCents,
+        added,
       );
   return {
     case: view,
