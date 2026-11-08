@@ -289,5 +289,33 @@
       "marginal": true,
       "call": "fight"
     }
+  },
+  {
+    "name": "duplicate-no-evidence-164-accept",
+    "note": "",
+    "request": {
+      "contract": "decide.v1",
+      "amount_cents": 16400,
+      "currency": "USD",
+      "reason": "DUPLICATE_TRANSACTION",
+      "stage": "INQUIRY",
+      "evidence_on_file": false,
+      "prior": null,
+      "handling_cost_cents": 1500,
+      "fee_if_lost_cents": 0,
+      "precedents": []
+    },
+    "expect": {
+      "p0": 0.05,
+      "k": 4,
+      "wins": 0,
+      "n": 0,
+      "p": 0.05,
+      "ev_accept_cents": -16400,
+      "ev_fight_cents": -17080,
+      "margin_cents": -680,
+      "marginal": false,
+      "call": "accept"
+    }
   }
 ]
