@@ -526,7 +526,7 @@ describe("grounded drafting over the seeded cases", () => {
     currency: "USD",
     ...o,
   });
-  const msg = (posted_by: string, content: string) => ({
+  const msg = (posted_by: "BUYER" | "SELLER", content: string) => ({
     posted_by,
     time_posted: "2026-11-05T00:00:00Z",
     content,
