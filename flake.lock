@@ -61,11 +61,11 @@
         "treefmt-nix": "treefmt-nix"
       },
       "locked": {
-        "lastModified": 1794051021,
-        "narHash": "sha256-8mEf1mcGTdR2KTlSPRGr2jIkzf1P9/CzehomFNwS2ck=",
+        "lastModified": 1794171555,
+        "narHash": "sha256-Y8Ok/Wf0Q/LenCEggJK09cPVEn1aGzf/v5tXgi3mIEM=",
         "ref": "refs/heads/main",
-        "rev": "601f08c07c1e102b60dd76d21098ef0b3e6c5e9f",
-        "revCount": 28,
+        "rev": "8c66eb4f335d790ec57a0debc08cfb8b47d029d0",
+        "revCount": 29,
         "type": "git",
         "url": "ssh://git@github.com/Ikigai-Dynamics/paypal-hackathon-2026"
       },

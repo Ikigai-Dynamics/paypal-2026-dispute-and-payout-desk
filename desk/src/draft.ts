@@ -8,10 +8,12 @@ import type {
 } from "./types.js";
 
 export const SYSTEM_PROMPT =
-  "You draft a PayPal seller response to a dispute. Cite only evidence present in the given case; " +
-  "if something is not in the case, say it is missing rather than inventing it. " +
-  'Return JSON {"response": string, "checklist": [{"item": string, "status": "present"|"missing", "why": string}], "explanation": string}. ' +
-  "The explanation restates the provided decision terms and must not invent numbers.";
+  "You write a PayPal dispute response as the merchant (first person plural, 'we'). " +
+  "Write 90 to 160 words, polite and factual. Cite only evidence present in the given case and quote tracking numbers verbatim; " +
+  "never invent numbers, dates or tracking, and if something is missing say it is missing. " +
+  'Return JSON {"response": string, "explanation": string}. ' +
+  "The explanation is one plain sentence in the form 'We recommend fighting because ...' or 'We recommend accepting because ...', " +
+  "built from the decision facts given (call, win chance, similar cases, margin in dollars), with no formulas and no variable names such as p, c or EV.";
 
 const words = (s: string) => s.toLowerCase().replaceAll("_", " ");
 const money = (c: number, cur: string) => `${(c / 100).toFixed(2)} ${cur}`;
@@ -112,10 +114,15 @@ export function buildChecklist(c: CaseView): ChecklistItem[] {
   }
 }
 
+const dollars = (c: number) => `$${(Math.abs(c) / 100).toFixed(2)}`;
+
 export function explanationOf(decision: Decision | null): string {
-  return decision
-    ? decision.terms.join(" ")
-    : "The decision core was unreachable, so no expected value is shown.";
+  if (!decision)
+    return "The decision core was unreachable, so no recommendation is shown.";
+  const chance = `about ${Math.round(decision.p * 100)}% chance of winning`;
+  return decision.call === "fight"
+    ? `We recommend fighting: ${chance}; fighting is worth about ${dollars(decision.margin_cents)} more than refunding.`
+    : `We recommend accepting: ${chance}; fighting would cost about ${dollars(decision.margin_cents)} more than refunding.`;
 }
 
 /** Deterministic template per reason. Cites only what the case holds. */
@@ -179,13 +186,13 @@ const isChecklist = (x: unknown): x is ChecklistItem[] =>
 
 export function isDraftShape(
   x: unknown,
-): x is { response: string; checklist: ChecklistItem[]; explanation: string } {
+): x is { response: string; checklist?: ChecklistItem[]; explanation: string } {
   const d = x as Record<string, unknown> | null;
   return (
     !!d &&
     typeof d["response"] === "string" &&
     typeof d["explanation"] === "string" &&
-    isChecklist(d["checklist"])
+    (d["checklist"] === undefined || isChecklist(d["checklist"]))
   );
 }
 
@@ -207,6 +214,12 @@ export async function draftResponse(
       items: c.items,
       evidences: c.evidences,
     },
+    decision: decision && {
+      call: decision.call,
+      win_chance_percent: Math.round(decision.p * 100),
+      similar_cases: decision.n,
+      margin_dollars: Math.abs(decision.margin_cents) / 100,
+    },
     decision_terms: decision?.terms ?? [],
     precedents: precedents.slice(0, 3).map((p) => ({
       dispute_id: p.dispute_id,
@@ -214,11 +227,7 @@ export async function draftResponse(
       snippet: p.snippet,
     })),
   });
-  const r = await llm.complete<{
-    response: string;
-    checklist: ChecklistItem[];
-    explanation: string;
-  }>(
+  const r = await llm.complete<{ response: string; explanation: string }>(
     {
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: user }],
@@ -231,7 +240,8 @@ export async function draftResponse(
     if (isDraftShape(r.value))
       return {
         response: r.value.response,
-        checklist: r.value.checklist,
+        // the computed checklist is the truth the page gates on
+        checklist: fb.checklist,
         explanation: r.value.explanation,
         source: "llm",
         ...(r.model ? { model: r.model } : {}),
