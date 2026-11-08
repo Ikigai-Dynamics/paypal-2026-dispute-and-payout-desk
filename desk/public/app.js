@@ -314,9 +314,7 @@ function renderSituation() {
           .join(", ")}`
       : `${need} need${need !== 1 ? "" : "s"} your response`
   } · ${soon} due in the next 3 days · ${money(stake, cur)} at stake · Recommended: fight ${f}, accept ${a}`;
-  $("holds").hidden = !stake;
-  $("holds").textContent =
-    `PayPal holds ${money(stake, cur)} of your payouts until these are settled.`;
+  $("holds").hidden = true; // the situation line already states the amount
   $("start").disabled = !n.length;
   $("start").textContent = urgentCase()
     ? "Fight the most urgent dispute"
@@ -449,7 +447,10 @@ async function loadCase(id) {
   drafting = false;
   draftSeq++;
   $("draft-note").hidden = true;
-  $("draft").classList.remove("dim");
+  $("draft").classList.add("dim");
+  draftAi = false;
+  $("badge").textContent = "Drafting with AI…";
+  $("badge").className = "pill grey";
   hideConfirm();
   $("claim-note").hidden = true;
   $("draft").classList.remove("flagged");
@@ -488,6 +489,7 @@ async function recompute(fresh) {
   } catch {
     $("panel-error").hidden = false;
     $("panel-error").textContent = "Could not load this case. Try again.";
+    $("draft").classList.remove("dim");
     return;
   }
   renderAnalysis(currentAnalysis, fresh);
@@ -514,12 +516,6 @@ function recSentence(d, c, cost) {
   return `${few ? `Rough estimate (few similar past cases): about ${pct(d.p)}% chance of keeping ${money(A, cur)}` : `Only a ${pct(d.p)}% chance of keeping ${money(A, cur)}${basis}`}, so fighting (about ${cc}) is unlikely to pay off. Refund it and close the case.`;
 }
 const unbracket = (t) => String(t ?? "").replace(/[[\]]/g, "");
-// seller messages may join several points with "; "
-const lines = (t) =>
-  String(t ?? "")
-    .split("; ")
-    .filter(Boolean);
-
 function renderAnalysis(a, fresh) {
   const c = a.case;
   const amt = money(c.amount_cents, c.currency);
@@ -564,17 +560,12 @@ function renderAnalysis(a, fresh) {
       .filter(Boolean),
   );
   const respText = (sentText ?? hidden?.notes ?? "").trim();
-  const isNote = (l) =>
-    [...noteSet].some((n) => n === l || n.includes(l) || l.includes(n));
   const sellerLines = (m) => {
-    const ls = lines(m.content).filter(
-      (l) => !(done && (l.trim() === respText || noteSet.has(l.trim()))),
-    );
-    return ls.map((l, i) => {
-      const tag =
-        done && isNote(l.trim()) ? "Evidence: " : i === 0 ? "You: " : "";
-      return `<div class="msg">${tag ? `<b>${tag.replace(": ", "")}</b>: ` : ""}${esc(l)}</div>`;
-    });
+    const t = m.content.trim();
+    // once sent, the response and notes show in their own blocks
+    if (done && (noteSet.has(t) || (respText && t.includes(respText))))
+      return [];
+    return [`<div class="msg"><b>You</b>: ${esc(m.content)}</div>`];
   };
   $("messages").innerHTML =
     c.messages
@@ -613,7 +604,7 @@ function renderAnalysis(a, fresh) {
   } else if (d) {
     const cost = Number($("in-c").value) || 15;
     box.className = `rec ${r.kind}`;
-    box.innerHTML = `<div class="word">${d.marginal ? `Close call: ${d.call}` : d.call === "fight" ? "Fight" : "Accept"}</div><div>${esc(recSentence(d, c, cost))}</div>`;
+    box.innerHTML = `<div class="word">${d.marginal ? `Close call: ${d.call}` : d.call === "fight" ? "Fight" : "Accept"}</div><div>${esc(recSentence(d, c, cost))}</div>${d.call === "fight" && d.p < 0.5 ? `<div class="muted">${esc(`Worth fighting even at ${pct(d.p)}%: if you lose, you refund ${money(c.amount_cents, c.currency)}, the same as accepting now; if you win, you keep it.${cost > 0 ? ` Fighting costs about ${money(cost * 100, c.currency, true)}.` : ""}`)}</div>` : ""}`;
     $("terms").textContent = d.terms.join("\n");
     const cur = c.currency;
     const rows = [
@@ -627,7 +618,7 @@ function renderAnalysis(a, fresh) {
       .map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`)
       .join("");
     $("p0line").textContent =
-      `Typical win rate for ${reasonWords(c.reason).toLowerCase()} claims: ${pct(d.p0)}%`;
+      `Sellers win about ${pct(d.p0)}% of ${c.reason === "OTHER" ? "disputes where the buyer gave no reason" : `${reasonWords(c.reason).toLowerCase()} disputes like this`}`;
   } else {
     box.className = "rec";
     box.innerHTML =
@@ -644,7 +635,9 @@ function renderAnalysis(a, fresh) {
   if (fresh && work?.draft_text) $("draft").value = work.draft_text;
   else if (fresh || !$("draft").value) $("draft").value = dr.response;
   draftAi = dr.source === "llm";
-  if (fresh) draftLabel = work?.draft_label ?? null;
+  if (fresh) draftLabel = work?.draft_label ?? dr.label ?? null;
+  draftAi = dr.source === "llm" || /^AI draft/.test(draftLabel ?? "");
+  if (fresh) $("draft").classList.remove("dim");
   setBadge();
   if (draftAi) setAi(true);
   $("explanation").textContent = dr.explanation ?? "";
@@ -656,8 +649,9 @@ function setBadge() {
   b.textContent = editedLocal
     ? draftAi
       ? "AI draft, edited by you"
-      : "Draft, edited by you"
-    : (draftLabel ?? (draftAi ? "AI draft" : "Template draft"));
+      : "Template, edited by you"
+    : (draftLabel ??
+      (draftAi ? "AI draft" : "Template draft (AI unavailable)"));
   b.className = "pill " + (draftAi ? "green" : "grey");
 }
 function applyWork(a) {
@@ -683,7 +677,7 @@ function saveWork(delay = 0) {
   const id = current;
   saveTimer = setTimeout(() => {
     const body = JSON.stringify({
-      added: [...added.values()].map(({ file, ...e }) => e),
+      added: canon(),
       text: $("draft").value,
       edited: editedLocal,
     });
@@ -720,7 +714,7 @@ function renderEvidence() {
     evsOnFile.map((e) => row(e, false)).join("") +
     sentRows.map((e) => row(e, false)).join("") +
     vouched
-      .map((v) => `<div class="msg"><b>You confirmed:</b> ${esc(v)}</div>`)
+      .map((v) => `<div class="msg"><b>Your statement:</b> ${esc(v)}</div>`)
       .join("") +
     [...added.values()].map((e) => row(e, true)).join("");
   $("evidence").innerHTML = html || '<p class="muted">Nothing yet</p>';
@@ -815,7 +809,12 @@ function renderChecklist() {
 }
 
 const evType = (item) =>
-  /tracking|delivery|fulfil/i.test(item) ? "PROOF_OF_FULFILLMENT" : "OTHER";
+  /tracking|delivery|email log|code sent|fulfil/i.test(item)
+    ? "PROOF_OF_FULFILLMENT"
+    : /refund/i.test(item)
+      ? "PROOF_OF_REFUND"
+      : "OTHER";
+const canon = () => [...added.values()].map(({ file, ...e }) => e);
 const MAX_FILE = 5 * 1024 * 1024;
 const FILE_TYPES = {
   png: "image/png",
@@ -909,10 +908,7 @@ async function redraft() {
   try {
     res = (
       await post(`/api/cases/${encodeURIComponent(id)}/draft`, {
-        added: [...added.values()].map((e) => ({
-          item: e.item,
-          note: e.notes,
-        })),
+        added: canon(),
       })
     ).draft;
   } catch {}
@@ -923,8 +919,7 @@ async function redraft() {
     $("draft").value = res.response;
     draftAi = res.source === "llm";
     editedLocal = false;
-    draftLabel =
-      draftAi && added.size ? "AI draft, updated with your evidence" : null;
+    draftLabel = res.label ?? null;
     setBadge();
     if (draftAi) setAi(true);
     note.hidden = true;
@@ -985,52 +980,88 @@ function hideConfirm() {
   $("claim-note").hidden = true;
   $("draft").classList.remove("flagged");
 }
-// rows for sentences the server found with nothing on file behind them
+// names what is sent: items added now plus statements the merchant vouched for
+const short = (item) =>
+  (/\(([^)]+)\)/.exec(item)?.[1] ?? item).trim().toLowerCase();
+function confirmText() {
+  const c = currentAnalysis.case;
+  const names = [
+    ...[...added.values()].map((e) => short(e.item)),
+    ...claims.filter((x) => x.ok).map(() => "your statement"),
+  ];
+  const what =
+    names.length === 0
+      ? ""
+      : names.length === 1
+        ? ` and the ${names[0]}`
+        : ` and ${names.length} items (${names.join(", ")})`;
+  return `Send your response${what} to PayPal for the ${money(c.amount_cents, c.currency)} dispute with ${c.buyer}?`;
+}
+// sentences the server found with nothing on file behind them, inside the confirm box
 function renderClaims() {
-  const text = $("draft").value;
-  claims = claims.filter((c) => text.includes(c.sentence));
   const on = claims.length > 0;
   $("claim-note").hidden = !on;
   $("draft").classList.toggle("flagged", on);
-  $("claims").innerHTML = claims
-    .map(
-      (c, i) =>
-        `<div class="claim"><blockquote>${esc(c.sentence)}</blockquote><div class="muted">${esc(c.reason ?? "")}</div><label><input type="checkbox" data-i="${i}"${c.ok ? " checked" : ""}> I have this evidence</label></div>`,
-    )
-    .join("");
+  $("claims").innerHTML = on
+    ? '<p class="claims-head">PayPal would see claims with no evidence on file:</p>' +
+      claims
+        .map(
+          (c, i) =>
+            `<div class="claim"><blockquote>${esc(c.sentence)}</blockquote><div class="muted">${esc(c.reason ?? "")}</div><label><input type="checkbox" data-i="${i}"${c.ok ? " checked" : ""}> I have this evidence</label></div>`,
+        )
+        .join("") +
+      '<p class="muted">Fix these sentences in your draft, or tick I have this evidence. <button id="recheck" type="button">Check again</button></p>'
+    : "";
   for (const cb of $("claims").querySelectorAll("input"))
     cb.onchange = () => (
       (claims[cb.dataset.i].ok = cb.checked),
       renderClaims()
     );
-  $("confirm-text").textContent = on
-    ? "PayPal would see claims with no evidence on file:"
-    : baseConfirm;
+  const rc = $("recheck");
+  if (rc) rc.onclick = checkDraft;
+  if (pending === "evidence") $("confirm-text").textContent = confirmText();
   $("confirm-ok").disabled = claims.some((c) => !c.ok);
 }
-// asks inside the page; run() sends once the person agrees
-function act(kind) {
+// the server looks for claims with no evidence on file; an old server has no check, so nothing is flagged
+async function checkDraft() {
+  const prev = new Map(claims.map((c) => [c.sentence, c.ok]));
+  try {
+    const r = await post(`/api/cases/${encodeURIComponent(current)}/check`, {
+      text: $("draft").value,
+      evidence: canon(),
+      vouched: [],
+    });
+    claims = (r.sentences ?? r.unsupported ?? []).map((x) => ({
+      ...x,
+      ok: prev.get(x.sentence) ?? false,
+    }));
+  } catch (e) {
+    claims = (e.body?.sentences ?? []).map((x) => ({ ...x, ok: false }));
+  }
+  renderClaims();
+}
+// checks first, then asks inside the page; run() sends once the person agrees
+async function act(kind) {
   const c = currentAnalysis.case;
   const amt = money(c.amount_cents, c.currency);
-  pending = kind;
   claims = [];
-  $("claims").innerHTML = "";
-  $("confirm-ok").disabled = false;
   if (kind === "evidence") {
-    const ready = currentAnalysis.draft.checklist.filter(
-      (i) => i.status !== "missing",
-    ).length;
-    const n = Math.max(onFile, ready) + added.size;
-    $("confirm-text").textContent =
-      `Send your response and ${n} evidence item${n === 1 ? "" : "s"} to PayPal for the ${amt} dispute with ${c.buyer}?`;
+    for (const b of $("actions").querySelectorAll("button")) b.disabled = true;
+    await checkDraft();
+    renderActions();
+    pending = kind;
     $("confirm-ok").textContent = "Send to PayPal";
   } else {
+    pending = kind;
+    $("claims").innerHTML = "";
     $("confirm-text").textContent =
       `Refund ${amt} to ${c.buyer} and close the case?`;
     $("confirm-ok").textContent = "Refund";
   }
-  baseConfirm = $("confirm-text").textContent;
   $("confirm").hidden = false;
+  if (kind === "evidence") renderClaims();
+  else $("confirm-ok").disabled = false;
+  $("confirm").scrollIntoView({ block: "nearest" });
   $("confirm-ok").focus();
 }
 
@@ -1059,8 +1090,9 @@ async function run(kind) {
       return;
     }
     hideConfirm();
+    const why = e.body?.detail ? `: ${e.body.detail}` : ". Try again.";
     $("action-result").innerHTML =
-      `<div class="errbox">${kind === "evidence" ? "PayPal did not accept the response. Try again." : "PayPal did not accept the refund. Try again."}</div>`;
+      `<div class="errbox">${esc(`PayPal did not accept the ${kind === "evidence" ? "response" : "refund"}${why}`)}</div>`;
     loadActivity();
     return;
   }
@@ -1143,12 +1175,22 @@ function renderActivity() {
       : x
         ? `${dot(x.status)}Last PayPal call: ${esc(callLabel(x))} · ${esc(x.status)} · ${esc(x.ms)} ms · ${esc(ago(x.at))}`
         : "PayPal calls: none yet";
-  $("activity-list").innerHTML = calls
-    .slice(0, 20)
-    .map(
-      (x) =>
-        `<li>${esc(callLabel(x))} · <span class="${x.status < 400 ? "s-ok" : "s-bad"}">${esc(x.status)}</span> · ${esc(x.ms)} ms · ${ago(x.at)}</li>`,
-    )
+  // writes first, then reads collapsed into one line per kind
+  const posts = calls.filter((x) => x.method === "POST");
+  const gets = new Map();
+  for (const x of calls.filter((x) => x.method !== "POST")) {
+    const k = `${x.method} ${verb(x.path)}`;
+    gets.set(k, { n: (gets.get(k)?.n ?? 0) + 1, x: gets.get(k)?.x ?? x });
+  }
+  const row = (x) =>
+    `<li>${esc(callLabel(x))} · <span class="${x.status < 400 ? "s-ok" : "s-bad"}">${esc(x.status)}</span> · ${esc(x.ms)} ms · ${ago(x.at)}</li>`;
+  $("activity-list").innerHTML = [
+    ...posts.map(row),
+    ...[...gets].map(([k, { n, x }]) =>
+      n > 1 ? `<li>${esc(k)} ×${n} · last ${ago(x.at)}</li>` : row(x),
+    ),
+  ]
+    .slice(0, 8)
     .join("");
 }
 function dockPad() {
@@ -1200,9 +1242,6 @@ async function init() {
   $("draft").oninput = () => {
     editedLocal = true;
     setBadge();
-    renderClaims();
-    if (!claims.length && !$("confirm").hidden)
-      $("confirm-ok").disabled = false;
     saveWork(800);
   };
   $("start").onclick = startUrgent;
