@@ -78,9 +78,9 @@ mark { background: #fff1a8; }
 .cell-fight { color: var(--green); font-weight: 600; } .cell-accept { color: var(--red); font-weight: 600; } .cell-marginal { color: var(--amber); font-weight: 600; }
 .activity { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; border-top: 1px solid #c3cad4; box-shadow: 0 -2px 10px rgba(0,0,0,.1); z-index: 5; transition: background .4s; }
 .activity.flash { background: #dbeafe; }
-.activity button { display: flex; width: 100%; justify-content: space-between; gap: 12px; border: 0; border-radius: 0; background: transparent; text-align: left; font: 12px ui-monospace, monospace; padding: 8px 16px; }
+.activity button { display: flex; width: 100%; justify-content: space-between; gap: 12px; border: 0; border-radius: 0; background: transparent; text-align: left; font: 13px system-ui, sans-serif; padding: 8px 16px; }
 .activity button span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.activity ul { list-style: none; margin: 0; padding: 4px 16px 8px; max-height: 45vh; overflow: auto; font: 11px ui-monospace, monospace; }
+.activity ul { list-style: none; margin: 0; padding: 4px 16px 8px; max-height: 45vh; overflow: auto; font: 12px system-ui, sans-serif; }
 .activity li { padding: 2px 0; word-break: break-all; }
 .activity .s-ok { color: var(--green); } .activity .s-bad { color: var(--red); }
 .confirm { border: 2px solid var(--btn); border-radius: 8px; padding: 10px 14px; margin-top: 10px; background: #f0f7ff; }
@@ -100,3 +100,10 @@ mark { background: #fff1a8; }
 .marker.soon { box-shadow: 0 0 0 2px var(--red); }
 textarea.dim { opacity: .5; }
 .checklist li > button.primary { white-space: normal; text-align: left; }
+
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #98a2b3; margin-right: 8px; }
+.dot.ok { background: var(--green); } .dot.bad { background: var(--red); }
+.activity li { word-break: normal; overflow-wrap: anywhere; }
+.rec.neutral { background: #f0f3f8; border: 1px solid #c3cad4; color: #1b2430; }
+.checklist .pill { font-size: 11px; }
+.evidence .mine, #evidence .mine { color: var(--green); font-size: 12px; }
