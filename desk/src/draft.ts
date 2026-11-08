@@ -1,4 +1,5 @@
 import type { Llm } from "@jeirslab/llm-client";
+import { DEFAULT_HANDLING_CENTS } from "./decide-client.js";
 import type {
   CaseView,
   ChecklistItem,
@@ -8,15 +9,19 @@ import type {
 } from "./types.js";
 
 export const SYSTEM_PROMPT =
-  "You write a PayPal dispute response as the merchant (first person plural, 'we'). " +
-  "Write 90 to 160 words, polite and factual. Cite only evidence present in the given case and quote tracking numbers verbatim; " +
-  "never invent numbers, dates or tracking, and if something is missing say it is missing. " +
+  "You write the seller's reply to a buyer's PayPal claim, on behalf of the merchant named in the input (first person plural, 'we'). " +
+  "Write 90 to 160 words in plain, polite, factual prose that a PayPal reviewer can read in one pass. " +
+  "Address the buyer's own complaint from their messages, name the items and the amount, and use the merchant name once. " +
+  "Cite only evidence present in the input: quote tracking numbers verbatim and refer to the evidence notes on file; " +
+  "never invent numbers, dates, carriers or tracking, and if something is missing say plainly that we are still gathering it. " +
+  "Never write the dispute id, a reason code, the words 'unauthorised' or 'unauthorized', or any internal field name; " +
+  "describe the complaint in everyday words instead (for example 'you did not recognise this payment'). " +
   'Return JSON {"response": string, "explanation": string}. ' +
   "The explanation is one plain sentence in the form 'We recommend fighting because ...' or 'We recommend accepting because ...', " +
   "built from the decision facts given (call, win chance, similar cases, margin in dollars), with no formulas and no variable names such as p, c or EV.";
 
 const words = (s: string) => s.toLowerCase().replaceAll("_", " ");
-const money = (c: number, cur: string) => `${(c / 100).toFixed(2)} ${cur}`;
+const money = (c: number, cur: string) => `${cur} ${(c / 100).toFixed(2)}`;
 
 export function trackingOf(c: CaseView): { carrier: string; number: string }[] {
   return c.evidences.flatMap((e) =>
@@ -95,6 +100,36 @@ export function buildChecklist(c: CaseView): ChecklistItem[] {
           "No order history is on file.",
         ),
       ];
+    case "DUPLICATE_TRANSACTION":
+      return [
+        item(
+          "Proof the two charges are separate orders",
+          notesMatch(c, /separate|two orders|different order|order number/i),
+          "An evidence note shows the two charges are separate orders.",
+          "Nothing on file shows the two charges are separate orders.",
+        ),
+        item(
+          "Refund issued for the duplicate",
+          notesMatch(c, /refund/i),
+          "An evidence note refers to a refund.",
+          "No refund for the duplicate is on file.",
+        ),
+      ];
+    case "CREDIT_NOT_PROCESSED":
+      return [
+        item(
+          "Return received record",
+          notesMatch(c, /return/i),
+          "An evidence note refers to the returned item.",
+          "No record of the returned item is on file.",
+        ),
+        item(
+          "Refund issued",
+          notesMatch(c, /refund/i),
+          "An evidence note refers to a refund.",
+          "No refund is on file.",
+        ),
+      ];
     default:
       return [
         item(
@@ -114,29 +149,43 @@ export function buildChecklist(c: CaseView): ChecklistItem[] {
   }
 }
 
-const dollars = (c: number) => `$${(Math.abs(c) / 100).toFixed(2)}`;
+const cash = (cents: number, cur: string) =>
+  new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: cur,
+    minimumFractionDigits: Math.abs(cents) % 100 === 0 ? 0 : 2,
+  }).format(Math.abs(cents) / 100);
 
-export function explanationOf(decision: Decision | null): string {
+/** One plain sentence built from the decision inputs: win chance, what a loss costs, what fighting costs. */
+export function explanationOf(
+  decision: Decision | null,
+  c: Pick<CaseView, "currency" | "amount_cents">,
+  handlingCents = DEFAULT_HANDLING_CENTS,
+): string {
   if (!decision)
     return "The decision core was unreachable, so no recommendation is shown.";
   const chance = `about ${Math.round(decision.p * 100)}% chance of winning`;
-  return decision.call === "fight"
-    ? `We recommend fighting: ${chance}; fighting is worth about ${dollars(decision.margin_cents)} more than refunding.`
-    : `We recommend accepting: ${chance}; fighting would cost about ${dollars(decision.margin_cents)} more than refunding.`;
+  const cost = cash(handlingCents, c.currency);
+  if (decision.call === "fight")
+    return `We recommend fighting: ${chance}, a loss costs you only the refund you would give anyway, and fighting costs about ${cost}.`;
+  return handlingCents >= c.amount_cents
+    ? `We recommend accepting: ${chance}; fighting costs about ${cost}, more than the ${cash(c.amount_cents, c.currency)} you could win back.`
+    : `We recommend accepting: ${chance}, which is too low to justify the cost of about ${cost} to fight.`;
 }
 
 /** Deterministic template per reason. Cites only what the case holds. */
 export function fallbackDraft(
   c: CaseView,
   decision: Decision | null,
-): Omit<Draft, "source"> {
+  handlingCents?: number,
+): Omit<Draft, "source" | "label"> {
   const items =
     c.items
-      .map((i) => `${i.item_quantity} x ${i.item_description}`)
+      .map((i) => `${i.item_quantity} × ${i.item_description}`)
       .join(", ") || "the order";
   const amount = money(c.amount_cents, c.currency);
   const tracking = trackingOf(c);
-  const head = `Hello, this is the seller responding to dispute ${c.dispute_id} (${words(c.reason)}) opened by ${c.buyer} for ${amount}, covering ${items}.`;
+  const head = `We are ${c.merchant} responding to ${c.buyer}'s claim about ${items} (${amount}).`;
   let body: string;
   switch (c.reason) {
     case "MERCHANDISE_OR_SERVICE_NOT_RECEIVED":
@@ -165,12 +214,12 @@ export function fallbackDraft(
       break;
     default:
       body =
-        "We are reviewing the details of this case and will attach supporting records.";
+        "We are checking our order, payment and delivery records for this purchase and will attach what supports it. If we find a mistake on our side, we will refund the buyer.";
   }
   return {
     response: `${head} ${body}`,
     checklist: buildChecklist(c),
-    explanation: explanationOf(decision),
+    explanation: explanationOf(decision, c, handlingCents),
   };
 }
 
@@ -196,35 +245,39 @@ export function isDraftShape(
   );
 }
 
+const LEAK = /PP-D-|unauthori[sz]ed|\b[A-Z]{3,}_[A-Z_]{3,}\b/i;
+
 export async function draftResponse(
   llm: Llm,
   c: CaseView,
   decision: Decision | null,
   precedents: Precedent[],
+  handlingCents?: number,
 ): Promise<Draft> {
-  const fb = fallbackDraft(c, decision);
+  const fb = fallbackDraft(c, decision, handlingCents);
   const user = JSON.stringify({
-    case: {
-      dispute_id: c.dispute_id,
-      reason: c.reason,
-      stage: c.stage,
-      amount: money(c.amount_cents, c.currency),
-      buyer: c.buyer,
-      messages: c.messages,
-      items: c.items,
-      evidences: c.evidences,
-    },
+    merchant: c.merchant,
+    buyer: c.buyer,
+    claim: words(c.reason).replace("unauthorised", "payment not recognised"),
+    amount: money(c.amount_cents, c.currency),
+    items: c.items.map((i) => `${i.item_quantity} × ${i.item_description}`),
+    messages: c.messages.map((m) => ({ from: m.posted_by, text: m.content })),
+    evidence_on_file: c.evidences.map((e) => ({
+      type: words(e.evidence_type),
+      notes: e.notes ?? null,
+      tracking: (e.evidence_info?.tracking_info ?? []).map(
+        (t) => `${t.carrier_name} ${t.tracking_number}`,
+      ),
+    })),
     decision: decision && {
       call: decision.call,
       win_chance_percent: Math.round(decision.p * 100),
       similar_cases: decision.n,
       margin_dollars: Math.abs(decision.margin_cents) / 100,
     },
-    decision_terms: decision?.terms ?? [],
-    precedents: precedents.slice(0, 3).map((p) => ({
-      dispute_id: p.dispute_id,
-      outcome: p.outcome,
-      snippet: p.snippet,
+    similar_past_cases: precedents.slice(0, 3).map((p) => ({
+      outcome: p.won ? "won by seller" : "lost by seller",
+      note: p.snippet,
     })),
   });
   const r = await llm.complete<{ response: string; explanation: string }>(
@@ -237,24 +290,29 @@ export async function draftResponse(
     () => fb,
   );
   if (r.source === "llm") {
-    if (isDraftShape(r.value))
+    if (isDraftShape(r.value) && !LEAK.test(r.value.response))
       return {
         response: r.value.response,
         // the computed checklist is the truth the page gates on
         checklist: fb.checklist,
         explanation: r.value.explanation,
         source: "llm",
+        label: r.label,
         ...(r.model ? { model: r.model } : {}),
       };
     return {
       ...fb,
       source: "fallback",
-      error: "LLM reply did not match the draft shape",
+      label: "offline fallback",
+      error: isDraftShape(r.value)
+        ? "LLM reply named an internal id or code"
+        : "LLM reply did not match the draft shape",
     };
   }
   return {
     ...fb,
     source: "fallback",
+    label: r.label,
     ...(r.error ? { error: r.error } : {}),
   };
 }

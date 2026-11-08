@@ -27,6 +27,8 @@ export interface CaseView {
   amount_cents: number;
   currency: string;
   buyer: string;
+  merchant: string;
+  updated_at: string;
   due_at: string | null;
   days_left: number | null;
   evidence_on_file: boolean;
@@ -83,6 +85,8 @@ export interface Draft {
   checklist: ChecklistItem[];
   explanation: string;
   source: "llm" | "fallback";
+  /** "AI (model)" or "offline fallback", to show next to the text */
+  label: string;
   model?: string;
   error?: string;
 }

@@ -50,15 +50,17 @@ export function toRow(d: Dispute): CaseRow {
 
 export interface Sink {
   upsert(row: CaseRow): Promise<void>;
+  /** Deletes rows whose id is not in the list. */
+  retainOnly(ids: string[]): Promise<void>;
 }
 
-/** Lists every page of disputes, fetches each in full, and upserts. Returns the count. */
+/** Lists every page of disputes, fetches each in full, and upserts, then drops rows PayPal no longer returns. Returns the count. */
 export async function syncAll(
   paypal: PayPalClient,
   sink: Sink,
   pageSize = 50,
 ): Promise<number> {
-  let count = 0;
+  const seen: string[] = [];
   let token: string | undefined;
   for (;;) {
     const page = await paypal.disputes.list({
@@ -68,14 +70,16 @@ export async function syncAll(
     for (const s of page.items) {
       const full = await paypal.disputes.get(s.dispute_id);
       await sink.upsert(toRow(full));
-      count++;
+      seen.push(s.dispute_id);
     }
     const next = page.links.find((l) => l.rel === "next");
     if (!next || page.items.length === 0) break;
     token = new URL(next.href).searchParams.get("next_page_token") ?? undefined;
     if (!token) break;
   }
-  return count;
+  // a throw above skips this: only a complete listing may prune
+  if (seen.length > 0) await sink.retainOnly(seen);
+  return seen.length;
 }
 
 /** Re-reads one case from PayPal and upserts it. */

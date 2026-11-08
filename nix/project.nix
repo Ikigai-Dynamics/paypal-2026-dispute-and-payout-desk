@@ -54,9 +54,8 @@ in
     services.desk = {
       package = desk;
       replicas = 2;
-      # LLM_API_KEY and LLM_MODEL are injected at deploy time (secretEnv)
+      # LLM_BASE_URL, LLM_MODEL and LLM_API_KEY come from platform.llm
       env.DECIDE_URL = "http://decide";
-      env.LLM_BASE_URL = "http://10.1.1.71:4000/v1";
       ingress.enable = true;
     };
     services.decide = {
@@ -66,11 +65,6 @@ in
     # replicas stays 1: the mock keeps its state in memory
     paypalMock = {
       enable = true;
-      seed = 7;
-      env = {
-        MOCK_SEED_DISPUTES = "60";
-        MOCK_NOW = "now";
-      };
     };
     postgres.enable = true;
     otel.enable = true;
