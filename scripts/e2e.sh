@@ -72,10 +72,30 @@ st=$(desk "http://${H}/api/info")
 echo "$st" | jq -c '{paypalEnv, llm, cases, decide}'
 assert "mock is the PayPal environment" "$(echo "$st" | jq '.paypalEnv == "mock"')"
 
-echo "E2E OK"
-
 echo "== the invented-fact check"
 SENT='UPS tracking 1Z999AA10123456784 shows the order was delivered Oct 30.'
 code=$(curl -s -o /dev/null -w '%{http_code}' --resolve "${HN}:${PORT_HTTP}:127.0.0.1" -X POST -H 'content-type: application/json' \
   -d "$(jq -n --arg s "$SENT" '{confirm:true,text:("We shipped it. "+$s)}')" "http://${H}/api/cases/PP-D-GIFTCARD-0001/evidence")
 assert "unsupported shipping claim is refused with 422" "$([ "$code" = 422 ] && echo true || echo "$code")"
+
+echo "== evidence added on the page survives a reload and sends (Sofia Lindqvist)"
+GC=PP-D-GIFTCARD-0001
+ADDED='[{"item":"Email log","evidence_type":"PROOF_OF_FULFILLMENT","notes":"Gift card code emailed to the buyer on Oct 28."}]'
+put=$(desk -X PUT -H 'content-type: application/json' \
+  -d "$(jq -n --argjson a "$ADDED" '{added:$a}')" "http://${H}/api/cases/${GC}/work")
+assert "PUT /work accepts the page's payload" "$(echo "$put" | jq '.work.added[0].evidence_type == "PROOF_OF_FULFILLMENT"')"
+reload=$(desk "http://${H}/api/cases/${GC}/analysis")
+assert "a reload returns the saved evidence" "$(echo "$reload" | jq '.work.added | length == 1')"
+dry=$(desk -X POST -H 'content-type: application/json' \
+  -d '{"text":"The gift card code was emailed to the buyer; the email log is attached."}' "http://${H}/api/cases/${GC}/check")
+assert "dry run finds nothing invented" "$(echo "$dry" | jq '.sentences | length == 0')"
+res=$(desk -X POST -H 'content-type: application/json' \
+  -d '{"text":"The gift card code was emailed to the buyer; the email log is attached.","confirm":true}' "http://${H}/api/cases/${GC}/evidence")
+assert "send with the saved evidence is UNDER_REVIEW" "$(echo "$res" | jq '.case.status == "UNDER_REVIEW"')"
+sent=$(desk "http://${H}/api/cases/${GC}/analysis")
+assert "the sent record lists the evidence" "$(echo "$sent" | jq '.sent.added | length == 1')"
+
+echo "== leave the demo clean for the next viewer"
+reset_demo
+
+echo "E2E OK"

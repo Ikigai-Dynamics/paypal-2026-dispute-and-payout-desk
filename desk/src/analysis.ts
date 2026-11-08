@@ -37,15 +37,44 @@ export function topTermsQuery(text: string, max = 12): string {
 }
 
 export const SELLER_FAVOUR = "RESOLVED_SELLER_FAVOUR";
-/** Plain one-line snippet: no highlight markers, no leading reason word, cut at a whole word. */
-export function cleanSnippet(snippet: string, reason: string): string {
-  let s = snippet
+const flat = (x: string) =>
+  x
     .replace(/<\/?mark>/g, "")
     .replace(/\s+/g, " ")
     .trim();
+const firstSentence = (x: string) => /^.*?[.!?](?=\s|$)/.exec(x)?.[0];
+
+/**
+ * Plain one-line snippet: no highlight markers, no leading reason word, starting at a sentence
+ * start and ending at a sentence end. `full` is the case text the snippet was cut from; with it
+ * a fragment that begins mid-sentence is dropped up to the first ". ", and when nothing whole
+ * remains the first whole sentence of the case text is used.
+ */
+export function cleanSnippet(
+  snippet: string,
+  reason: string,
+  full?: string,
+): string {
+  const raw = flat(snippet);
+  let s = raw;
   const lead = reason.toLowerCase().split("_")[0] ?? "";
   const first = s.split(" ")[0] ?? "";
   if (lead && first.toLowerCase() === lead) s = s.slice(first.length).trim();
+  if (full) {
+    const text = flat(full);
+    const at = text.indexOf(raw.slice(0, 40));
+    const wholeStart =
+      s !== raw || (at >= 0 && (at === 0 || /[.!?] $/.test(text.slice(0, at))));
+    if (!wholeStart) {
+      const i = s.indexOf(". ");
+      s = i >= 0 ? s.slice(i + 2).trim() : "";
+    }
+    if (!s || /^[a-z]/.test(s)) {
+      const body =
+        text.startsWith(first) && lead ? text.slice(first.length).trim() : text;
+      s = firstSentence(body) ?? body.slice(0, 200);
+    }
+  }
   const ends = [...s.slice(0, 200).matchAll(/[.!?](?=\s|$)/g)];
   const last = ends[ends.length - 1];
   if (last) return s.slice(0, last.index! + 1);
@@ -60,11 +89,14 @@ export const toPrecedent = (
     outcome: string;
     amount_cents: number;
     snippet: string;
+    text?: string;
   },
   reason = "",
 ): Precedent => ({
-  ...r,
-  snippet: cleanSnippet(r.snippet, reason),
+  dispute_id: r.dispute_id,
+  outcome: r.outcome,
+  amount_cents: r.amount_cents,
+  snippet: cleanSnippet(r.snippet, reason, r.text),
   won: r.outcome === SELLER_FAVOUR,
 });
 

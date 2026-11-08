@@ -196,4 +196,74 @@ describe("cleanSnippet", () => {
     );
     assert.ok(long.length <= 201 && long.endsWith("word…"));
   });
+  it("starts at a sentence start: a mid-sentence fragment is dropped", () => {
+    const full =
+      "unauthorised I ordered the Lumen Rechargeable Headlamp and it never arrived. The seller replied on Monday. We refunded later.";
+    const out = cleanSnippet(
+      "Rechargeable Headlamp and it never arrived. The seller replied on Monday. We refunded",
+      "UNAUTHORISED",
+      full,
+    );
+    assert.equal(out, "The seller replied on Monday.");
+    assert.ok(!/^[a-z]|^Rechargeable/.test(out));
+  });
+  it("uses the first whole sentence of the case text when nothing whole remains", () => {
+    const out = cleanSnippet(
+      "Rechargeable Headlamp and it never",
+      "OTHER",
+      "I ordered the Lumen Rechargeable Headlamp and it never arrived. Please help.",
+    );
+    assert.equal(
+      out,
+      "I ordered the Lumen Rechargeable Headlamp and it never arrived.",
+    );
+  });
+});
+
+describe("activity", () => {
+  it("names a dispute only when the path has its id; the list call has none", async () => {
+    const { disputeIdOf, init, list } = await import("../src/activity.js");
+    assert.equal(disputeIdOf("/v1/customer/disputes"), null);
+    assert.equal(
+      disputeIdOf("/v1/customer/disputes/PP-D-8800318893/provide-evidence"),
+      "PP-D-8800318893",
+    );
+    const at = new Date().toISOString();
+    init({
+      query: async (q: string) =>
+        q.includes("from paypal_calls")
+          ? {
+              rows: [
+                {
+                  at,
+                  method: "GET",
+                  path: "/v1/customer/disputes",
+                  status: 200,
+                  ms: 3,
+                },
+                {
+                  at,
+                  method: "POST",
+                  path: "/v1/customer/disputes/PP-D-8800318893/provide-evidence",
+                  status: 200,
+                  ms: 9,
+                },
+              ],
+            }
+          : {
+              rows: [
+                {
+                  dispute_id: "PP-D-8800318893",
+                  buyer: "Hana Kobayashi",
+                  amount_cents: 20300,
+                  currency: "USD",
+                },
+              ],
+            },
+    } as never);
+    const [listCall, post] = await list();
+    assert.equal(listCall!.buyer, null);
+    assert.equal(post!.buyer, "Hana Kobayashi");
+    assert.equal(post!.amount_cents, 20300);
+  });
 });

@@ -27,11 +27,14 @@ for _ in $(seq 1 60); do
 done
 [ "$ready" = true ] || fail "desk not ready after 120 s"
 
-echo "== reset the mock to the shared dataset (Ikigai Outfitters)"
-mock -X POST -H 'content-type: application/json' -d '{}' "http://${M}/mock/reset" >/dev/null
+reset_demo() {
+  echo "== reset the mock to the shared dataset (Ikigai Outfitters)"
+  mock -X POST -H 'content-type: application/json' -d '{}' "http://${M}/mock/reset" >/dev/null
 
-echo "== clear the desk's saved work and sent evidence"
-desk -X POST -H 'content-type: application/json' -d '{"confirm":true}' "http://${H}/api/demo/reset" | jq -c .
+  echo "== clear the desk's saved work, sent evidence and PayPal call log"
+  desk -X POST -H 'content-type: application/json' -d '{"confirm":true}' "http://${H}/api/demo/reset" | jq -c .
 
-echo "== sync the desk from PayPal"
-desk -X POST "http://${H}/api/sync" | jq -c .
+  echo "== sync the desk from PayPal"
+  desk -X POST "http://${H}/api/sync" | jq -c .
+}
+reset_demo

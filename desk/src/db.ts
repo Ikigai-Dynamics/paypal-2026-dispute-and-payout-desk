@@ -1,5 +1,13 @@
 import type pg from "pg";
-import type { Added, CaseRow } from "./types.js";
+import type { CaseRow } from "./types.js";
+
+/** The one stored and returned shape of evidence the merchant added. */
+export interface AddedEv {
+  item: string;
+  evidence_type: string;
+  notes: string;
+  tracking?: { carrier: string; number: string };
+}
 
 const SCHEMA = [
   `create table if not exists cases (
@@ -13,20 +21,22 @@ const SCHEMA = [
     id bigserial primary key, at timestamptz not null default now(),
     method text, path text, status int, ms int)`,
   `create table if not exists case_work (dispute_id text primary key, added jsonb not null default '[]', draft_text text, draft_label text, edited boolean not null default false, updated_at timestamptz not null default now())`,
+  `alter table case_work add column if not exists draft_source text`,
   `create table if not exists case_sent (id bigserial primary key, dispute_id text not null, at timestamptz not null default now(), text text not null, added jsonb not null default '[]', vouched jsonb not null default '[]')`,
 ];
 
 export interface CaseWork {
-  added: Added[];
+  added: AddedEv[];
   draft_text: string | null;
   draft_label: string | null;
+  draft_source: "llm" | "fallback" | null;
   edited: boolean;
   updated_at: string;
 }
 export interface CaseSent {
   at: string;
   text: string;
-  added: Added[];
+  added: AddedEv[];
   vouched: string[];
 }
 
@@ -45,6 +55,8 @@ export interface PrecedentRow {
   outcome: string;
   amount_cents: number;
   snippet: string;
+  /** the whole search text, so a snippet can be cut at sentence starts */
+  text: string;
 }
 
 const COLS =
@@ -183,7 +195,7 @@ export class PgStore {
   ): Promise<PrecedentRow[]> {
     const r = await this.pool.query(
       `select dispute_id, outcome, amount_cents::float8 as amount_cents,
-              ts_rank(doc, query) as rank,
+              ts_rank(doc, query) as rank, coalesce(raw->>'search_text','') as text,
               ts_headline('english', coalesce(raw->>'search_text',''), query,
                 'StartSel="",StopSel="",MaxFragments=1,MaxWords=16,MinWords=6') as snippet
        from cases, to_tsquery('english', $3) query
@@ -197,20 +209,22 @@ export class PgStore {
       outcome: x.outcome,
       amount_cents: Number(x.amount_cents),
       snippet: String(x.snippet),
+      text: String(x.text),
     }));
   }
 
   async getWork(id: string): Promise<CaseWork | null> {
     const r = await this.pool.query(
-      "select added, draft_text, draft_label, edited, updated_at from case_work where dispute_id=$1",
+      "select added, draft_text, draft_label, draft_source, edited, updated_at from case_work where dispute_id=$1",
       [id],
     );
     const x = r.rows[0];
     return x
       ? {
-          added: x.added as Added[],
+          added: x.added as AddedEv[],
           draft_text: x.draft_text ?? null,
           draft_label: x.draft_label ?? null,
+          draft_source: x.draft_source ?? null,
           edited: Boolean(x.edited),
           updated_at: new Date(x.updated_at).toISOString(),
         }
@@ -221,20 +235,22 @@ export class PgStore {
   async putWork(
     id: string,
     w: {
-      added?: Added[];
+      added?: AddedEv[];
       text?: string;
       label?: string | null;
+      source?: "llm" | "fallback";
       edited?: boolean;
     },
   ): Promise<CaseWork> {
     await this.pool.query(
-      `insert into case_work (dispute_id, added, draft_text, draft_label, edited)
-       values ($1, coalesce($2::jsonb,'[]'::jsonb), $3, $4, coalesce($5,false))
+      `insert into case_work (dispute_id, added, draft_text, draft_label, edited, draft_source)
+       values ($1, coalesce($2::jsonb,'[]'::jsonb), $3, $4, coalesce($5,false), $7)
        on conflict (dispute_id) do update set
          added = coalesce($2::jsonb, case_work.added),
          draft_text = coalesce($3, case_work.draft_text),
          draft_label = case when $6 then $4 else case_work.draft_label end,
          edited = coalesce($5, case_work.edited),
+         draft_source = coalesce($7, case_work.draft_source),
          updated_at = now()`,
       [
         id,
@@ -243,6 +259,7 @@ export class PgStore {
         w.label ?? null,
         w.edited ?? null,
         w.label !== undefined,
+        w.source ?? null,
       ],
     );
     return (await this.getWork(id))!;
@@ -255,7 +272,7 @@ export class PgStore {
   async recordSent(
     id: string,
     text: string,
-    added: Added[],
+    added: AddedEv[],
     vouched: string[],
   ): Promise<void> {
     await this.pool.query(
@@ -274,13 +291,13 @@ export class PgStore {
       ? {
           at: new Date(x.at).toISOString(),
           text: x.text,
-          added: x.added as Added[],
+          added: x.added as AddedEv[],
           vouched: x.vouched as string[],
         }
       : null;
   }
 
   async resetWork(): Promise<void> {
-    await this.pool.query("truncate case_work, case_sent");
+    await this.pool.query("truncate case_work, case_sent, paypal_calls");
   }
 }

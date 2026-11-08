@@ -1,5 +1,6 @@
 import type { PayPalClient } from "@jeirslab/paypal-client";
 import type { Dispute, Evidence } from "@jeirslab/paypal-client/types";
+import type { AddedEv } from "./db.js";
 import type { CaseRow, Extra } from "./types.js";
 
 const words = (s: string) => s.toLowerCase().replaceAll("_", " ");
@@ -142,7 +143,7 @@ export async function acceptClaim(
   return refreshCase(paypal, sink, id);
 }
 
-const TYPES = ["PROOF_OF_FULFILLMENT", "PROOF_OF_REFUND", "OTHER"];
+export const TYPES = ["PROOF_OF_FULFILLMENT", "PROOF_OF_REFUND", "OTHER"];
 const FILE_TYPES = ["image/png", "image/jpeg", "application/pdf"];
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const bad = (m: string) => new ValidationError(m);
@@ -219,4 +220,66 @@ export function parseExtra(b: Record<string, unknown>): Extra | undefined {
     }
   }
   return out.evidence.length || out.files.length ? out : undefined;
+}
+
+/** Evidence type for an entry that has none, from what the item is called. */
+const typeFor = (item: string) =>
+  /tracking|delivery|e-?mail log|code sent|fulfil/i.test(item)
+    ? "PROOF_OF_FULFILLMENT"
+    : /refund/i.test(item)
+      ? "PROOF_OF_REFUND"
+      : "OTHER";
+
+/** The one added-evidence shape: {item, evidence_type, notes, tracking?}. Accepts `note` for `notes` and a missing evidence_type. */
+export function parseAdded(v: unknown): AddedEv[] {
+  if (v === undefined) return [];
+  if (!Array.isArray(v) || v.length > 10)
+    throw bad("added must be a list of at most 10 entries");
+  return v.map((x) => {
+    const e = (x ?? {}) as Record<string, unknown>;
+    const notes = e["notes"] ?? e["note"];
+    if (
+      typeof e["item"] !== "string" ||
+      typeof notes !== "string" ||
+      !e["item"].trim() ||
+      !notes.trim() ||
+      e["item"].length > 120 ||
+      notes.length > 2000
+    )
+      throw bad(
+        "each added entry needs an item (up to 120 characters) and notes (up to 2000)",
+      );
+    const type = e["evidence_type"];
+    if (
+      type !== undefined &&
+      (typeof type !== "string" || !TYPES.includes(type))
+    )
+      throw bad(`evidence_type must be one of ${TYPES.join(", ")}`);
+    const t = e["tracking"] as Record<string, unknown> | undefined;
+    if (
+      t !== undefined &&
+      (typeof t !== "object" ||
+        t === null ||
+        typeof t["carrier"] !== "string" ||
+        !t["carrier"] ||
+        t["carrier"].length > 40 ||
+        typeof t["number"] !== "string" ||
+        !/^[A-Za-z0-9 -]{1,40}$/.test(t["number"]))
+    )
+      throw bad("tracking needs a carrier and a number");
+    const item = e["item"].trim();
+    return {
+      item,
+      evidence_type: type ?? typeFor(item),
+      notes: notes.trim(),
+      ...(t
+        ? {
+            tracking: {
+              carrier: t["carrier"] as string,
+              number: t["number"] as string,
+            },
+          }
+        : {}),
+    };
+  });
 }

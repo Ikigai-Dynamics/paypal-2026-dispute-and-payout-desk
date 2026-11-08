@@ -10,7 +10,7 @@ import {
   type Sink,
 } from "../src/sync.js";
 import { toView } from "../src/analysis.js";
-import { gateEvidence } from "../src/factcheck.js";
+import { gateEvidence, proofText } from "../src/factcheck.js";
 import { buildChecklist } from "../src/draft.js";
 
 class MemorySink implements Sink {
@@ -127,16 +127,81 @@ describe("sync and writes against the in-process mock", () => {
     );
     const ok = gateEvidence(`We shipped it. ${sentence}`, proof, [sentence]);
     assert.equal(ok.unsupported.length, 0);
-    assert.match(
-      ok.sentText,
-      /Merchant confirms they hold this evidence: UPS tracking/,
-    );
+    assert.deepEqual(ok.held, [sentence]);
     const row = await submitEvidence(
       paypal,
       sink,
       open.dispute_id,
-      ok.sentText,
+      `We shipped it. ${sentence}`,
+      {
+        evidence: [
+          {
+            item: "Your statement",
+            evidence_type: "OTHER",
+            notes: `Merchant statement: ${sentence}`,
+          },
+        ],
+        files: [],
+      },
     );
     assert.equal(row.status, "UNDER_REVIEW");
+  });
+});
+
+describe("dry-run fact check on the Marcus Bell sleeping bag case", () => {
+  const row = {
+    raw: {
+      disputed_transactions: [
+        {
+          seller: { name: "Ikigai Outfitters" },
+          create_time: "2026-10-16T07:10:16.832Z",
+          items: [
+            { item_description: "Ember 20F Sleeping Bag", item_quantity: "1" },
+          ],
+        },
+      ],
+      messages: [
+        {
+          posted_by: "BUYER",
+          time_posted: "",
+          content:
+            "There is a problem with this payment and I need help resolving it.",
+        },
+        {
+          posted_by: "SELLER",
+          time_posted: "",
+          content:
+            "We are sorry to hear that. Can you send a photo of the item and the packaging?",
+        },
+      ],
+      evidences: [],
+    },
+  } as unknown as CaseRow;
+  const proof = proofText(toView(row), []);
+  const check = (t: string) => gateEvidence(t, proof, []).unsupported;
+  it("passes the seller's own request for photos", () => {
+    assert.deepEqual(
+      check(
+        "We asked the buyer for a photo of the item and packaging and have had no reply.",
+      ),
+      [],
+    );
+  });
+  it("returns the invented UPS and address sentences with a reason", () => {
+    for (const t of [
+      "The package was shipped via UPS tracking 1Z999AA10123456784 and delivered Oct 30.",
+      "The shipping address matched the buyer's PayPal address.",
+    ]) {
+      const r = check(t);
+      assert.equal(r.length, 1);
+      assert.equal(r[0]!.sentence, t);
+      assert.ok(r[0]!.reason.length > 0);
+    }
+  });
+  it("a vouched sentence is held, not returned", () => {
+    const t = "The shipping address matched the buyer's PayPal address.";
+    const g = gateEvidence(t, proof, [t]);
+    assert.deepEqual(g.unsupported, []);
+    assert.deepEqual(g.held, [t]);
   });
 });
