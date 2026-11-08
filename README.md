@@ -137,10 +137,11 @@ syncs the desk, so both are open. `nix run .#e2e` submits and accepts them, so r
 
 | Time | Do | Say |
 | --- | --- | --- |
-| 0:00-0:20 | Show the grid sorted by Days left. | A dispute is a deadline, an amount and no clear answer. |
-| 0:20-0:50 | Filter Reason and Status, use the quick filter, look at the timeline, search `tracking`. | Cases sorted by deadline; Postgres full-text finds past cases by what was said. |
-| 0:50-1:40 | Open `PP-D-E2E-FIGHT` ($120, not received, tracking on file). | Precedents with outcomes, p from the prior and those outcomes, every EV term, the call: fight. The draft cites the UPS tracking number that is on the case and flags what is missing. |
-| 1:40-2:10 | Click Submit evidence, confirm. Then open `PP-D-E2E-ACCEPT` ($9 digital download). | The case moves to UNDER_REVIEW. For $9 the call is accept. Set c from $15 to $2: the seeded precedent gives p = 0.48 and the margin is +$2.32, so the call flips to fight (marginal). Override Prior (`prior`) to 0.20: p = 0.36, margin +$1.24, still fight (marginal). The Prior default is already 0.35, so overriding it to 0.35 changes nothing. |
+| 0:00-0:20 | Open the page and read the situation line. | A dispute is a deadline, an amount and no clear answer. |
+| 0:20-0:50 | Click Start with the most urgent case. | It lands on `PP-D-E2E-FIGHT` ($120, not received, due in 2 days). |
+| 0:50-1:20 | Read the recommendation, then Show the math. | We recommend fighting, with the win chance from similar past cases; the math is behind the disclosure. The draft cites the UPS tracking number on the case. |
+| 1:20-1:50 | Add the missing delivery confirmation, then Submit response to PayPal and confirm. | The checklist had one gap; once filled the response goes to PayPal and the PayPal API strip shows the call. |
+| 1:50-2:10 | Open `PP-D-E2E-ACCEPT` ($9 digital download). | For $9 the call is accept. Set Cost to fight from $15 to $2: the call flips to a close-call fight. |
 | 2:10-2:40 | Show `nix run .#cluster-up`, `deploy`, `e2e` and this README. | Runs from a clone with Nix; k3d with CNPG Postgres; data is synthetic and writes need confirmation. |
 
 ## Secrets

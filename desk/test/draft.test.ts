@@ -95,10 +95,10 @@ describe("fallback draft", () => {
     );
   });
 
-  it("explanation is the decision terms, and says so when there is no decision", () => {
+  it("explanation is one plain sentence, and says so when there is no decision", () => {
     assert.equal(
       fallbackDraft(base, decision).explanation,
-      "term one term two",
+      "We recommend fighting: about 45% chance of winning; fighting is worth about $45.00 more than refunding.",
     );
     assert.match(fallbackDraft(base, null).explanation, /unreachable/);
   });
@@ -171,6 +171,31 @@ describe("draftResponse", () => {
     });
     const d = await draftResponse(llm, base, decision, []);
     assert.deepEqual([d.source, d.model, d.response], ["llm", "m1", "R"]);
+  });
+
+  it("replaces the model's checklist with the computed one", async () => {
+    const llm = createLlm({
+      env: { LLM_BASE_URL: "http://x", LLM_API_KEY: "k", LLM_MODEL: "m1" },
+      fetch: async () =>
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    response: "R",
+                    checklist: [{ item: "Bogus", status: "present", why: "w" }],
+                    explanation: "E",
+                  }),
+                },
+              },
+            ],
+          }),
+        ),
+    });
+    const d = await draftResponse(llm, withTracking, decision, []);
+    assert.equal(d.source, "llm");
+    assert.deepEqual(d.checklist, buildChecklist(withTracking));
   });
 
   it("falls back with an error when the LLM shape is wrong", async () => {

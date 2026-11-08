@@ -28,6 +28,8 @@ echo "== analysis: the fight case"
 fight=$(desk "http://${H}/api/cases/PP-D-E2E-FIGHT/analysis")
 show "PP-D-E2E-FIGHT" "$fight"
 assert "call is fight" "$(echo "$fight" | jq '.decision.call == "fight"')"
+assert "checklist: tracking present, only delivery confirmation missing" "$(echo "$fight" | jq '[.draft.checklist[] | select(.status == "missing") | .item] == ["Delivery confirmation"]')"
+assert "explanation is plain English" "$(echo "$fight" | jq '.draft.explanation | test("p =|EV") | not')"
 assert "draft cites the tracking number on file" "$(echo "$fight" | jq '.draft.response | contains("1Z999AA10123456784")')"
 
 echo "== analysis: the accept case"

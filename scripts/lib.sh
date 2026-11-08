@@ -34,14 +34,14 @@ mock -X POST -H 'content-type: application/json' "http://${M}/mock/disputes" -d 
   "reason": "MERCHANDISE_OR_SERVICE_NOT_RECEIVED",
   "amount": "120.00",
   "stage": "INQUIRY",
-  "due_in_days": 5,
+  "due_in_days": 2,
   "buyer_name": "Rowan Fieldstone",
   "messages": ["My hardware kit never arrived. Where is my order?"],
   "items": [{"item_description": "Hardware kit #4417", "item_quantity": 1}],
   "evidences": [{
     "evidence_type": "PROOF_OF_FULFILLMENT",
     "evidence_info": {"tracking_info": [{"carrier_name": "UPS", "tracking_number": "1Z999AA10123456784"}]},
-    "notes": "Shipped with tracking; delivery confirmation on file."
+    "notes": "Shipped with UPS tracking."
   }]
 }' >/dev/null
 mock -X POST -H 'content-type: application/json' "http://${M}/mock/disputes" -d '{
@@ -49,7 +49,7 @@ mock -X POST -H 'content-type: application/json' "http://${M}/mock/disputes" -d 
   "reason": "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED",
   "amount": "9.00",
   "stage": "INQUIRY",
-  "due_in_days": 3,
+  "due_in_days": 4,
   "buyer_name": "Casey Marlow",
   "messages": ["The download is not what the listing described."],
   "items": [{"item_description": "Digital download", "item_quantity": 1}]

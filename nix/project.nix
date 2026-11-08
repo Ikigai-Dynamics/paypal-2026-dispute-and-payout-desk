@@ -54,7 +54,9 @@ in
     services.desk = {
       package = desk;
       replicas = 2;
+      # LLM_API_KEY and LLM_MODEL are injected at deploy time (secretEnv)
       env.DECIDE_URL = "http://decide";
+      env.LLM_BASE_URL = "http://10.1.1.71:4000/v1";
       ingress.enable = true;
     };
     services.decide = {
