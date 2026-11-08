@@ -62,20 +62,14 @@ const itemsText = (
   items: { item_description: string; item_quantity: string }[],
 ) => items.map((i) => `${i.item_quantity} × ${i.item_description}`).join(", ");
 
-/** Earlier orders of the same buyer: distinct transactions created before this one. */
+/** Other orders of the same buyer, before or after this one: distinct transactions, oldest first. */
 export function buyerHistory(row: CaseRow, others: CaseRow[]) {
   const tx = row.raw.disputed_transactions[0];
   const seen = new Set([tx?.seller_transaction_id]);
   return others
     .flatMap((o) => {
       const t = o.raw.disputed_transactions[0];
-      if (
-        !t ||
-        !tx ||
-        seen.has(t.seller_transaction_id) ||
-        !(Date.parse(t.create_time) < Date.parse(tx.create_time))
-      )
-        return [];
+      if (!t || !tx || seen.has(t.seller_transaction_id)) return [];
       seen.add(t.seller_transaction_id);
       return [
         {

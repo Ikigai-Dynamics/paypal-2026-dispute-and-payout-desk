@@ -146,7 +146,7 @@ describe("fallback draft", () => {
     const r = fallbackDraft(marcus, decision).response;
     assert.ok(r.includes("1Z999AA10123456784"));
     assert.ok(r.includes("shipped by UPS to the billing address"));
-    assert.equal(invalidReason(r, r), null);
+    assert.equal(invalidReason(r, r, r), null);
   });
 
   it("gives digital goods an email-log checklist with a suggestion", () => {
@@ -193,7 +193,7 @@ describe("fallback draft", () => {
     });
     assert.equal(
       l[1]?.suggestion?.label,
-      "Attach order history: 1 earlier order",
+      "Attach order history: 1 other order",
     );
     assert.match(
       l[1]?.suggestion?.note ?? "",
@@ -222,6 +222,49 @@ describe("fallback draft", () => {
       "Refund issued",
     ]);
     assert.equal(items("OTHER").length, 2);
+  });
+
+  it("requires exactly one item per reason", () => {
+    for (const reason of [
+      "MERCHANDISE_OR_SERVICE_NOT_RECEIVED",
+      "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED",
+      "UNAUTHORISED",
+      "DUPLICATE_TRANSACTION",
+      "CREDIT_NOT_PROCESSED",
+      "OTHER",
+    ])
+      assert.equal(
+        buildChecklist({ ...base, reason }).filter((i) => i.required).length,
+        1,
+        reason,
+      );
+    const digital = buildChecklist({
+      ...base,
+      items: [{ item_description: "Gift Card", item_quantity: "1" }],
+    });
+    assert.deepEqual(
+      digital.map((i) => i.required),
+      [true, false],
+    );
+  });
+
+  it("fallbacks claim nothing when no evidence is on file", () => {
+    const stems =
+      /ship|deliver|e-?mail|re-?sent|review|\blogs?\b|record|tracking|signature|only one|redeem/i;
+    for (const reason of [
+      "MERCHANDISE_OR_SERVICE_NOT_RECEIVED",
+      "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED",
+      "UNAUTHORISED",
+      "DUPLICATE_TRANSACTION",
+      "CREDIT_NOT_PROCESSED",
+      "CANCELED_RECURRING_BILLING",
+      "OTHER",
+    ])
+      assert.doesNotMatch(
+        fallbackDraft({ ...base, reason }, decision).response,
+        stems,
+        reason,
+      );
   });
 
   it("marks the listing description present only when evidence mentions it", () => {
@@ -323,7 +366,12 @@ describe("draftResponse", () => {
     const d = await draftResponse(llm, base, decision, []);
     assert.deepEqual(
       [d.source, d.model, d.response, d.label],
-      ["llm", "m1", "R", "AI (m1)"],
+      [
+        "llm",
+        "m1",
+        "Re: Ava Chen's claim about 2 × Hardware kit #1234 (USD 120.00). R",
+        "AI (m1)",
+      ],
     );
   });
 
@@ -368,5 +416,100 @@ describe("draftResponse", () => {
     assert.equal(d.source, "fallback");
     assert.match(d.error ?? "", /shape/);
     assert.ok(isDraftShape(fallbackDraft(base, decision)));
+  });
+});
+
+describe("grounding", () => {
+  const gift: CaseView = {
+    ...base,
+    buyer: "Sofia Lindqvist",
+    items: [{ item_description: "Ikigai Gift Card $100", item_quantity: "1" }],
+    purchased_at: "2026-10-30T00:00:00.000Z",
+  };
+  const fake = (texts: string[], seen: string[] = []) => {
+    let n = 0;
+    return createLlm({
+      env: { LLM_BASE_URL: "http://x", LLM_API_KEY: "k", LLM_MODEL: "m1" },
+      fetch: async (_u, init) => {
+        seen.push(String(init?.body));
+        const t = texts[Math.min(n++, texts.length - 1)]!;
+        return new Response(
+          JSON.stringify({
+            choices: [
+              { message: { content: JSON.stringify({ response: t }) } },
+            ],
+          }),
+        );
+      },
+    });
+  };
+  const reviewer = [
+    "Re: Ava. The order was processed on October 14, 2026, and shipped promptly, with tracking information via email.",
+    "We confirm only one order was processed on November 3, 2026.",
+    "The order was shipped on October 17, 2026.",
+    "We have reviewed our email delivery logs and found no bounce.",
+  ];
+  for (const text of reviewer)
+    it(`rejects: ${text.slice(0, 40)}`, async () => {
+      const d = await draftResponse(fake([text]), gift, decision, []);
+      assert.equal(d.source, "fallback");
+      assert.ok(d.error);
+      assert.ok(!d.response.includes(text));
+    });
+
+  it("rejects 're-sent' when the note only says the code can be re-sent", async () => {
+    const d = await draftResponse(
+      fake(["We have re-sent the code to the buyer's email address."]),
+      gift,
+      decision,
+      [],
+      undefined,
+      [
+        {
+          item: "Code redemption record",
+          note: "code IKG-100 has not been redeemed; it is still valid and can be re-sent",
+        },
+      ],
+    );
+    assert.equal(d.source, "fallback");
+    assert.doesNotMatch(d.response, /We have re-sent/);
+  });
+
+  it("accepts a claim the notes make", () => {
+    assert.equal(
+      invalidReason("The order shipped by UPS.", "x", "Shipped by UPS"),
+      null,
+    );
+  });
+
+  it("uses the full name, splits the messages and lists what we lack", async () => {
+    const seen: string[] = [];
+    const d = await draftResponse(
+      fake(
+        [
+          "Re: Sofia's claim. We answer the complaint and will provide the email log.",
+        ],
+        seen,
+      ),
+      {
+        ...gift,
+        messages: [
+          { posted_by: "BUYER", time_posted: "t", content: "No code came" },
+          { posted_by: "SELLER", time_posted: "t", content: "It was emailed" },
+        ],
+      },
+      decision,
+      [],
+    );
+    assert.equal(d.source, "llm");
+    assert.ok(
+      d.response.startsWith(
+        "Re: Sofia Lindqvist's claim about 1 × Ikigai Gift Card $100 (USD 120.00). We answer",
+      ),
+    );
+    const sent = JSON.parse(JSON.parse(seen[0]!).messages.at(-1).content);
+    assert.deepEqual(sent.buyer_messages, ["No code came"]);
+    assert.deepEqual(sent.our_earlier_messages, ["It was emailed"]);
+    assert.ok(sent.evidence_we_still_lack.includes("Code redemption record"));
   });
 });
