@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import { createLlm } from "@jeirslab/llm-client";
 import {
   buildChecklist,
+  explanationOf,
   draftResponse,
   fallbackDraft,
   isDraftShape,
@@ -18,6 +19,8 @@ const base: CaseView = {
   amount_cents: 12000,
   currency: "USD",
   buyer: "Ava Chen",
+  merchant: "Ikigai Outfitters",
+  updated_at: "2026-11-06T00:00:00Z",
   due_at: null,
   days_left: 5,
   evidence_on_file: false,
@@ -77,7 +80,7 @@ describe("fallback draft", () => {
     assert.ok(!/1Z|\d{9,}/.test(d.response));
     assert.ok(
       d.response.includes("Ava Chen") &&
-        d.response.includes("120.00 USD") &&
+        d.response.includes("USD 120.00") &&
         d.response.includes("Hardware kit #1234"),
     );
   });
@@ -98,9 +101,27 @@ describe("fallback draft", () => {
   it("explanation is one plain sentence, and says so when there is no decision", () => {
     assert.equal(
       fallbackDraft(base, decision).explanation,
-      "We recommend fighting: about 45% chance of winning; fighting is worth about $45.00 more than refunding.",
+      "We recommend fighting: about 45% chance of winning, a loss costs you only the refund you would give anyway, and fighting costs about $15.",
     );
     assert.match(fallbackDraft(base, null).explanation, /unreachable/);
+  });
+
+  it("opens with the merchant and buyer, never the dispute id or a reason", () => {
+    const r = fallbackDraft(base, decision).response;
+    assert.ok(
+      r.startsWith(
+        "We are Ikigai Outfitters responding to Ava Chen's claim about 2 × Hardware kit #1234 (USD 120.00).",
+      ),
+    );
+    assert.ok(!/PP-D-|not received|NOT_RECEIVED/.test(r));
+  });
+
+  it("explains an accept in the case currency", () => {
+    const c = { currency: "EUR", amount_cents: 900 };
+    assert.equal(
+      explanationOf({ ...decision, call: "accept" }, c),
+      "We recommend accepting: about 45% chance of winning; fighting costs about €15, more than the €9 you could win back.",
+    );
   });
 
   it("has a checklist per reason", () => {
@@ -114,6 +135,14 @@ describe("fallback draft", () => {
     assert.deepEqual(items("UNAUTHORISED"), [
       "Shipping address matches the buyer",
       "Prior orders from this buyer",
+    ]);
+    assert.deepEqual(items("DUPLICATE_TRANSACTION"), [
+      "Proof the two charges are separate orders",
+      "Refund issued for the duplicate",
+    ]);
+    assert.deepEqual(items("CREDIT_NOT_PROCESSED"), [
+      "Return received record",
+      "Refund issued",
     ]);
     assert.equal(items("OTHER").length, 2);
   });
@@ -146,6 +175,7 @@ describe("draftResponse", () => {
   it("uses the fallback offline and labels it", async () => {
     const d = await draftResponse(createLlm({ env: {} }), base, decision, []);
     assert.equal(d.source, "fallback");
+    assert.equal(d.label, "offline fallback");
     assert.ok(d.error);
   });
 
@@ -170,7 +200,10 @@ describe("draftResponse", () => {
         ),
     });
     const d = await draftResponse(llm, base, decision, []);
-    assert.deepEqual([d.source, d.model, d.response], ["llm", "m1", "R"]);
+    assert.deepEqual(
+      [d.source, d.model, d.response, d.label],
+      ["llm", "m1", "R", "AI (m1)"],
+    );
   });
 
   it("replaces the model's checklist with the computed one", async () => {

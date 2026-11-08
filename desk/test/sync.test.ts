@@ -4,11 +4,11 @@ import type { Dispute } from "@jeirslab/paypal-client/types";
 import {
   buildSearchText,
   parseExtra,
+  syncAll,
   toCents,
   toRow,
   ValidationError,
 } from "../src/sync.js";
-import { clear, list, record } from "../src/activity.js";
 import { toPrecedent, topTermsQuery, toView } from "../src/analysis.js";
 
 const dispute: Dispute = {
@@ -131,13 +131,40 @@ describe("evidence validation", () => {
   });
 });
 
-describe("paypal activity log", () => {
-  it("keeps the last 50, newest first", () => {
-    clear();
-    for (let i = 0; i < 60; i++)
-      record({ method: "GET", path: `/${i}`, status: 200, ms: 1 });
-    assert.equal(list(100).length, 50);
-    assert.equal(list(20)[0]?.path, "/59");
-    assert.equal(list(20).length, 20);
+describe("sync prunes", () => {
+  it("retainOnly receives every id the listing returned", async () => {
+    const kept: string[][] = [];
+    const sink = {
+      upsert: async () => {},
+      retainOnly: async (ids: string[]) => void kept.push(ids),
+    };
+    const paypal = {
+      disputes: {
+        list: async () => ({
+          items: [{ dispute_id: "A" }, { dispute_id: "B" }],
+          links: [],
+        }),
+        get: async (id: string) => ({ ...dispute, dispute_id: id }),
+      },
+    };
+    assert.equal(await syncAll(paypal as never, sink), 2);
+    assert.deepEqual(kept, [["A", "B"]]);
+  });
+  it("does not prune when the listing fails", async () => {
+    let pruned = false;
+    const sink = {
+      upsert: async () => {},
+      retainOnly: async () => void (pruned = true),
+    };
+    const paypal = {
+      disputes: {
+        list: async () => ({ items: [{ dispute_id: "A" }], links: [] }),
+        get: async () => {
+          throw new Error("boom");
+        },
+      },
+    };
+    await assert.rejects(syncAll(paypal as never, sink));
+    assert.equal(pruned, false);
   });
 });

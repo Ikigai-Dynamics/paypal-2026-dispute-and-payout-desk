@@ -1,2 +1,5 @@
-# Reseed the demo: both named cases (PP-D-E2E-FIGHT, PP-D-E2E-ACCEPT) are open and synced.
-echo "demo ready: PP-D-E2E-FIGHT and PP-D-E2E-ACCEPT are open (nix run .#demo-reset)"
+# Reseed the demo from the shared dataset: the three narrated cases are open and synced.
+echo "demo ready (nix run .#demo-reset):"
+echo "  gift card not received: Sofia Lindqvist, USD 100.00 (PP-D-GIFTCARD-0001)"
+echo "  big chargeback to fight: Marcus Bell, USD 1,317.00 (PP-D-BIGCHARGEBACK-0002)"
+echo "  duplicate charge to accept: Priya Nair, USD 164.00 (PP-D-DUPLICATE-0003)"

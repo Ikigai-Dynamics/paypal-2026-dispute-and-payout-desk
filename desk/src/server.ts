@@ -12,7 +12,8 @@ import pg from "pg";
 import { analyse, decideFor, findPrecedents, toView } from "./analysis.js";
 import { DEFAULT_HANDLING_CENTS } from "./decide-client.js";
 import { PgStore } from "./db.js";
-import { list as listCalls, record } from "./activity.js";
+import { init as initActivity, list as listCalls, record } from "./activity.js";
+import { DraftCache, pool as runPool } from "./drafts.js";
 import {
   acceptClaim,
   parseExtra,
@@ -75,7 +76,9 @@ d.acceptClaim = logged(
   (id: string, ..._: unknown[]) => `${D}/${id}/accept-claim`,
   rawAccept,
 );
-const llm = createLlm();
+// the gateway loads models on first use, so allow a slow first answer
+const llm = createLlm({ timeoutMs: 25000 });
+const drafts = new DraftCache(llm);
 const pool = new pg.Pool({
   connectionString: process.env["DATABASE_URL"],
   connectionTimeoutMillis: 3000,
@@ -85,6 +88,7 @@ pool.on("error", () => {
   /* idle client errors during failover */
 });
 const store = new PgStore(pool);
+initActivity(pool);
 
 let ready = false;
 let draining = false;
@@ -104,6 +108,30 @@ const decisionCache = new Map<
   string,
   { call: string; margin_cents: number; marginal: boolean }
 >();
+
+// online = the last real completion worked, else a probe of the gateway answered
+let probe = { at: 0, ok: false };
+async function llmOnline(): Promise<boolean> {
+  if (!llm.online) return false;
+  if (drafts.lastOk !== null) return drafts.lastOk;
+  if (Date.now() - probe.at < 30_000) return probe.ok;
+  let ok = false;
+  try {
+    ok = (
+      await fetch(
+        `${(process.env["LLM_BASE_URL"] ?? "").replace(/\/+$/, "")}/models`,
+        {
+          headers: { authorization: `Bearer ${process.env["LLM_API_KEY"]}` },
+          signal: AbortSignal.timeout(2000),
+        },
+      )
+    ).ok;
+  } catch {
+    /* gateway down */
+  }
+  probe = { at: Date.now(), ok };
+  return ok;
+}
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 function log(o: Record<string, unknown>): void {
@@ -137,6 +165,24 @@ async function warmDecisions(): Promise<void> {
   await Promise.all([worker(), worker(), worker(), worker()]);
 }
 
+// after a sync, draft the open cases nobody has opened yet, most urgent first, two at a time
+async function preDraft(): Promise<void> {
+  const rows = (await store.list()).filter(
+    (r) => r.status === "WAITING_FOR_SELLER_RESPONSE" || r.status === "OPEN",
+  ); // store.list is ordered by due date
+  await runPool(rows, 2, async (row) => {
+    const precedents = await findPrecedents(store, row);
+    const o = {
+      prior: null,
+      handlingCostCents: DEFAULT_HANDLING_CENTS,
+      feeIfLostCents: 0,
+    };
+    const decision = await decideFor({ decideUrl }, row, precedents, o);
+    const d = await drafts.get(toView(row), decision, precedents, o);
+    return d.source === "llm"; // gateway down: stop instead of waiting out every timeout
+  });
+}
+
 async function runSync(): Promise<number> {
   syncState.attempts++;
   syncing = true;
@@ -146,9 +192,9 @@ async function runSync(): Promise<number> {
     syncState.error = null;
     syncState.cases = n;
     log({ msg: "sync ok", cases: n });
-    void warmDecisions().catch((e) =>
-      log({ msg: "warm failed", error: String(e) }),
-    );
+    void warmDecisions()
+      .then(preDraft)
+      .catch((e) => log({ msg: "warm failed", error: String(e) }));
     return n;
   } catch (e) {
     syncState.error = e instanceof Error ? e.message : String(e);
@@ -265,7 +311,10 @@ async function route(
       status: 200,
       body: {
         paypalEnv: paypal.target.env,
-        llm: { online: llm.online },
+        llm: {
+          online: await llmOnline(),
+          label: (await llmOnline()) ? `AI (${llm.model})` : "offline fallback",
+        },
         cases: await store.count().catch(() => null),
         decide: { url: decideUrl, reachable: await decideReachable() },
         search: "Postgres full-text",
@@ -274,7 +323,7 @@ async function route(
       },
     };
   if (m === "GET" && p === "/api/paypal-activity")
-    return { status: 200, body: { calls: listCalls(20) } };
+    return { status: 200, body: { calls: await listCalls(20) } };
   if (m === "POST" && p === "/api/sync") {
     const n = await runSync();
     return { status: 200, body: { synced: n } };
@@ -282,9 +331,33 @@ async function route(
   if (m === "GET" && p === "/api/cases") {
     const rows = await store.list();
     const now = Date.now();
+    const open = (r: { status: string }) =>
+      r.status === "WAITING_FOR_SELLER_RESPONSE" || r.status === "OPEN";
+    const views = rows.map((r) => toView(r, now));
+    const currency =
+      [
+        ...views.reduce(
+          (m, v) => m.set(v.currency, (m.get(v.currency) ?? 0) + 1),
+          new Map<string, number>(),
+        ),
+      ].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "USD";
+    const late = (v: { days_left: number | null }) =>
+      v.days_left !== null && v.days_left < 0;
+    const needs = views.filter((v) => open(v) && !late(v));
     return {
       status: 200,
       body: {
+        summary: {
+          total: views.length,
+          needs_response: needs.length,
+          under_review: views.filter((v) => v.status === "UNDER_REVIEW").length,
+          closed: views.filter((v) => v.status === "RESOLVED").length,
+          missed_deadline: views.filter((v) => open(v) && late(v)).length,
+          at_stake_cents: needs
+            .filter((v) => v.currency === currency)
+            .reduce((n, v) => n + v.amount_cents, 0),
+          currency,
+        },
         cases: rows.map((r) => {
           const v = toView(r, now);
           const d = decisionCache.get(r.dispute_id);
@@ -297,6 +370,8 @@ async function route(
             amount_cents: v.amount_cents,
             currency: v.currency,
             buyer: v.buyer,
+            item: v.items[0]?.item_description ?? null,
+            item_quantity: v.items[0]?.item_quantity ?? null,
             due_at: v.due_at,
             days_left: v.days_left,
             evidence_on_file: v.evidence_on_file,
@@ -323,11 +398,20 @@ async function route(
       const prior = num(url.searchParams.get("prior"));
       const c = dollarsToCents(url.searchParams.get("c"));
       const fee = dollarsToCents(url.searchParams.get("fee"));
-      const out = await analyse({ store, llm, decideUrl }, row, {
-        prior: prior ?? null,
-        handlingCostCents: c ?? DEFAULT_HANDLING_CENTS,
-        feeIfLostCents: fee ?? 0,
-      });
+      const out = await analyse(
+        {
+          store,
+          llm,
+          decideUrl,
+          draft: (v, dc, pr, o) => drafts.get(v, dc, pr, o),
+        },
+        row,
+        {
+          prior: prior ?? null,
+          handlingCostCents: c ?? DEFAULT_HANDLING_CENTS,
+          feeIfLostCents: fee ?? 0,
+        },
+      );
       if (
         out.decision &&
         prior === undefined &&
@@ -484,7 +568,7 @@ server.listen(port, () =>
     msg: "desk listening",
     port,
     paypalEnv: paypal.target.env,
-    llmOnline: llm.online,
+    llmConfigured: llm.online,
   }),
 );
 

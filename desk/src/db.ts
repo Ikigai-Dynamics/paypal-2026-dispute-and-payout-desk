@@ -9,6 +9,9 @@ const SCHEMA = [
     doc tsvector generated always as (to_tsvector('english',
        coalesce(reason,'') || ' ' || coalesce(raw->>'search_text',''))) stored)`,
   `create index if not exists cases_doc on cases using gin(doc)`,
+  `create table if not exists paypal_calls (
+    id bigserial primary key, at timestamptz not null default now(),
+    method text, path text, status int, ms int)`,
 ];
 
 export interface SearchHit {
@@ -96,6 +99,13 @@ export class PgStore {
     );
   }
 
+  async retainOnly(ids: string[]): Promise<void> {
+    await this.pool.query(
+      "delete from cases where dispute_id <> all($1::text[])",
+      [ids],
+    );
+  }
+
   async get(id: string): Promise<CaseRow | undefined> {
     const r = await this.pool.query(
       `select ${COLS} from cases where dispute_id=$1`,
@@ -150,7 +160,7 @@ export class PgStore {
       `select dispute_id, outcome, amount_cents::float8 as amount_cents,
               ts_rank(doc, query) as rank,
               ts_headline('english', coalesce(raw->>'search_text',''), query,
-                'StartSel=[,StopSel=],MaxFragments=1,MaxWords=16,MinWords=6') as snippet
+                'StartSel=,StopSel=,MaxFragments=1,MaxWords=16,MinWords=6') as snippet
        from cases, to_tsquery('english', $3) query
        where reason = $1 and status = 'RESOLVED' and outcome is not null and dispute_id <> $2
        order by rank desc, dispute_id

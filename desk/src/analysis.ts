@@ -48,6 +48,8 @@ export function toView(row: CaseRow, now = Date.now()): CaseView {
     amount_cents: row.amount_cents,
     currency: row.currency,
     buyer: row.buyer,
+    merchant: row.raw.disputed_transactions[0]?.seller.name ?? "the seller",
+    updated_at: row.updated_at,
     due_at: row.due_at,
     days_left: row.due_at
       ? Math.round(((Date.parse(row.due_at) - now) / 86_400_000) * 10) / 10
@@ -63,6 +65,13 @@ export interface AnalysisDeps {
   store: PgStore;
   llm: Llm;
   decideUrl: string;
+  /** replaces the plain LLM draft, e.g. with a cached one */
+  draft?: (
+    view: CaseView,
+    decision: Decision | null,
+    precedents: Precedent[],
+    o: DecideOptions,
+  ) => Promise<Draft>;
 }
 
 export interface Analysis {
@@ -110,7 +119,15 @@ export async function analyse(
   const precedents = await findPrecedents(deps.store, row);
   const decision = await decideFor(deps, row, precedents, o);
   const view = toView(row);
-  const draft = await draftResponse(deps.llm, view, decision, precedents);
+  const draft = deps.draft
+    ? await deps.draft(view, decision, precedents, o)
+    : await draftResponse(
+        deps.llm,
+        view,
+        decision,
+        precedents,
+        o.handlingCostCents,
+      );
   return {
     case: view,
     precedents,

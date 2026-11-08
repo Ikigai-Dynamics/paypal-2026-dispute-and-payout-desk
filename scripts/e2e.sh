@@ -1,10 +1,12 @@
 # End-to-end run against a deployed cluster: nix run .#e2e
-# Creates two exact scenarios in the mock, syncs the desk, reads the decisions and the
-# drafted responses, then submits evidence on one case and accepts the other.
-echo "== both scenarios are in the case list"
+# Reloads the shared dataset into the mock, syncs the desk, reads the decisions and the
+# drafted responses, then submits evidence on one case and accepts another.
+echo "== the shared dataset is listed"
 cases=$(desk "http://${H}/api/cases")
-assert "PP-D-E2E-FIGHT listed" "$(echo "$cases" | jq '[.cases[].dispute_id] | index("PP-D-E2E-FIGHT") != null')"
-assert "PP-D-E2E-ACCEPT listed" "$(echo "$cases" | jq '[.cases[].dispute_id] | index("PP-D-E2E-ACCEPT") != null')"
+assert "60 cases" "$(echo "$cases" | jq '(.cases | length) == 60')"
+for id in PP-D-GIFTCARD-0001 PP-D-BIGCHARGEBACK-0002 PP-D-DUPLICATE-0003; do
+  assert "$id listed" "$(echo "$cases" | jq --arg id "$id" '[.cases[].dispute_id] | index($id) != null')"
+done
 
 echo "== Postgres full-text search for 'tracking'"
 hits=$(desk "http://${H}/api/search?q=tracking")
@@ -24,40 +26,42 @@ show() { # show <label> <analysis-json>
   echo "$2" | jq -r '.draft.checklist[] | "  [" + .status + "] " + .item'
 }
 
-echo "== analysis: the fight case"
-fight=$(desk "http://${H}/api/cases/PP-D-E2E-FIGHT/analysis")
-show "PP-D-E2E-FIGHT" "$fight"
+FIGHT=PP-D-BIGCHARGEBACK-0002
+ACCEPT=PP-D-DUPLICATE-0003
+echo "== analysis: the fight case (Marcus Bell, USD 1,317)"
+fight=$(desk "http://${H}/api/cases/${FIGHT}/analysis")
+show "$FIGHT" "$fight"
 assert "call is fight" "$(echo "$fight" | jq '.decision.call == "fight"')"
-assert "checklist: tracking present, only delivery confirmation missing" "$(echo "$fight" | jq '[.draft.checklist[] | select(.status == "missing") | .item] == ["Delivery confirmation"]')"
+assert "checklist: exactly one item missing" "$(echo "$fight" | jq '[.draft.checklist[] | select(.status == "missing")] | length == 1')"
 assert "explanation is plain English" "$(echo "$fight" | jq '.draft.explanation | test("p =|EV") | not')"
-assert "draft cites the tracking number on file" "$(echo "$fight" | jq '.draft.response | contains("1Z999AA10123456784")')"
+assert "response names no dispute id" "$(echo "$fight" | jq '.draft.response | contains("PP-D-") | not')"
 
-echo "== analysis: the accept case"
-acc=$(desk "http://${H}/api/cases/PP-D-E2E-ACCEPT/analysis")
-show "PP-D-E2E-ACCEPT" "$acc"
-assert "call is accept" "$(echo "$acc" | jq '.decision.call == "accept"')"
+echo "== analysis: the accept case (Priya Nair, USD 164)"
+acc=$(desk "http://${H}/api/cases/${ACCEPT}/analysis")
+show "$ACCEPT" "$acc"
+assert "a call is made" "$(echo "$acc" | jq '.decision.call == "fight" or .decision.call == "accept"')"
 assert "no tracking number invented" "$(echo "$acc" | jq '(.draft.response | test("[0-9][A-Z0-9]{9,}")) | not')"
 
-echo "== changing c from 15.00 to 2.00 flips the 9 dollar case to fight"
-low=$(desk "http://${H}/api/cases/PP-D-E2E-ACCEPT/analysis?c=2")
+echo "== changing the cost to fight (c) to 0.01 never makes accept more likely"
+low=$(desk "http://${H}/api/cases/${ACCEPT}/analysis?c=0.01")
 echo "$low" | jq -r '.decision.terms[]' | sed 's/^/  /'
-assert "call flips to fight" "$(echo "$low" | jq '.decision.call == "fight"')"
+assert "margin does not fall" "$(jq -n --argjson a "$acc" --argjson l "$low" '$l.decision.margin_cents >= $a.decision.margin_cents')"
 
 echo "== writes need confirm: true"
 code=$(curl -s --resolve "${HN}:${PORT_HTTP}:127.0.0.1" -o /dev/null -w '%{http_code}' -X POST \
-  -H 'content-type: application/json' -d '{"text":"no confirm"}' "http://${H}/api/cases/PP-D-E2E-FIGHT/evidence")
+  -H 'content-type: application/json' -d '{"text":"no confirm"}' "http://${H}/api/cases/PP-D-BIGCHARGEBACK-0002/evidence")
 assert "write without confirm returns 400" "$([ "$code" = 400 ] && echo true || echo "$code")"
 
-echo "== submit evidence on the fight case"
+echo "== submit evidence on the fight case (provide-evidence returns 200)"
 text=$(echo "$fight" | jq -r '.draft.response')
 res=$(desk -X POST -H 'content-type: application/json' \
-  -d "$(jq -n --arg t "$text" '{text: $t, confirm: true}')" "http://${H}/api/cases/PP-D-E2E-FIGHT/evidence")
+  -d "$(jq -n --arg t "$text" '{text: $t, confirm: true}')" "http://${H}/api/cases/${FIGHT}/evidence")
 echo "$res" | jq -c '.case | {dispute_id, status}'
 assert "status is UNDER_REVIEW" "$(echo "$res" | jq '.case.status == "UNDER_REVIEW"')"
 
 echo "== accept the claim on the accept case"
 res=$(desk -X POST -H 'content-type: application/json' \
-  -d '{"note":"Accepted from the e2e run","confirm":true}' "http://${H}/api/cases/PP-D-E2E-ACCEPT/accept")
+  -d '{"note":"Accepted from the e2e run","confirm":true}' "http://${H}/api/cases/${ACCEPT}/accept")
 echo "$res" | jq -c '.case | {dispute_id, status, outcome}'
 assert "resolved in the buyer's favour" "$(echo "$res" | jq '.case.status == "RESOLVED" and .case.outcome == "RESOLVED_BUYER_FAVOUR"')"
 

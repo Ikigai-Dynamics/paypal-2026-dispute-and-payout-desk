@@ -24,7 +24,7 @@ helm come from nixpkgs through the flake; nothing is installed system-wide and `
 git clone git@github.com:Ikigai-Dynamics/paypal-2026-dispute-and-payout-desk.git && cd paypal-2026-dispute-and-payout-desk
 nix run .#cluster-up       # k3d: 1 server + 3 agents, Traefik on host port 18080
 nix run .#deploy           # builds the images, installs CNPG, applies manifests, waits for rollouts
-nix run .#e2e              # scripted fight + accept; prints the decision terms and the draft; ends with E2E OK
+nix run .#e2e              # scripted fight on Marcus Bell's case + accept on Priya Nair's; prints the decision terms and the draft; ends with E2E OK
 ```
 
 Then open <http://desk.dispute-and-payout-desk.localhost:18080> (`*.localhost` resolves to 127.0.0.1 in most browsers;
@@ -122,8 +122,8 @@ seller messages, item descriptions and evidence notes. **Elastic is not used.** 
 
 ## Synthetic data and guardrails
 
-- All disputes come from the shared PayPal mock (`MOCK_SEED=7`, 60 disputes, `MOCK_NOW=now` so deadlines are in the
-  future). They are synthetic. Mock fidelity is marked unverified in places (error codes on writes, state transitions).
+- All disputes come from the shared PayPal mock, which serves the platform's shared dataset (merchant Ikigai Outfitters,
+  60 disputes, dates shifted so open deadlines are in the future). They are synthetic. Mock fidelity is marked unverified in places (error codes on writes, state transitions).
 - The page shows a "Synthetic disputes from the PayPal mock" banner whenever `PAYPAL_ENV` is `mock`.
 - Writes (`Submit evidence`, `Accept claim`) need a confirmation dialog in the page and `confirm: true` in the API.
 - The drafter is told to cite only evidence present in the case; the offline fallback never writes a tracking number the
@@ -132,16 +132,18 @@ seller messages, item descriptions and evidence notes. **Elastic is not used.** 
 
 ## Demo script (2-3 minutes)
 
-Before recording, run `nix run .#demo-reset`. It resets the mock, recreates `PP-D-E2E-FIGHT` and `PP-D-E2E-ACCEPT` and
-syncs the desk, so both are open. `nix run .#e2e` submits and accepts them, so run `demo-reset` again after it.
+Before recording, run `nix run .#demo-reset`. It reloads the shared dataset into the mock and syncs the desk. The three
+narrated cases are Sofia Lindqvist (gift card not received, USD 100), Marcus Bell (unauthorised big chargeback, USD 1,317)
+and Priya Nair (duplicate charge, USD 164). `nix run .#e2e` submits evidence on Marcus Bell's case and accepts Priya
+Nair's, so run `demo-reset` again after it.
 
 | Time | Do | Say |
 | --- | --- | --- |
 | 0:00-0:20 | Open the page and read the situation line. | A dispute is a deadline, an amount and no clear answer. |
-| 0:20-0:50 | Click Start with the most urgent case. | It lands on `PP-D-E2E-FIGHT` ($120, not received, due in 2 days). |
-| 0:50-1:20 | Read the recommendation, then Show the math. | We recommend fighting, with the win chance from similar past cases; the math is behind the disclosure. The draft cites the UPS tracking number on the case. |
-| 1:20-1:50 | Add the missing delivery confirmation, then Submit response to PayPal and confirm. | The checklist had one gap; once filled the response goes to PayPal and the PayPal API strip shows the call. |
-| 1:50-2:10 | Open `PP-D-E2E-ACCEPT` ($9 digital download). | For $9 the call is accept. Set Cost to fight from $15 to $2: the call flips to a close-call fight. |
+| 0:20-0:50 | Click Start with the most urgent case. | It lands on Sofia Lindqvist's gift card ($100, not received, due in about 2 days). |
+| 0:50-1:20 | Read the recommendation, then Show the math. | We recommend fighting, with the win chance from similar past cases; the math is behind the disclosure. The draft is written by the AI and cites only what is on the case. |
+| 1:20-1:50 | Open Marcus Bell's $1,317 chargeback, add the missing prior-orders proof, then Submit response to PayPal and confirm. | The checklist had one gap; once filled the response goes to PayPal and the PayPal API strip shows the call. |
+| 1:50-2:10 | Open Priya Nair's $164 duplicate charge. | Read the call, then change Cost to fight and watch the recommendation move. |
 | 2:10-2:40 | Show `nix run .#cluster-up`, `deploy`, `e2e` and this README. | Runs from a clone with Nix; k3d with CNPG Postgres; data is synthetic and writes need confirmation. |
 
 ## Secrets

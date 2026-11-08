@@ -17,6 +17,10 @@ class MemorySink implements Sink {
   async upsert(r: CaseRow) {
     this.rows.set(r.dispute_id, r);
   }
+  async retainOnly(ids: string[]) {
+    for (const k of [...this.rows.keys()])
+      if (!ids.includes(k)) this.rows.delete(k);
+  }
 }
 
 describe("sync and writes against the in-process mock", () => {
