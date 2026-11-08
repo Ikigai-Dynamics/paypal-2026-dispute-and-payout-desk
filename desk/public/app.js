@@ -75,7 +75,7 @@ function rec(call, marginal) {
     return {
       kind: "unknown",
       base: null,
-      label: "Not yet analysed",
+      label: "Analysing…",
       color: "grey",
     };
   const base = call.startsWith("fight") ? "fight" : "accept";
@@ -105,8 +105,7 @@ const dateLong = (iso) =>
 const inDays = (iso) => {
   const d = (Date.parse(iso) - Date.now()) / DAY;
   if (d < 0) return "overdue";
-  if (d < 1) return "in under a day";
-  const n = Math.floor(d);
+  const n = Math.ceil(d);
   return `in ${n} day${n === 1 ? "" : "s"}`;
 };
 
@@ -157,8 +156,8 @@ const columns = [
   {
     headerName: "Recommendation",
     width: 170,
-    valueGetter: (p) => rec(p.data.call).label,
-    valueFormatter: (p) => (p.data.call ? p.value : "—"),
+    valueGetter: (p) =>
+      p.data.call || needsResponse(p.data) ? rec(p.data.call).label : "—",
     cellClass: (p) => "cell-" + rec(p.data.call).kind,
   },
   {
@@ -183,6 +182,7 @@ function setupGrid() {
     onRowClicked: (e) => openCase(e.data.dispute_id),
     defaultColDef: { sortable: true, resizable: true, filter: true },
     includeHiddenColumnsInQuickFilter: true,
+    suppressNoRowsOverlay: true,
     rowHeight: GRID_ROW,
     headerHeight: GRID_ROW,
     onModelUpdated: fitGrid,
@@ -191,7 +191,9 @@ function setupGrid() {
 const GRID_ROW = 36;
 // height follows the rows, up to 15
 function fitGrid() {
-  const n = Math.min(15, Math.max(1, gridApi.getDisplayedRowCount()));
+  const shown = gridApi.getDisplayedRowCount();
+  $("nomatch").hidden = shown > 0 || !allCases.length;
+  const n = Math.min(15, Math.max(1, shown));
   $("grid").style.height = `${(n + 1) * GRID_ROW + 4}px`;
 }
 
@@ -208,7 +210,12 @@ async function loadCases() {
   renderCards();
   renderMissed();
   renderTimeline(allCases);
+  if (!retried && needing().some((c) => !c.call)) {
+    retried = true;
+    setTimeout(() => loadCases().catch(() => {}), 5000);
+  }
 }
+let retried = false;
 
 const byDue = (a, b) =>
   (Date.parse(a.due_at) || Infinity) - (Date.parse(b.due_at) || Infinity);
@@ -217,11 +224,24 @@ const missedDeadline = (c) =>
 const needing = () =>
   allCases.filter((c) => needsResponse(c) && !missedDeadline(c)).sort(byDue);
 const missedList = () => allCases.filter(missedDeadline).sort(byDue);
-const urgent = (c) => c.due_at && Date.parse(c.due_at) - Date.now() <= 3 * DAY;
+const dueSoon = (c) =>
+  !!c.due_at && Math.ceil((Date.parse(c.due_at) - Date.now()) / DAY) <= 3;
+const orderText = (c) => {
+  const it = c.items?.length
+    ? c.items
+    : c.item
+      ? [{ item_description: c.item, item_quantity: c.item_quantity ?? 1 }]
+      : [];
+  const f = (i) => `${i.item_quantity} × ${i.item_description}`;
+  return it.length > 2
+    ? `${f(it[0])} + ${it.length - 1} more`
+    : it.map(f).join(" + ");
+};
+const buyerOpen = (name) => needing().filter((c) => c.buyer === name).length;
 
 function renderSituation() {
   const n = needing();
-  const soon = n.filter(urgent).length;
+  const soon = n.filter(dueSoon).length;
   const sm = summary;
   const cur = sm?.currency ?? "USD";
   const stake =
@@ -249,10 +269,12 @@ function renderCards() {
         const due = c.due_at
           ? `Due ${dateLong(c.due_at)} · ${inDays(c.due_at)}`
           : "No due date";
-        const item = c.item
-          ? `<span class="reason">${esc(c.item_quantity ?? 1)} × ${esc(c.item)}</span>`
-          : "";
-        return `<div class="dcard" tabindex="0" role="button" data-id="${esc(c.dispute_id)}"><span class="who">${esc(c.buyer)}</span><span class="reason">${esc(reasonWords(c.reason))}</span>${item}<span class="amt">${money(c.amount_cents, c.currency)}</span><span class="due${urgent(c) ? " soon" : ""}">${esc(due)}</span><span class="pill ${r.color}">${r.label}</span></div>`;
+        const ot = orderText(c);
+        const item = ot ? `<span class="reason">${esc(ot)}</span>` : "";
+        const rb = buyerOpen(c.buyer);
+        const tag =
+          rb >= 2 ? `<span class="pill amber">${rb} disputes from this buyer</span>` : "";
+        return `<div class="dcard" tabindex="0" role="button" data-id="${esc(c.dispute_id)}"><span class="who">${esc(c.buyer)}</span><span class="reason">${esc(reasonWords(c.reason))}</span>${item}<span class="amt">${money(c.amount_cents, c.currency)}</span><span class="due${dueSoon(c) ? " soon" : ""}">${esc(due)}</span><span class="pill ${r.color}">${r.label}</span>${tag}</div>`;
       })
       .join("") ||
     '<p class="muted">Nothing needs your response right now.</p>';
@@ -303,7 +325,7 @@ function renderTimeline(cases) {
     lanes.set(bucket, lane + 1);
     const r = rec(c.call);
     const m = document.createElement("div");
-    m.className = `marker ${r.kind}`;
+    m.className = `marker ${r.kind}${dueSoon(c) ? " soon" : ""}`;
     m.style.left = `${left}%`;
     m.style.top = `${40 - (lane % 3) * 14}px`;
     m.title = `${c.buyer} · ${money(c.amount_cents, c.currency)} · due ${dateShort(c.due_at)} · ${r.label}`;
@@ -348,6 +370,10 @@ async function loadCase(id) {
   fightAnyway = false;
   sent = null;
   sentText = null;
+  drafting = false;
+  draftSeq++;
+  $("draft-note").hidden = true;
+  $("draft").classList.remove("dim");
   hideConfirm();
   $("panel").hidden = false;
   $("panel-title").textContent = "Loading...";
@@ -389,19 +415,21 @@ async function recompute(fresh) {
   renderAnalysis(currentAnalysis, fresh);
 }
 
+const setAi = (on) => {
+  const el = $("ai-pill");
+  el.hidden = false;
+  el.textContent = on ? "AI drafting on" : "AI offline: template drafts";
+  el.className = "pill " + (on ? "green" : "grey");
+};
 const pct = (x) => Math.round(x * 100);
 function recSentence(d, c, cost) {
   const cur = c.currency;
   const A = c.amount_cents;
   const cc = money(cost * 100, cur, true);
-  if (d.call === "fight") {
-    const basis =
-      d.n > 0
-        ? ` (${d.n} similar past case${d.n === 1 ? "" : "s"})`
-        : " (typical for this kind of dispute)";
-    return `${pct(d.p)}% chance of winning${basis}. Fight: if you lose you only refund what you would refund anyway; fighting costs about ${cc}, and a ${pct(d.p)}% chance at ${money(A, cur)} is worth about ${money(d.margin_cents, cur)} more.`;
-  }
-  return `${pct(d.p)}% chance of winning${d.n > 0 ? ` (${d.n} similar past case${d.n === 1 ? "" : "s"})` : ""}. Accept: fighting costs about ${cc}, more than the ${money(d.p * A, cur)} you could win back.`;
+  const basis = d.n > 0 ? ` (based on ${d.n} similar past case${d.n === 1 ? "" : "s"})` : "";
+  if (d.call === "fight")
+    return `You have a ${pct(d.p)}% chance of keeping ${money(A, cur)}${basis}. Fighting costs about ${cc}; if you lose, you refund what you would refund anyway.`;
+  return `Only a ${pct(d.p)}% chance of keeping ${money(A, cur)}${basis}, so fighting (about ${cc}) is unlikely to pay off. Refund it and close the case.`;
 }
 const unbracket = (t) => String(t ?? "").replace(/[[\]]/g, "");
 // seller messages may join several points with "; "
@@ -415,8 +443,20 @@ function renderAnalysis(a, fresh) {
   const amt = money(c.amount_cents, c.currency);
   $("panel-title").textContent =
     `${c.buyer} · ${reasonWords(c.reason)} · ${amt}`;
-  $("panel-sub").innerHTML =
-    `${c.due_at ? `Response due ${dateShort(c.due_at)} (${inDays(c.due_at)})` : "No response deadline"} · ${esc(statusWords(c))}<br><span class="id">PayPal case ${esc(c.dispute_id)}</span>`;
+  const upd = Date.parse(c.updated_at);
+  const rb = needsResponse(c) ? buyerOpen(c.buyer) : 0;
+  const status =
+    c.status === "UNDER_REVIEW" && upd
+      ? `Response sent ${dateShort(upd)} · PayPal usually decides by about ${dateShort(upd + 30 * DAY)}`
+      : c.status === "RESOLVED" || c.outcome
+        ? `Closed ${upd ? dateShort(upd) : ""} · ${c.outcome === "RESOLVED_SELLER_FAVOUR" ? "Decided for you" : c.outcome === "RESOLVED_BUYER_FAVOUR" ? "Decided for the buyer" : "Resolved"}`
+        : c.due_at
+          ? `Response due ${dateShort(c.due_at)} (${inDays(c.due_at)}) · ${statusWords(c)}`
+          : statusWords(c);
+  $("panel-sub").textContent = status;
+  $("repeat").hidden = rb < 2;
+  $("repeat").textContent = `${c.buyer} has ${rb} open disputes with you, a pattern PayPal reviewers look at.`;
+  $("caseref").textContent = `Case reference: ${c.dispute_id}`;
   const draftText = (a.draft?.response ?? "").trim();
   const isSellerText = (n) =>
     n &&
@@ -505,6 +545,7 @@ function renderAnalysis(a, fresh) {
   const ai = dr.source === "llm";
   b.textContent = ai ? "AI draft" : "Template draft";
   b.className = "pill " + (ai ? "green" : "grey");
+  if (ai) setAi(true);
   $("explanation").textContent = dr.explanation ?? "";
   renderChecklist();
   renderActions();
@@ -543,7 +584,8 @@ function renderChecklist() {
     const ok = i.status !== "missing";
     const ad = added.get(i.item);
     li.className = ok || ad ? "ok" : "no";
-    li.innerHTML = `<span class="ico">${ok || ad ? "✓" : "✗"}</span><b>${esc(i.item)}</b><span class="why">${ad ? "Added — will be sent with your response" : esc(i.why)}</span>`;
+    li.innerHTML = `<span class="ico">${ok || ad ? "✓" : "✗"}</span><b>${esc(i.item)}</b><span class="why">${ad ? "Added, will be sent with your response" : esc(i.why)}</span>`;
+    if (ad) li.querySelector(".why").style.color = "var(--green)";
     if (ad) {
       const u = document.createElement("a");
       u.href = "#";
@@ -552,20 +594,48 @@ function renderChecklist() {
         e.preventDefault(),
         added.delete(i.item),
         renderChecklist(),
-        renderActions()
+        renderActions(),
+        redraft()
       );
       li.appendChild(u);
     } else if (!ok) {
+      const sg = i.suggestion;
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.textContent = "Add";
-      btn.onclick = () => (btn.remove(), li.appendChild(addForm(i)));
-      li.appendChild(btn);
+      btn.textContent = sg ? sg.label : "Add";
+      if (sg) {
+        btn.className = "primary";
+        btn.onclick = () => {
+          added.set(i.item, {
+            item: i.item,
+            evidence_type: evType(i.item),
+            notes: sg.note,
+          });
+          renderChecklist();
+          renderActions();
+          redraft();
+        };
+        const own = document.createElement("a");
+        own.href = "#";
+        own.textContent = "Write your own";
+        own.onclick = (e) => (
+          e.preventDefault(),
+          btn.remove(),
+          own.remove(),
+          li.appendChild(addForm(i))
+        );
+        li.append(btn, own);
+      } else {
+        btn.onclick = () => (btn.remove(), li.appendChild(addForm(i)));
+        li.appendChild(btn);
+      }
     }
     ul.appendChild(li);
   }
 }
 
+const evType = (item) =>
+  /tracking|delivery|fulfil/i.test(item) ? "PROOF_OF_FULFILLMENT" : "OTHER";
 const MAX_FILE = 5 * 1024 * 1024;
 const FILE_TYPES = {
   png: "image/png",
@@ -586,7 +656,7 @@ function addForm(i) {
   const tracking = i.item === "Tracking number";
   form.innerHTML = tracking
     ? '<div class="row"><label>Carrier<input name="carrier" required></label><label>Tracking number<input name="number" required></label></div>'
-    : `<label>Note<textarea name="note" rows="2" required>${esc(i.item)}: </textarea></label><label>File (optional, .png .jpg .pdf, up to 5 MB)<input type="file" name="file" accept=".png,.jpg,.jpeg,.pdf"></label>`;
+    : `<label>Note<textarea name="note" rows="2" required placeholder="What happened, in your words"></textarea></label><label>File (optional, .png .jpg .pdf, up to 5 MB)<input type="file" name="file" accept=".png,.jpg,.jpeg,.pdf"></label>`;
   form.insertAdjacentHTML(
     "beforeend",
     '<div class="formerr" hidden></div><div class="row"><button class="primary">Save</button><button type="button" class="cancel">Cancel</button></div>',
@@ -596,9 +666,7 @@ function addForm(i) {
     e.preventDefault();
     const err = form.querySelector(".formerr");
     const f = new FormData(form);
-    const type = /tracking|delivery|fulfil/i.test(i.item)
-      ? "PROOF_OF_FULFILLMENT"
-      : "OTHER";
+    const type = evType(i.item);
     let ev;
     if (tracking) {
       const carrier = String(f.get("carrier")).trim(),
@@ -639,8 +707,47 @@ function addForm(i) {
     added.set(i.item, ev);
     renderChecklist();
     renderActions();
+    redraft();
   };
   return form;
+}
+
+let drafting = false;
+let draftSeq = 0;
+async function redraft() {
+  const id = current;
+  const seq = ++draftSeq;
+  const note = $("draft-note");
+  drafting = true;
+  note.hidden = false;
+  note.className = "muted";
+  note.textContent = "Rewriting the draft with your new evidence…";
+  $("draft").classList.add("dim");
+  renderActions();
+  let res = null;
+  try {
+    res = (
+      await post(`/api/cases/${encodeURIComponent(id)}/draft`, {
+        added: [...added.values()].map((e) => ({ item: e.item, note: e.notes })),
+      })
+    ).draft;
+  } catch {}
+  if (seq !== draftSeq || id !== current) return;
+  drafting = false;
+  $("draft").classList.remove("dim");
+  if (res?.response) {
+    $("draft").value = res.response;
+    const ai = res.source === "llm";
+    const b = $("badge");
+    b.textContent = ai ? "AI draft, updated with your evidence" : "Template draft";
+    b.className = "pill " + (ai ? "green" : "grey");
+    if (ai) setAi(true);
+    note.hidden = true;
+  } else {
+    note.className = "formerr";
+    note.textContent = "Could not update the draft; your evidence will still be sent.";
+  }
+  renderActions();
 }
 
 function renderActions() {
@@ -653,12 +760,12 @@ function renderActions() {
   submit.className = "primary";
   submit.textContent = "Submit response to PayPal";
   const left = stillMissing().length;
-  submit.disabled = left > 0;
+  submit.disabled = left > 0 || drafting;
   submit.onclick = () => act("evidence");
   const hint = document.createElement("span");
   hint.className = "muted";
-  hint.textContent = "Add the missing evidence to submit";
-  hint.hidden = !left;
+  hint.textContent = drafting ? "Updating the draft…" : "Add the missing evidence to submit";
+  hint.hidden = !left && !drafting;
   const accept = document.createElement("button");
   accept.textContent = `Accept and refund ${amt}`;
   accept.onclick = () => act("accept");
@@ -745,6 +852,7 @@ async function search(e) {
   e.preventDefault();
   const q = $("search").value.trim();
   if (!q) return ($("results").hidden = true);
+  $("all").open = true;
   const r = await api(`/api/search?q=${encodeURIComponent(q)}`);
   const byId = new Map(allCases.map((c) => [c.dispute_id, c]));
   $("results").hidden = false;
@@ -821,8 +929,11 @@ async function init() {
     search(e).catch(() =>
       alert("Search is not available right now. Try again."),
     );
-  $("quick").oninput = (e) =>
+  $("search").oninput = (e) => {
+    $("all").open = true;
     gridApi.setGridOption("quickFilterText", e.target.value);
+    if (!e.target.value.trim()) $("results").hidden = true;
+  };
   $("recompute").onclick = () => recompute(false);
   $("start").onclick = startUrgent;
   $("close-panel").onclick = closeCase;
@@ -859,12 +970,7 @@ async function init() {
     ];
     $("env-pill").hidden = !env;
     $("env-pill").textContent = env ?? "";
-    const on = !!info.llm?.online;
-    $("ai-pill").hidden = false;
-    $("ai-pill").textContent = on
-      ? "AI drafting on"
-      : "AI offline: template drafts";
-    $("ai-pill").className = "pill " + (on ? "green" : "grey");
+    setAi(!!info.llm?.online);
     $("unreachable").hidden = !info.sync?.error;
   }
   await loadCases().catch(
