@@ -120,7 +120,13 @@ const dayDiff = (iso) => {
 };
 const inDays = (iso) => {
   const n = dayDiff(iso);
-  return n < 0 ? "overdue" : n === 0 ? "today" : n === 1 ? "tomorrow" : `in ${n} days`;
+  return n < 0
+    ? "overdue"
+    : n === 0
+      ? "today"
+      : n === 1
+        ? "tomorrow"
+        : `in ${n} days`;
 };
 
 let gridApi;
@@ -243,8 +249,7 @@ const missedDeadline = (c) =>
 const needing = () =>
   allCases.filter((c) => needsResponse(c) && !missedDeadline(c)).sort(byDue);
 const missedList = () => allCases.filter(missedDeadline).sort(byDue);
-const dueSoon = (c) =>
-  !!c.due_at && dayDiff(c.due_at) <= 3;
+const dueSoon = (c) => !!c.due_at && dayDiff(c.due_at) <= 3;
 const orderText = (c) => {
   const it = c.items?.length
     ? c.items
@@ -476,7 +481,8 @@ function renderAnalysis(a, fresh) {
   if (fresh && !sent) restore(c);
   const rb = needsResponse(c) ? buyerOpen(c.buyer) : 0;
   const reviewing = c.status === "UNDER_REVIEW" || sentKind === "evidence";
-  const refunded = sentKind === "accept" || c.outcome === "RESOLVED_BUYER_FAVOUR";
+  const refunded =
+    sentKind === "accept" || c.outcome === "RESOLVED_BUYER_FAVOUR";
   const done = reviewing || refunded;
   const status =
     c.status === "UNDER_REVIEW" && upd
@@ -486,7 +492,8 @@ function renderAnalysis(a, fresh) {
         : c.due_at
           ? `Response due ${dateShort(c.due_at)} (${inDays(c.due_at)}) · ${statusWords(c)}`
           : statusWords(c);
-  $("panel-sub").textContent = (REASON_SHORT[c.reason] ? `${REASONS[c.reason]} · ` : "") + status;
+  $("panel-sub").textContent =
+    (REASON_SHORT[c.reason] ? `${REASONS[c.reason]} · ` : "") + status;
   $("repeat").hidden = rb < 2;
   $("repeat").textContent =
     `${c.buyer} has ${rb} open disputes with you. Repeat claims from one buyer are worth noting in your response; PayPal reviewers see the pattern too.`;
@@ -510,13 +517,15 @@ function renderAnalysis(a, fresh) {
       .filter(Boolean),
   );
   const respText = (sentText ?? hidden?.notes ?? "").trim();
-  const isNote = (l) => [...noteSet].some((n) => n === l || n.includes(l) || l.includes(n));
+  const isNote = (l) =>
+    [...noteSet].some((n) => n === l || n.includes(l) || l.includes(n));
   const sellerLines = (m) => {
     const ls = lines(m.content).filter(
       (l) => !(done && (l.trim() === respText || noteSet.has(l.trim()))),
     );
     return ls.map((l, i) => {
-      const tag = done && isNote(l.trim()) ? "Evidence: " : i === 0 ? "You: " : "";
+      const tag =
+        done && isNote(l.trim()) ? "Evidence: " : i === 0 ? "You: " : "";
       return `<div class="msg">${tag ? `<b>${tag.replace(": ", "")}</b>: ` : ""}${esc(l)}</div>`;
     });
   };
@@ -588,7 +597,11 @@ function renderAnalysis(a, fresh) {
   else if (fresh || !$("draft").value) $("draft").value = dr.response;
   const b = $("badge");
   const ai = dr.source === "llm";
-  b.textContent = ai ? (fresh && restoredDraft && added.size ? "AI draft, updated with your evidence" : "AI draft") : "Template draft";
+  b.textContent = ai
+    ? fresh && restoredDraft && added.size
+      ? "AI draft, updated with your evidence"
+      : "AI draft"
+    : "Template draft";
   b.className = "pill " + (ai ? "green" : "grey");
   if (ai) setAi(true);
   $("explanation").textContent = dr.explanation ?? "";
@@ -606,7 +619,9 @@ function renderEvidence() {
     return `<div class="msg">${lead ? `<b>${esc(lead)}</b> ` : ""}${esc(e.notes ?? "")}${mine ? '<div class="muted mine">Added by you · will be sent with your response</div>' : ""}</div>`;
   };
   const have = new Set(evsOnFile.map((e) => String(e.notes ?? "").trim()));
-  const sentRows = sentEvidence.filter((e) => !have.has(String(e.notes ?? "").trim()));
+  const sentRows = sentEvidence.filter(
+    (e) => !have.has(String(e.notes ?? "").trim()),
+  );
   const html =
     evsOnFile.map((e) => row(e, false)).join("") +
     sentRows.map((e) => row({ ...e, item: "" }, false)).join("") +
@@ -616,9 +631,23 @@ function renderEvidence() {
 
 // unsent work survives a reload; keyed by the case version so a changed case starts clean
 const store = {
-  get: () => { try { return JSON.parse(localStorage.getItem(storeKey) ?? "null"); } catch { return null; } },
-  set: (v) => { try { localStorage.setItem(storeKey, JSON.stringify(v)); } catch {} },
-  clear: () => { try { localStorage.removeItem(storeKey); } catch {} },
+  get: () => {
+    try {
+      return JSON.parse(localStorage.getItem(storeKey) ?? "null");
+    } catch {
+      return null;
+    }
+  },
+  set: (v) => {
+    try {
+      localStorage.setItem(storeKey, JSON.stringify(v));
+    } catch {}
+  },
+  clear: () => {
+    try {
+      localStorage.removeItem(storeKey);
+    } catch {}
+  },
 };
 let restoredDraft = null;
 function restore(c) {
@@ -990,7 +1019,8 @@ const ago = (iso) => {
 const shortPath = (p) => String(p).replace(/(\/disputes\/)[^/]+/, "$1…");
 function renderActivity() {
   const x = calls[0];
-  const dot = (st) => `<i class="dot ${st < 300 ? "ok" : st < 400 ? "" : "bad"}"></i>`;
+  const dot = (st) =>
+    `<i class="dot ${st < 300 ? "ok" : st < 400 ? "" : "bad"}"></i>`;
   $("act-last").innerHTML =
     Date.now() < pinUntil
       ? `${dot(200)}${esc(pinText)}`
