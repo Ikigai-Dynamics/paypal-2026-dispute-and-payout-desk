@@ -40,7 +40,6 @@
       <div id="rec" class="rec"></div>
       <details id="math">
         <summary>Show the math</summary>
-        <p id="caseref" class="muted"></p>
         <p id="explanation"></p>
         <dl id="terms-list" class="terms"></dl>
         <p id="p0line" class="muted"></p>
@@ -56,12 +55,13 @@
       <div id="fightbox">
         <h3>Response to PayPal <span id="badge" class="pill"></span></h3>
         <p id="draft-note" class="muted" hidden></p>
+        <p id="claim-note" class="formerr" hidden>Fix or confirm the highlighted sentences before sending.</p>
         <textarea id="draft" rows="9"></textarea>
         <h3>Evidence checklist <span id="check-count" class="pill"></span></h3>
         <ul id="checklist" class="checklist"></ul>
       </div>
       <div id="actions" class="actions"></div>
-      <div id="confirm" class="confirm" role="alertdialog" aria-labelledby="confirm-text" hidden><p id="confirm-text"></p><div class="actions"><button id="confirm-ok" class="primary" type="button"></button><button id="confirm-cancel" type="button">Cancel</button></div></div>
+      <div id="confirm" class="confirm" role="alertdialog" aria-labelledby="confirm-text" hidden><p id="confirm-text"></p><div id="claims"></div><div class="actions"><button id="confirm-ok" class="primary" type="button"></button><button id="confirm-cancel" type="button">Cancel</button></div></div>
       <div id="action-result"></div>
     </div>
   </div>
