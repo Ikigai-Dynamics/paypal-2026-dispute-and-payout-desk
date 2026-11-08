@@ -4,12 +4,24 @@ const esc = (s) =>
     /[&<>"]/g,
     (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c],
   );
-const money = (cents, cur = "USD") => {
-  const n = (Math.abs(cents) / 100)
-    .toFixed(2)
-    .replace(/\B(?=(\d{3})+\.)/g, ",");
-  return cur === "USD" ? `$${n}` : `${n} ${cur}`;
+const fmts = new Map();
+// amounts always carry their own currency; whole amounts may drop the cents
+const money = (cents, cur = "USD", whole = false) => {
+  whole = whole && cents % 100 === 0;
+  const k = cur + whole;
+  if (!fmts.has(k))
+    fmts.set(
+      k,
+      new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: cur,
+        ...(whole ? { minimumFractionDigits: 0 } : {}),
+      }),
+    );
+  const v = Math.abs(cents) / 100;
+  return fmts.get(k).format(v);
 };
+const signed = (cents, cur) => (cents < 0 ? "-" : "") + money(cents, cur);
 const api = async (path, opts) => {
   const r = await fetch(path, opts);
   const body = await r.json().catch(() => ({}));
@@ -105,6 +117,9 @@ let currentAnalysis = null;
 let added = new Map(); // checklist item -> evidence held until submit
 let fightAnyway = false;
 let sent = null; // success message once a write went through
+let sentText = null; // the response text that went to PayPal
+let summary = null;
+let pending = null; // action waiting on the in-page confirm
 
 const columns = [
   { field: "buyer", headerName: "Buyer", flex: 1, minWidth: 130 },
@@ -116,7 +131,7 @@ const columns = [
   },
   {
     field: "amount_cents",
-    headerName: "Amount ($)",
+    headerName: "Amount",
     width: 120,
     valueFormatter: (p) => money(p.value, p.data.currency),
   },
@@ -152,7 +167,7 @@ const columns = [
     minWidth: 160,
     valueGetter: (p) => statusWords(p.data),
   },
-  { field: "dispute_id", headerName: "Case id", width: 160 },
+  { field: "dispute_id", headerName: "Case id", width: 160, hide: true }, // kept for search
 ];
 
 function setupGrid() {
@@ -167,41 +182,60 @@ function setupGrid() {
     },
     onRowClicked: (e) => openCase(e.data.dispute_id),
     defaultColDef: { sortable: true, resizable: true, filter: true },
+    includeHiddenColumnsInQuickFilter: true,
+    rowHeight: GRID_ROW,
+    headerHeight: GRID_ROW,
+    onModelUpdated: fitGrid,
   });
+}
+const GRID_ROW = 36;
+// height follows the rows, up to 15
+function fitGrid() {
+  const n = Math.min(15, Math.max(1, gridApi.getDisplayedRowCount()));
+  $("grid").style.height = `${(n + 1) * GRID_ROW + 4}px`;
 }
 
 async function loadCases() {
-  const { cases } = await api("/api/cases");
-  allCases = cases;
-  gridApi.setGridOption("rowData", cases);
-  $("all-sum").textContent = `All cases (${cases.length})`;
+  const r = await api("/api/cases");
+  allCases = r.cases;
+  summary = r.summary ?? null;
+  gridApi.setGridOption("rowData", allCases);
+  const sm = summary;
+  $("all-sum").textContent = sm
+    ? `All cases (${sm.total}): ${sm.needs_response} need a response, ${sm.under_review} under review, ${sm.closed} closed`
+    : `All cases (${allCases.length})`;
   renderSituation();
   renderCards();
-  renderTimeline(cases);
+  renderMissed();
+  renderTimeline(allCases);
 }
 
+const byDue = (a, b) =>
+  (Date.parse(a.due_at) || Infinity) - (Date.parse(b.due_at) || Infinity);
+const missedDeadline = (c) =>
+  needsResponse(c) && c.due_at && Date.parse(c.due_at) < Date.now();
 const needing = () =>
-  allCases
-    .filter(needsResponse)
-    .sort(
-      (a, b) =>
-        (Date.parse(a.due_at) || Infinity) - (Date.parse(b.due_at) || Infinity),
-    );
+  allCases.filter((c) => needsResponse(c) && !missedDeadline(c)).sort(byDue);
+const missedList = () => allCases.filter(missedDeadline).sort(byDue);
+const urgent = (c) =>
+  c.due_at && Date.parse(c.due_at) - Date.now() <= 3 * DAY;
 
 function renderSituation() {
   const n = needing();
-  const now = Date.now();
-  const soon = n.filter(
-    (c) =>
-      c.due_at &&
-      Date.parse(c.due_at) >= now &&
-      Date.parse(c.due_at) - now <= 3 * DAY,
-  ).length;
-  const total = n.reduce((s, c) => s + c.amount_cents, 0);
+  const soon = n.filter(urgent).length;
+  const sm = summary;
+  const cur = sm?.currency ?? "USD";
+  const stake =
+    sm?.at_stake_cents ??
+    n.filter((c) => c.currency === cur).reduce((t, c) => t + c.amount_cents, 0);
   const f = n.filter((c) => rec(c.call).base === "fight").length;
   const a = n.filter((c) => rec(c.call).base === "accept").length;
+  const need = sm?.needs_response ?? n.length;
   $("situation").textContent =
-    `${n.length} disputes need your response · ${soon} due in the next 3 days · ${money(total)} at stake · Recommended: fight ${f}, accept ${a}`;
+    `${sm ? `${sm.total} disputes this month: ` : ""}${need} need${sm || need !== 1 ? "" : "s"} your response · ${soon} due in the next 3 days · ${money(stake, cur)} at stake · Recommended: fight ${f}, accept ${a}`;
+  $("holds").hidden = !stake;
+  $("holds").textContent =
+    `PayPal holds ${money(stake, cur)} of your payouts until these are settled.`;
   $("start").disabled = !n.length;
 }
 
@@ -213,13 +247,13 @@ function renderCards() {
     shown
       .map((c) => {
         const r = rec(c.call);
-        const late = c.due_at && Date.parse(c.due_at) < Date.now();
-        const soon =
-          late || (c.due_at && Date.parse(c.due_at) - Date.now() < 3 * DAY);
         const due = c.due_at
           ? `Due ${dateLong(c.due_at)} · ${inDays(c.due_at)}`
           : "No due date";
-        return `<div class="dcard" tabindex="0" role="button" data-id="${esc(c.dispute_id)}"><span class="who">${esc(c.buyer)}</span><span class="reason">${esc(reasonWords(c.reason))}</span><span class="amt">${money(c.amount_cents, c.currency)}</span><span class="due${soon ? " soon" : ""}">${esc(due)}</span><span class="pill ${r.color}">${r.label}</span></div>`;
+        const item = c.item
+          ? `<span class="reason">${esc(c.item_quantity ?? 1)} × ${esc(c.item)}</span>`
+          : "";
+        return `<div class="dcard" tabindex="0" role="button" data-id="${esc(c.dispute_id)}"><span class="who">${esc(c.buyer)}</span><span class="reason">${esc(reasonWords(c.reason))}</span>${item}<span class="amt">${money(c.amount_cents, c.currency)}</span><span class="due${urgent(c) ? " soon" : ""}">${esc(due)}</span><span class="pill ${r.color}">${r.label}</span></div>`;
       })
       .join("") ||
     '<p class="muted">Nothing needs your response right now.</p>';
@@ -232,6 +266,16 @@ function renderCards() {
   const more = $("show-all");
   more.hidden = n.length <= 6;
   more.textContent = showAll ? "Show fewer" : `Show all ${n.length}`;
+}
+
+function renderMissed() {
+  const m = missedList();
+  const el = $("missed");
+  el.hidden = !m.length;
+  if (!m.length) return (el.innerHTML = "");
+  el.innerHTML = `<details class="missed"><summary>Missed deadline (${m.length})</summary>${m.map((c) => `<div class="m" data-id="${esc(c.dispute_id)}">${esc(c.buyer)} · ${money(c.amount_cents, c.currency)} · was due ${dateShort(c.due_at)}</div>`).join("")}</details>`;
+  for (const x of el.querySelectorAll(".m"))
+    x.onclick = () => openCase(x.dataset.id);
 }
 
 function renderTimeline(cases) {
@@ -269,11 +313,43 @@ function renderTimeline(cases) {
   }
 }
 
-async function openCase(id) {
+// the hash drives opening, so back/forward and reload work
+function openCase(id) {
+  if (location.hash === `#case=${encodeURIComponent(id)}`) return loadCase(id);
+  location.hash = `case=${encodeURIComponent(id)}`;
+}
+function closeCase() {
+  $("panel").hidden = true;
+  current = null;
+  hideConfirm();
+  if (location.hash)
+    history.pushState(null, "", location.pathname + location.search);
+}
+const hashId = () => {
+  const m = /^#case=(.+)$/.exec(location.hash);
+  try {
+    return m ? decodeURIComponent(m[1]) : null;
+  } catch {
+    return null;
+  }
+};
+function onHash() {
+  const id = hashId();
+  if (id && id !== current) loadCase(id);
+  else if (!id && current) {
+    $("panel").hidden = true;
+    current = null;
+    hideConfirm();
+  }
+}
+
+async function loadCase(id) {
   current = id;
   added = new Map();
   fightAnyway = false;
   sent = null;
+  sentText = null;
+  hideConfirm();
   $("panel").hidden = false;
   $("panel-title").textContent = "Loading...";
   $("panel-sub").textContent = "";
@@ -315,25 +391,51 @@ async function recompute(fresh) {
 }
 
 const pct = (x) => Math.round(x * 100);
-function recSentence(d) {
-  const margin = money(Math.abs(d.margin_cents));
-  if (d.call === "fight")
-    return `${pct(d.p)}% chance of winning, ${d.n > 0 ? `based on ${d.n} similar past case${d.n === 1 ? "" : "s"}` : "based on the typical win rate for this kind of dispute"}; fighting is worth about ${margin} more than refunding.`;
-  return `Only ${pct(d.p)}% chance of winning; refunding now saves about ${margin} compared with fighting.`;
+function recSentence(d, c, cost) {
+  const cur = c.currency;
+  const A = c.amount_cents;
+  const cc = money(cost * 100, cur, true);
+  if (d.call === "fight") {
+    const basis =
+      d.n > 0
+        ? ` (${d.n} similar past case${d.n === 1 ? "" : "s"})`
+        : " (typical for this kind of dispute)";
+    return `${pct(d.p)}% chance of winning${basis}. Fight: if you lose you only refund what you would refund anyway; fighting costs about ${cc}, and a ${pct(d.p)}% chance at ${money(A, cur)} is worth about ${money(d.margin_cents, cur)} more.`;
+  }
+  return `${pct(d.p)}% chance of winning${d.n > 0 ? ` (${d.n} similar past case${d.n === 1 ? "" : "s"})` : ""}. Accept: fighting costs about ${cc}, more than the ${money(d.p * A, cur)} you could win back.`;
 }
+const unbracket = (t) => String(t ?? "").replace(/[[\]]/g, "");
+// seller messages may join several points with "; "
+const lines = (t) => String(t ?? "").split("; ").filter(Boolean);
 
 function renderAnalysis(a, fresh) {
   const c = a.case;
   const amt = money(c.amount_cents, c.currency);
   $("panel-title").textContent =
     `${c.buyer} · ${reasonWords(c.reason)} · ${amt}`;
-  $("panel-sub").textContent =
-    `Case ${c.dispute_id} · ${c.due_at ? `response due ${dateShort(c.due_at)} (${inDays(c.due_at)})` : "no response deadline"} · ${statusWords(c)}`;
+  $("panel-sub").innerHTML =
+    `${c.due_at ? `Response due ${dateShort(c.due_at)} (${inDays(c.due_at)})` : "No response deadline"} · ${esc(statusWords(c))}<br><span class="id">PayPal case ${esc(c.dispute_id)}</span>`;
+  const draftText = (a.draft?.response ?? "").trim();
+  const isSellerText = (n) =>
+    n &&
+    (n.trim() === draftText ||
+      c.messages.some(
+        (m) => m.posted_by !== "BUYER" && m.content.includes(n.trim()),
+      ));
+  const evs = c.evidences.filter(
+    (e) => !(e.evidence_type === "OTHER" && isSellerText(e.notes)),
+  );
+  const hidden = c.evidences.find(
+    (e) => e.evidence_type === "OTHER" && isSellerText(e.notes),
+  );
   $("messages").innerHTML =
     c.messages
-      .map(
-        (m) =>
-          `<div class="msg"><b>${m.posted_by === "BUYER" ? "Buyer" : "You"}</b>: ${esc(m.content)}</div>`,
+      .map((m) =>
+        m.posted_by === "BUYER"
+          ? `<div class="msg"><b>Buyer</b>: ${esc(m.content)}</div>`
+          : lines(m.content)
+              .map((l, i) => `<div class="msg">${i ? "" : "<b>You</b>: "}${esc(l)}</div>`)
+              .join(""),
       )
       .join("") || '<p class="muted">No messages.</p>';
   $("items").innerHTML =
@@ -344,7 +446,7 @@ function renderAnalysis(a, fresh) {
       )
       .join("") || '<p class="muted">No items listed.</p>';
   $("evidence").innerHTML =
-    c.evidences
+    evs
       .map((e) => {
         const t = (e.evidence_info?.tracking_info ?? [])
           .map((x) => `${x.carrier_name} ${x.tracking_number}`)
@@ -352,14 +454,32 @@ function renderAnalysis(a, fresh) {
         return `<div class="msg">${t ? `<b>${esc(t)}</b> ` : ""}${esc(e.notes ?? "")}</div>`;
       })
       .join("") || '<p class="muted">Nothing yet</p>';
+  onFile = evs.length;
+  const shownText = sentText ?? (hidden ? hidden.notes : null);
+  $("sent-block").hidden = !shownText;
+  $("sent-block").innerHTML = shownText
+    ? `<h3>Your response</h3><div class="sent">${esc(shownText)}</div>`
+    : "";
 
   const d = a.decision;
   const r = d ? rec(d.call, d.marginal) : null;
   const box = $("rec");
   if (d) {
+    const cost = Number($("in-c").value) || 15;
     box.className = `rec ${r.kind}`;
-    box.innerHTML = `<div class="word">${d.marginal ? `Close call — ${d.call}` : d.call === "fight" ? "Fight" : "Accept"}</div><div>${esc(recSentence(d))}</div>`;
+    box.innerHTML = `<div class="word">${d.marginal ? `Close call: ${d.call}` : d.call === "fight" ? "Fight" : "Accept"}</div><div>${esc(recSentence(d, c, cost))}</div>`;
     $("terms").textContent = d.terms.join("\n");
+    const cur = c.currency;
+    const rows = [
+      ["Win chance", `${pct(d.p)}%`],
+      ["Amount at stake", money(c.amount_cents, cur)],
+      ["Cost to fight", money(cost * 100, cur)],
+      ["Expected value of fighting", signed(d.ev_fight_cents, cur)],
+      ["Expected value of refunding", signed(d.ev_accept_cents, cur)],
+    ];
+    $("terms-list").innerHTML = rows
+      .map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`)
+      .join("");
     $("p0line").textContent =
       `Starting estimate for this kind of dispute: ${pct(d.p0)}% (an assumption, not PayPal data)`;
   } else {
@@ -367,21 +487,24 @@ function renderAnalysis(a, fresh) {
     box.innerHTML =
       '<div class="muted">No recommendation is available right now. You can still respond below.</div>';
     $("terms").textContent = "";
+    $("terms-list").innerHTML = "";
     $("p0line").textContent = "";
   }
   $("precedents").innerHTML = a.precedents.length
-    ? `<table class="prec"><tr><th>Outcome</th><th>Snippet</th></tr>${a.precedents.map((p) => `<tr><td>${p.won ? "You won" : "Buyer won"}</td><td>${esc(p.snippet)}</td></tr>`).join("")}</table>`
+    ? `<table class="prec"><tr><th>Outcome</th><th>Snippet</th></tr>${a.precedents.map((p) => `<tr><td>${p.won ? "You won" : "Buyer won"}</td><td>${esc(unbracket(p.snippet))}</td></tr>`).join("")}</table>`
     : '<p class="muted">No similar resolved cases yet.</p>';
 
   const dr = a.draft;
   if (fresh || !$("draft").value) $("draft").value = dr.response;
   const b = $("badge");
-  b.textContent = dr.source === "llm" ? "Drafted by AI" : "Template draft";
-  b.className = "pill " + (dr.source === "llm" ? "blue" : "grey");
+  const ai = dr.source === "llm";
+  b.textContent = ai ? "AI draft" : "Template draft";
+  b.className = "pill " + (ai ? "green" : "grey");
   $("explanation").textContent = dr.explanation ?? "";
   renderChecklist();
   renderActions();
 }
+let onFile = 0;
 
 const canAct = () =>
   currentAnalysis && needsResponse(currentAnalysis.case) && !sent;
@@ -551,26 +674,43 @@ function renderActions() {
   }
 }
 
-async function act(kind) {
+function hideConfirm() {
+  pending = null;
+  $("confirm").hidden = true;
+}
+// asks inside the page; run() sends once the person agrees
+function act(kind) {
   const c = currentAnalysis.case;
   const amt = money(c.amount_cents, c.currency);
+  pending = kind;
+  if (kind === "evidence") {
+    const ready = currentAnalysis.draft.checklist.filter(
+      (i) => i.status !== "missing",
+    ).length;
+    const n = Math.max(onFile, ready) + added.size;
+    $("confirm-text").textContent =
+      `Send your response and ${n} evidence item${n === 1 ? "" : "s"} to PayPal for the ${amt} dispute with ${c.buyer}?`;
+    $("confirm-ok").textContent = "Send to PayPal";
+  } else {
+    $("confirm-text").textContent = `Refund ${amt} to ${c.buyer} and close the case?`;
+    $("confirm-ok").textContent = "Refund";
+  }
+  $("confirm").hidden = false;
+  $("confirm-ok").focus();
+}
+
+async function run(kind) {
+  hideConfirm();
   const path = `/api/cases/${encodeURIComponent(current)}/${kind}`;
   let body;
   if (kind === "evidence") {
     const items = [...added.values()];
     const files = items.map((e) => e.file).filter(Boolean);
     const evidence = items.map(({ file, ...e }) => e);
-    if (
-      !confirm(
-        `Send this response and ${evidence.length} evidence item(s) to PayPal for the ${amt} dispute with ${c.buyer}?`,
-      )
-    )
-      return;
     body = { confirm: true, text: $("draft").value };
     if (evidence.length) body.evidence = evidence;
     if (files.length) body.files = files;
   } else {
-    if (!confirm(`Accept the claim and refund ${amt} to ${c.buyer}?`)) return;
     body = { note: "Accepted by the seller from the desk", confirm: true };
   }
   try {
@@ -585,6 +725,7 @@ async function act(kind) {
     kind === "evidence"
       ? "Sent to PayPal. The case is now under review — PayPal usually decides within 30 days."
       : "Refund sent. Case resolved in the buyer's favour.";
+  if (kind === "evidence") sentText = body.text;
   loadActivity();
   await loadCases().catch(() => {});
   await recompute(true);
@@ -613,30 +754,54 @@ async function search(e) {
     el.onclick = () => openCase(el.dataset.id);
 }
 
+let lastCall = null; // `at` of the newest call seen
+let calls = [];
+const ago = (iso) => {
+  const t = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000));
+  return t < 60 ? `${t} s ago` : t < 3600 ? `${Math.round(t / 60)} min ago` : `${Math.round(t / 3600)} h ago`;
+};
+const shortPath = (p) => String(p).replace(/(\/disputes\/)[^/]+/, "$1…");
+function renderActivity() {
+  const x = calls[0];
+  $("act-last").textContent = x
+    ? `Last PayPal call: ${x.method} ${shortPath(x.path)} · ${x.status} · ${x.ms} ms · ${ago(x.at)}`
+    : "PayPal calls: none yet";
+  $("activity-list").innerHTML = calls
+    .slice(0, 20)
+    .map(
+      (x) =>
+        `<li>${esc(x.method)} ${esc(shortPath(x.path))} · <span class="${x.status < 400 ? "s-ok" : "s-bad"}">${esc(x.status)}</span> · ${esc(x.ms)} ms · ${ago(x.at)}</li>`,
+    )
+    .join("");
+}
+function dockPad() {
+  document.body.style.paddingBottom = `${$("activity").offsetHeight + 16}px`;
+}
 async function loadActivity() {
   try {
     const r = await fetch("/api/paypal-activity");
     if (!r.ok) throw 0;
-    const { calls } = await r.json();
-    $("activity").hidden = false;
-    $("activity-list").innerHTML =
-      [...calls]
-        .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
-        .slice(0, 6)
-        .map(
-          (x) =>
-            `<li>${esc(x.method)} ${esc(x.path)} · <span class="${x.status < 400 ? "s-ok" : "s-bad"}">${esc(x.status)}</span> · ${esc(x.ms)} ms</li>`,
-        )
-        .join("") || '<li class="muted">No calls yet.</li>';
+    calls = [...(await r.json()).calls].sort(
+      (a, b) => Date.parse(b.at) - Date.parse(a.at),
+    );
+    const bar = $("activity");
+    bar.hidden = false;
+    const newest = calls[0]?.at ?? null;
+    if (lastCall !== null && newest && newest !== lastCall) {
+      bar.classList.add("flash");
+      setTimeout(() => bar.classList.remove("flash"), 2000);
+    }
+    lastCall = newest ?? "";
+    renderActivity();
+    dockPad();
   } catch {
     $("activity").hidden = true;
+    document.body.style.paddingBottom = "";
   }
 }
 
 function startUrgent() {
-  const n = needing();
-  const now = Date.now();
-  const c = n.find((x) => x.due_at && Date.parse(x.due_at) >= now) ?? n[0];
+  const c = needing()[0]; // the first card shown
   if (c) openCase(c.dispute_id);
 }
 
@@ -650,10 +815,18 @@ async function init() {
     gridApi.setGridOption("quickFilterText", e.target.value);
   $("recompute").onclick = () => recompute(false);
   $("start").onclick = startUrgent;
-  $("close-panel").onclick = () => (
-    ($("panel").hidden = true),
-    (current = null)
-  );
+  $("close-panel").onclick = closeCase;
+  $("confirm-ok").onclick = () => run(pending);
+  $("confirm-cancel").onclick = hideConfirm;
+  $("confirm").onkeydown = (e) => e.key === "Escape" && hideConfirm();
+  $("act-toggle").onclick = () => {
+    const open = $("activity-list").hidden;
+    $("activity-list").hidden = !open;
+    $("act-toggle").setAttribute("aria-expanded", String(open));
+    dockPad();
+  };
+  addEventListener("hashchange", onHash);
+  addEventListener("resize", dockPad);
   $("show-all").onclick = (e) => (
     e.preventDefault(),
     (showAll = !showAll),
@@ -671,8 +844,13 @@ async function init() {
   };
   const info = await api("/api/info").catch(() => null);
   if (info) {
-    $("env-pill").hidden = !["mock", "sandbox"].includes(info.paypalEnv);
-    $("ai-pill").hidden = !info.llm?.online;
+    const env = { sandbox: "PayPal Sandbox", mock: "PayPal test data" }[info.paypalEnv];
+    $("env-pill").hidden = !env;
+    $("env-pill").textContent = env ?? "";
+    const on = !!info.llm?.online;
+    $("ai-pill").hidden = false;
+    $("ai-pill").textContent = on ? "AI drafting on" : "AI offline: template drafts";
+    $("ai-pill").className = "pill " + (on ? "green" : "grey");
     $("unreachable").hidden = !info.sync?.error;
   }
   await loadCases().catch(
@@ -680,6 +858,7 @@ async function init() {
       ($("situation").textContent = "Could not load your disputes. Try again."),
   );
   loadActivity();
+  onHash();
   setInterval(
     () => document.visibilityState === "visible" && loadActivity(),
     5000,

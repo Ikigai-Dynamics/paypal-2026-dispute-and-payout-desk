@@ -3,19 +3,20 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Dispute Desk</title>
+<title>Dispute and Payout Desk</title>
 <link rel="stylesheet" href="/app.css">
 </head>
 <body>
 <div id="unreachable" class="banner warn" hidden>PayPal is unreachable right now: showing the last synced cases.</div>
 <header class="card head">
   <div class="title-row">
-    <h1>Dispute Desk</h1>
-    <span id="env-pill" class="pill grey" hidden>PayPal Sandbox</span>
-    <span id="ai-pill" class="pill green" hidden>AI drafting on</span>
+    <h1>Dispute and Payout Desk</h1>
+    <span id="env-pill" class="pill grey" hidden></span>
+    <span id="ai-pill" class="pill grey" hidden></span>
   </div>
   <p class="story">PayPal disputes come in; the desk recommends fight or accept for each, drafts your response with AI, and sends it to PayPal when you confirm.</p>
   <p id="situation" class="situation">Loading your disputes...</p>
+  <p id="holds" class="muted" hidden></p>
   <button id="start" class="primary" disabled>Start with the most urgent case</button>
 </header>
 <section id="panel" class="card" hidden>
@@ -31,20 +32,22 @@
     <div>
       <h3>What the buyer said</h3><div id="messages"></div>
       <h3>Order</h3><div id="items"></div>
+      <div id="sent-block" hidden></div>
       <h3>Evidence already on file</h3><div id="evidence"></div>
     </div>
     <div>
       <div id="rec" class="rec"></div>
       <details id="math">
         <summary>Show the math</summary>
-        <pre id="terms"></pre>
+        <p id="explanation"></p>
+        <dl id="terms-list" class="terms"></dl>
         <p id="p0line" class="muted"></p>
-        <p id="explanation" class="muted"></p>
+        <details class="formula"><summary>Formula</summary><pre id="terms"></pre></details>
         <h4>Similar past cases</h4><div id="precedents"></div>
         <div class="inputs">
           <label>Win chance override (%) <input id="in-prior" inputmode="decimal" placeholder="use the estimate" size="8"></label>
-          <label>Cost to fight ($) <input id="in-c" value="15.00" inputmode="decimal" size="6"><span class="hint">your time and handling</span></label>
-          <label>Extra fee if you lose ($) <input id="in-fee" value="0.00" inputmode="decimal" size="6"></label>
+          <label>Cost to fight <input id="in-c" value="15.00" inputmode="decimal" size="6"><span class="hint">your time and handling</span></label>
+          <label>Extra fee if you lose <input id="in-fee" value="0.00" inputmode="decimal" size="6"></label>
           <button id="recompute" type="button">Recalculate</button>
         </div>
       </details>
@@ -55,6 +58,7 @@
         <ul id="checklist" class="checklist"></ul>
       </div>
       <div id="actions" class="actions"></div>
+      <div id="confirm" class="confirm" role="alertdialog" aria-labelledby="confirm-text" hidden><p id="confirm-text"></p><div class="actions"><button id="confirm-ok" class="primary" type="button"></button><button id="confirm-cancel" type="button">Cancel</button></div></div>
       <div id="action-result"></div>
     </div>
   </div>
@@ -63,6 +67,7 @@
   <h2>Disputes that need your response</h2>
   <div id="cards" class="cards"></div>
   <p><a href="#" id="show-all" hidden></a></p>
+  <div id="missed" hidden></div>
 </section>
 <section class="card">
   <h2>Deadlines, next 21 days</h2>
@@ -82,10 +87,10 @@
   <section id="results" hidden></section>
   <div id="grid" class="grid"></div>
 </details>
-<details id="activity" class="activity" hidden>
-  <summary>PayPal API · live</summary>
-  <ul id="activity-list"></ul>
-</details>
+<footer id="activity" class="activity" hidden>
+  <button id="act-toggle" type="button" aria-expanded="false" aria-controls="activity-list"><span id="act-last"></span><span class="chev" aria-hidden="true">&#9650;</span></button>
+  <ul id="activity-list" hidden></ul>
+</footer>
 <script src="/vendor/ag-grid-community.min.js"></script>
 <script type="module" src="/app.js"></script>
 </body>
