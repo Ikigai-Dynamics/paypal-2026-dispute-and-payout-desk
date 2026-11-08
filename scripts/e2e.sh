@@ -8,6 +8,8 @@ for id in PP-D-GIFTCARD-0001 PP-D-BIGCHARGEBACK-0002 PP-D-DUPLICATE-0003; do
   assert "$id listed" "$(echo "$cases" | jq --arg id "$id" '[.cases[].dispute_id] | index($id) != null')"
 done
 
+assert "summary buckets add up to the total" "$(desk "http://${H}/api/cases" | jq '.summary | (.needs_response + .under_review + .closed + .missed_deadline + .waiting_on_buyer + .other) == .total')"
+
 echo "== Postgres full-text search for 'tracking'"
 hits=$(desk "http://${H}/api/search?q=tracking")
 echo "$hits" | jq -c '{engine, hits: (.hits | length), first: .hits[0].dispute_id}'
@@ -71,3 +73,9 @@ echo "$st" | jq -c '{paypalEnv, llm, cases, decide}'
 assert "mock is the PayPal environment" "$(echo "$st" | jq '.paypalEnv == "mock"')"
 
 echo "E2E OK"
+
+echo "== the invented-fact check"
+SENT='UPS tracking 1Z999AA10123456784 shows the order was delivered Oct 30.'
+code=$(curl -s -o /dev/null -w '%{http_code}' --resolve "${HN}:${PORT_HTTP}:127.0.0.1" -X POST -H 'content-type: application/json' \
+  -d "$(jq -n --arg s "$SENT" '{confirm:true,text:("We shipped it. "+$s)}')" "http://${H}/api/cases/PP-D-GIFTCARD-0001/evidence")
+assert "unsupported shipping claim is refused with 422" "$([ "$code" = 422 ] && echo true || echo "$code")"

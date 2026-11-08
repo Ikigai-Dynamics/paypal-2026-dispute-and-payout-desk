@@ -18,6 +18,7 @@ import {
 } from "./analysis.js";
 import { DEFAULT_HANDLING_CENTS } from "./decide-client.js";
 import { PgStore } from "./db.js";
+import { gateEvidence } from "./factcheck.js";
 import type { Added, CaseRow } from "./types.js";
 import { init as initActivity, list as listCalls, record } from "./activity.js";
 import { DraftCache, pool as runPool } from "./drafts.js";
@@ -298,6 +299,7 @@ class HttpError extends Error {
     public status: number,
     public code: string,
     detail: string,
+    public extra: Record<string, unknown> = {},
   ) {
     super(detail);
   }
@@ -379,6 +381,59 @@ function parseAdded(v: unknown): Added[] {
   });
 }
 
+const UPDATED_LABEL = "AI draft, updated with your evidence";
+const EDITED_LABEL = "AI draft, edited by you";
+
+function parseVouched(v: unknown): string[] {
+  if (v === undefined) return [];
+  if (
+    !Array.isArray(v) ||
+    v.length > 10 ||
+    v.some((x) => typeof x !== "string" || x.length > 2000)
+  )
+    throw new HttpError(
+      400,
+      "bad_request",
+      "vouched must be a list of at most 10 sentences of up to 2000 characters",
+    );
+  return (v as string[]).map((x) => x.trim());
+}
+
+const MON = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split(" ");
+/** Everything a sentence of the response may rest on: what is on file, the merchant's added notes, and this send's own evidence. */
+function proofText(
+  view: ReturnType<typeof toView>,
+  added: Added[],
+  extra?: {
+    evidence: {
+      notes: string;
+      tracking?: { carrier: string; number: string };
+    }[];
+  },
+): string {
+  const lines: string[] = view.items.map(
+    (i) => `${i.item_quantity} ${i.item_description}`,
+  );
+  if (view.purchased_at) {
+    const dt = new Date(view.purchased_at);
+    lines.push(
+      `purchased ${view.purchased_at.slice(0, 10)} ${MON[dt.getUTCMonth()]} ${dt.getUTCDate()}`,
+    );
+  }
+  for (const e of view.evidences) {
+    lines.push(e.notes ?? "");
+    for (const t of e.evidence_info?.tracking_info ?? [])
+      lines.push(`${t.carrier_name ?? ""} ${t.tracking_number ?? ""}`);
+  }
+  for (const a of added) lines.push(`${a.item}: ${a.note}`);
+  for (const e of extra?.evidence ?? [])
+    lines.push(
+      e.notes,
+      e.tracking ? `${e.tracking.carrier} ${e.tracking.number}` : "",
+    );
+  return lines.join("\n");
+}
+
 async function loadRow(id: string) {
   const row = await store.get(id);
   if (!row)
@@ -447,6 +502,19 @@ async function route(
           under_review: views.filter((v) => v.status === "UNDER_REVIEW").length,
           closed: views.filter((v) => v.status === "RESOLVED").length,
           missed_deadline: views.filter((v) => open(v) && late(v)).length,
+          waiting_on_buyer: views.filter(
+            (v) => v.status === "WAITING_FOR_BUYER_RESPONSE",
+          ).length,
+          // anything else (e.g. a status PayPal adds later), so the buckets always add up to total
+          other: views.filter(
+            (v) =>
+              !open(v) &&
+              ![
+                "UNDER_REVIEW",
+                "RESOLVED",
+                "WAITING_FOR_BUYER_RESPONSE",
+              ].includes(v.status),
+          ).length,
           at_stake_cents: needs
             .filter((v) => v.currency === currency)
             .reduce((n, v) => n + v.amount_cents, 0),
@@ -485,7 +553,20 @@ async function route(
       body: { engine: "Postgres full-text", q, hits: await store.search(q) },
     };
   }
-  const a = /^\/api\/cases\/([^/]+)\/(analysis|evidence|accept|draft)$/.exec(p);
+  if (m === "POST" && p === "/api/demo/reset") {
+    const b = await readJson(req);
+    if (b["confirm"] !== true)
+      throw new HttpError(
+        400,
+        "confirmation_required",
+        "send confirm: true to clear saved work",
+      );
+    await store.resetWork();
+    decisionCache.clear();
+    return { status: 200, body: { reset: true } };
+  }
+  const a =
+    /^\/api\/cases\/([^/]+)\/(analysis|evidence|accept|draft|work)$/.exec(p);
   if (a) {
     const id = decodeURIComponent(a[1]!);
     if (m === "GET" && a[2] === "analysis") {
@@ -493,12 +574,14 @@ async function route(
       const prior = num(url.searchParams.get("prior"));
       const c = dollarsToCents(url.searchParams.get("c"));
       const fee = dollarsToCents(url.searchParams.get("fee"));
+      const work = await store.getWork(id);
+      const sent = await store.getSent(id);
       const out = await analyse(
         {
           store,
           llm,
           decideUrl,
-          draft: (v, dc, pr, o) => drafts.get(v, dc, pr, o),
+          draft: (v, dc, pr, o, ad) => drafts.get(v, dc, pr, o, ad),
         },
         row,
         {
@@ -506,7 +589,17 @@ async function route(
           handlingCostCents: c ?? DEFAULT_HANDLING_CENTS,
           feeIfLostCents: fee ?? 0,
         },
+        work?.added ?? [],
       );
+      if (work?.draft_text) {
+        out.draft = {
+          ...out.draft,
+          response: work.draft_text,
+          ...(work.draft_label ? { label: work.draft_label } : {}),
+        };
+      } else if (work?.added.length && out.draft.source === "llm") {
+        out.draft = { ...out.draft, label: UPDATED_LABEL };
+      }
       if (
         out.decision &&
         prior === undefined &&
@@ -518,7 +611,44 @@ async function route(
           margin_cents: out.decision.margin_cents,
           marginal: out.decision.marginal,
         });
-      return { status: 200, body: out };
+      return { status: 200, body: { ...out, work, sent } };
+    }
+    if (m === "PUT" && a[2] === "work") {
+      await loadRow(id);
+      const b = await readJson(req);
+      const added =
+        b["added"] === undefined ? undefined : parseAdded(b["added"]);
+      const text = b["text"];
+      if (
+        text !== undefined &&
+        (typeof text !== "string" || text.length > 8000)
+      )
+        throw new HttpError(
+          400,
+          "bad_request",
+          "text must be a string of at most 8000 characters",
+        );
+      if (b["edited"] !== undefined && typeof b["edited"] !== "boolean")
+        throw new HttpError(400, "bad_request", "edited must be true or false");
+      const old = await store.getWork(id);
+      const edited = b["edited"] as boolean | undefined;
+      // new evidence makes the saved text older than the evidence: its label no longer claims otherwise
+      const addedChanged =
+        added !== undefined &&
+        JSON.stringify(added) !== JSON.stringify(old?.added ?? []);
+      const label =
+        text !== undefined && edited !== false
+          ? EDITED_LABEL
+          : addedChanged && text === undefined
+            ? null
+            : undefined;
+      const work = await store.putWork(id, {
+        ...(added ? { added } : {}),
+        ...(text !== undefined ? { text } : {}),
+        ...(label !== undefined ? { label } : {}),
+        edited: text !== undefined ? (edited ?? true) : edited,
+      });
+      return { status: 200, body: { work } };
     }
     if (m === "POST" && a[2] === "draft") {
       // writes nothing to PayPal, so no confirm
@@ -539,7 +669,14 @@ async function route(
         o,
         added,
       );
-      return { status: 200, body: { draft } };
+      const label = added.length ? UPDATED_LABEL : "AI draft";
+      await store.putWork(id, {
+        added,
+        text: draft.response,
+        label,
+        edited: false,
+      });
+      return { status: 200, body: { draft: { ...draft, label } } };
     }
     if (m === "POST" && (a[2] === "evidence" || a[2] === "accept")) {
       const b = await readJson(
@@ -552,7 +689,7 @@ async function route(
           "confirmation_required",
           "send confirm: true to write to PayPal",
         );
-      await loadRow(id);
+      const row0 = await loadRow(id);
       let row;
       if (a[2] === "evidence") {
         const text = typeof b["text"] === "string" ? b["text"].trim() : "";
@@ -565,13 +702,27 @@ async function route(
             throw new HttpError(400, "bad_request", e.message);
           throw e;
         }
-        row = await submitEvidence(paypal, store, id, text, extra);
+        const vouched = parseVouched(b["vouched"]);
+        const work = await store.getWork(id);
+        const proof = proofText(toView(row0), work?.added ?? [], extra);
+        const { unsupported, held, sentText } = gateEvidence(text, proof, vouched);
+        if (unsupported.length)
+          throw new HttpError(
+            422,
+            "unsupported_claim",
+            "Some sentences mention evidence that is not on file.",
+            { sentences: unsupported },
+          );
+        row = await submitEvidence(paypal, store, id, sentText, extra);
+        await store.recordSent(id, sentText, work?.added ?? [], held);
+        await store.deleteWork(id);
       } else {
         const note =
           typeof b["note"] === "string" && b["note"].trim()
             ? b["note"].trim()
             : "Accepted by the seller from the desk";
         row = await acceptClaim(paypal, store, id, note);
+        await store.deleteWork(id);
       }
       decisionCache.delete(id);
       return { status: 200, body: { case: toView(row) } };
@@ -647,7 +798,7 @@ const server = createServer((req, res) => {
     } catch (e) {
       if (e instanceof HttpError) {
         status = e.status;
-        send(res, status, { error: e.code, detail: e.message });
+        send(res, status, { ...e.extra, error: e.code, detail: e.message });
       } else if (e instanceof PayPalApiError) {
         status = 502;
         send(res, status, {
