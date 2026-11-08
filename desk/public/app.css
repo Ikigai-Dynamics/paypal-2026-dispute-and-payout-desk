@@ -109,4 +109,5 @@ textarea.dim { opacity: .5; }
 .evidence .mine, #evidence .mine { color: var(--green); font-size: 12px; }
 textarea.flagged { outline: 2px solid #c0392b; }
 .claim { margin: 8px 0; }
+.claims-head { font-weight: 600; margin: 0 0 4px; }
 .claim blockquote { margin: 0 0 4px; padding: 6px 10px; background: #fdecea; border-left: 4px solid #c0392b; font-weight: 400; }
