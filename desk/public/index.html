@@ -36,9 +36,11 @@
       <h3>Evidence already on file</h3><div id="evidence"></div>
     </div>
     <div>
+      <p id="repeat" class="repeat" hidden></p>
       <div id="rec" class="rec"></div>
       <details id="math">
         <summary>Show the math</summary>
+        <p id="caseref" class="muted"></p>
         <p id="explanation"></p>
         <dl id="terms-list" class="terms"></dl>
         <p id="p0line" class="muted"></p>
@@ -53,6 +55,7 @@
       </details>
       <div id="fightbox">
         <h3>Response to PayPal <span id="badge" class="pill"></span></h3>
+        <p id="draft-note" class="muted" hidden></p>
         <textarea id="draft" rows="9"></textarea>
         <h3>Evidence checklist <span id="check-count" class="pill"></span></h3>
         <ul id="checklist" class="checklist"></ul>
@@ -78,14 +81,13 @@
   <summary id="all-sum">All cases</summary>
   <section class="bar">
     <form id="search-form">
-      <input id="search" placeholder="Search past cases, e.g. tracking" size="40">
-      <button>Search</button>
+      <input id="search" type="search" aria-label="Search cases" placeholder="Search cases: buyer, item, tracking…" size="44">
     </form>
-    <input id="quick" placeholder="Quick filter the grid" size="24">
     <button id="sync" type="button">Refresh from PayPal</button>
   </section>
   <section id="results" hidden></section>
   <div id="grid" class="grid"></div>
+  <p id="nomatch" class="muted" hidden>No cases match</p>
 </details>
 <footer id="activity" class="activity" hidden>
   <button id="act-toggle" type="button" aria-expanded="false" aria-controls="activity-list"><span id="act-last"></span><span class="chev" aria-hidden="true">&#9650;</span></button>

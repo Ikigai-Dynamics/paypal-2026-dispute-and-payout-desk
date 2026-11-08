@@ -95,3 +95,8 @@ mark { background: #fff1a8; }
 .panel-head .id { font-size: 11px; color: #667085; }
 @media (max-width: 900px) { .cards { grid-template-columns: repeat(2, 1fr); } .cols { grid-template-columns: 1fr; } }
 @media (max-width: 600px) { .cards { grid-template-columns: 1fr; }  }
+
+.repeat { background: #fdf0c8; color: var(--amber); border-radius: 8px; padding: 6px 12px; margin: 0 0 8px; font-size: 13px; font-weight: 600; }
+.marker.soon { box-shadow: 0 0 0 2px var(--red); }
+textarea.dim { opacity: .5; }
+.checklist li > button.primary { white-space: normal; text-align: left; }
