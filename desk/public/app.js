@@ -273,7 +273,9 @@ function renderCards() {
         const item = ot ? `<span class="reason">${esc(ot)}</span>` : "";
         const rb = buyerOpen(c.buyer);
         const tag =
-          rb >= 2 ? `<span class="pill amber">${rb} disputes from this buyer</span>` : "";
+          rb >= 2
+            ? `<span class="pill amber">${rb} disputes from this buyer</span>`
+            : "";
         return `<div class="dcard" tabindex="0" role="button" data-id="${esc(c.dispute_id)}"><span class="who">${esc(c.buyer)}</span><span class="reason">${esc(reasonWords(c.reason))}</span>${item}<span class="amt">${money(c.amount_cents, c.currency)}</span><span class="due${dueSoon(c) ? " soon" : ""}">${esc(due)}</span><span class="pill ${r.color}">${r.label}</span>${tag}</div>`;
       })
       .join("") ||
@@ -426,7 +428,10 @@ function recSentence(d, c, cost) {
   const cur = c.currency;
   const A = c.amount_cents;
   const cc = money(cost * 100, cur, true);
-  const basis = d.n > 0 ? ` (based on ${d.n} similar past case${d.n === 1 ? "" : "s"})` : "";
+  const basis =
+    d.n > 0
+      ? ` (based on ${d.n} similar past case${d.n === 1 ? "" : "s"})`
+      : "";
   if (d.call === "fight")
     return `You have a ${pct(d.p)}% chance of keeping ${money(A, cur)}${basis}. Fighting costs about ${cc}; if you lose, you refund what you would refund anyway.`;
   return `Only a ${pct(d.p)}% chance of keeping ${money(A, cur)}${basis}, so fighting (about ${cc}) is unlikely to pay off. Refund it and close the case.`;
@@ -455,7 +460,8 @@ function renderAnalysis(a, fresh) {
           : statusWords(c);
   $("panel-sub").textContent = status;
   $("repeat").hidden = rb < 2;
-  $("repeat").textContent = `${c.buyer} has ${rb} open disputes with you, a pattern PayPal reviewers look at.`;
+  $("repeat").textContent =
+    `${c.buyer} has ${rb} open disputes with you, a pattern PayPal reviewers look at.`;
   $("caseref").textContent = `Case reference: ${c.dispute_id}`;
   const draftText = (a.draft?.response ?? "").trim();
   const isSellerText = (n) =>
@@ -728,7 +734,10 @@ async function redraft() {
   try {
     res = (
       await post(`/api/cases/${encodeURIComponent(id)}/draft`, {
-        added: [...added.values()].map((e) => ({ item: e.item, note: e.notes })),
+        added: [...added.values()].map((e) => ({
+          item: e.item,
+          note: e.notes,
+        })),
       })
     ).draft;
   } catch {}
@@ -739,13 +748,16 @@ async function redraft() {
     $("draft").value = res.response;
     const ai = res.source === "llm";
     const b = $("badge");
-    b.textContent = ai ? "AI draft, updated with your evidence" : "Template draft";
+    b.textContent = ai
+      ? "AI draft, updated with your evidence"
+      : "Template draft";
     b.className = "pill " + (ai ? "green" : "grey");
     if (ai) setAi(true);
     note.hidden = true;
   } else {
     note.className = "formerr";
-    note.textContent = "Could not update the draft; your evidence will still be sent.";
+    note.textContent =
+      "Could not update the draft; your evidence will still be sent.";
   }
   renderActions();
 }
@@ -764,7 +776,9 @@ function renderActions() {
   submit.onclick = () => act("evidence");
   const hint = document.createElement("span");
   hint.className = "muted";
-  hint.textContent = drafting ? "Updating the draft…" : "Add the missing evidence to submit";
+  hint.textContent = drafting
+    ? "Updating the draft…"
+    : "Add the missing evidence to submit";
   hint.hidden = !left && !drafting;
   const accept = document.createElement("button");
   accept.textContent = `Accept and refund ${amt}`;
