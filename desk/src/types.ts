@@ -35,6 +35,17 @@ export interface CaseView {
   messages: Dispute["messages"];
   items: { item_description: string; item_quantity: string }[];
   evidences: Evidence[];
+  /** create_time of the disputed transaction */
+  purchased_at?: string;
+  /** the buyer's other orders the desk knows of, oldest first */
+  buyer_history?: BuyerOrder[];
+}
+
+export interface BuyerOrder {
+  dispute_id: string;
+  date: string;
+  amount_cents: number;
+  items: string;
 }
 
 export interface Precedent {
@@ -78,6 +89,14 @@ export interface ChecklistItem {
   item: string;
   status: "present" | "missing";
   why: string;
+  /** set only on missing items the desk holds real data for */
+  suggestion?: { label: string; note: string };
+}
+
+/** Evidence the merchant typed in before asking for a new draft. */
+export interface Added {
+  item: string;
+  note: string;
 }
 
 export interface Draft {

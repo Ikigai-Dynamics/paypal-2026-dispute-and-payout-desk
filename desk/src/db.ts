@@ -121,6 +121,15 @@ export class PgStore {
     return r.rows.map(fromDb);
   }
 
+  /** Other cases of the same buyer name, for the order history shown as evidence. */
+  async byBuyer(buyer: string, excludeId: string): Promise<CaseRow[]> {
+    const r = await this.pool.query(
+      `select ${COLS} from cases where buyer=$1 and dispute_id <> $2`,
+      [buyer, excludeId],
+    );
+    return r.rows.map(fromDb);
+  }
+
   async count(): Promise<number> {
     const r = await this.pool.query("select count(*)::int as n from cases");
     return Number(r.rows[0]?.n ?? 0);

@@ -9,9 +9,16 @@ import { fileURLToPath } from "node:url";
 import { createLlm } from "@jeirslab/llm-client";
 import { createPayPalClient, PayPalApiError } from "@jeirslab/paypal-client";
 import pg from "pg";
-import { analyse, decideFor, findPrecedents, toView } from "./analysis.js";
+import {
+  analyse,
+  decideFor,
+  findPrecedents,
+  toView,
+  viewOf,
+} from "./analysis.js";
 import { DEFAULT_HANDLING_CENTS } from "./decide-client.js";
 import { PgStore } from "./db.js";
+import type { Added, CaseRow } from "./types.js";
 import { init as initActivity, list as listCalls, record } from "./activity.js";
 import { DraftCache, pool as runPool } from "./drafts.js";
 import {
@@ -109,11 +116,15 @@ const decisionCache = new Map<
   { call: string; margin_cents: number; marginal: boolean }
 >();
 
-// online = the last real completion worked, else a probe of the gateway answered
+// online = the last real completion worked, or a fresh probe of the gateway answered.
+// A failed draft only forces a new probe; it never turns the badge off by itself.
 let probe = { at: 0, ok: false };
+drafts.onResult = (ok) => {
+  if (!ok) probe.at = 0;
+};
 async function llmOnline(): Promise<boolean> {
   if (!llm.online) return false;
-  if (drafts.lastOk !== null) return drafts.lastOk;
+  if (drafts.lastOk === true) return true;
   if (Date.now() - probe.at < 30_000) return probe.ok;
   let ok = false;
   try {
@@ -133,6 +144,11 @@ async function llmOnline(): Promise<boolean> {
   return ok;
 }
 
+async function llmStatus() {
+  const online = await llmOnline();
+  return { online, label: online ? `AI (${llm.model})` : "offline fallback" };
+}
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 function log(o: Record<string, unknown>): void {
   process.stdout.write(
@@ -140,36 +156,62 @@ function log(o: Record<string, unknown>): void {
   );
 }
 
-async function warmDecisions(): Promise<void> {
-  const rows = (await store.list()).filter(
-    (r) => r.status === "WAITING_FOR_SELLER_RESPONSE" || r.status === "OPEN",
+const waiting = (r: { status: string }) =>
+  r.status === "WAITING_FOR_SELLER_RESPONSE" || r.status === "OPEN";
+
+// the headline cases first, then by due date (store.list is ordered by due date)
+const FIRST = [
+  "PP-D-BIGCHARGEBACK-0002",
+  "PP-D-GIFTCARD-0001",
+  "PP-D-DUPLICATE-0003",
+];
+const rank = (id: string) => {
+  const i = FIRST.indexOf(id);
+  return i < 0 ? FIRST.length : i;
+};
+
+/** Decision at the default options for one waiting case, cached for the grid's Call column. */
+async function ensureDecision(row: CaseRow): Promise<boolean> {
+  if (decisionCache.has(row.dispute_id)) return true;
+  const d = await decideFor(
+    { decideUrl },
+    row,
+    await findPrecedents(store, row),
+    {},
   );
-  let next = 0;
-  const worker = async () => {
-    while (next < rows.length) {
-      const row = rows[next++]!;
-      const d = await decideFor(
-        { decideUrl },
-        row,
-        await findPrecedents(store, row),
-        {},
-      );
-      if (d)
-        decisionCache.set(row.dispute_id, {
-          call: d.call,
-          margin_cents: d.margin_cents,
-          marginal: d.marginal,
-        });
-    }
-  };
-  await Promise.all([worker(), worker(), worker(), worker()]);
+  if (!d) return false;
+  decisionCache.set(row.dispute_id, {
+    call: d.call,
+    margin_cents: d.margin_cents,
+    marginal: d.marginal,
+  });
+  return true;
 }
 
-// after a sync, draft the open cases nobody has opened yet, most urgent first, two at a time
-async function preDraft(): Promise<void> {
-  const rows = (await store.list()).filter(
-    (r) => r.status === "WAITING_FOR_SELLER_RESPONSE" || r.status === "OPEN",
-  ); // store.list is ordered by due date
+let warming: Promise<void> | null = null;
+// retries every 5 s for up to 3 min until every waiting case has a decision
+function warmDecisions(): Promise<void> {
+  return (warming ??= (async () => {
+    const until = Date.now() + 180_000;
+    for (;;) {
+      const rows = (await store.list()).filter(
+        (r) => waiting(r) && !decisionCache.has(r.dispute_id),
+      );
+      if (!rows.length || Date.now() > until) return;
+      await runPool(rows, 4, async (r) => (await ensureDecision(r), true));
+      if (rows.some((r) => !decisionCache.has(r.dispute_id))) await sleep(5000);
+    }
+  })().finally(() => {
+    warming = null;
+  }));
+}
+
+// draft the open cases nobody has opened yet, headline cases first, two at a time
+async function preDraft(only?: Set<string>): Promise<void> {
+  const rows = (await store.list())
+    .filter((r) => waiting(r) && (!only || only.has(r.dispute_id)))
+    .sort((a, b) => rank(a.dispute_id) - rank(b.dispute_id)); // stable: due-date order within a rank
+  const ok = new Set<string>();
   await runPool(rows, 2, async (row) => {
     const precedents = await findPrecedents(store, row);
     const o = {
@@ -178,9 +220,27 @@ async function preDraft(): Promise<void> {
       feeIfLostCents: 0,
     };
     const decision = await decideFor({ decideUrl }, row, precedents, o);
-    const d = await drafts.get(toView(row), decision, precedents, o);
+    const d = await drafts.get(
+      await viewOf(store, row),
+      decision,
+      precedents,
+      o,
+    );
+    if (d.source === "llm") ok.add(row.dispute_id);
     return d.source === "llm"; // gateway down: stop instead of waiting out every timeout
   });
+  const failed = new Set(
+    rows.filter((r) => !ok.has(r.dispute_id)).map((r) => r.dispute_id),
+  );
+  // one retry of what fell back
+  if (failed.size && !only)
+    setTimeout(
+      () =>
+        void preDraft(failed).catch((e) =>
+          log({ msg: "redraft failed", error: String(e) }),
+        ),
+      30_000,
+    ).unref();
 }
 
 async function runSync(): Promise<number> {
@@ -193,7 +253,7 @@ async function runSync(): Promise<number> {
     syncState.cases = n;
     log({ msg: "sync ok", cases: n });
     void warmDecisions()
-      .then(preDraft)
+      .then(() => preDraft())
       .catch((e) => log({ msg: "warm failed", error: String(e) }));
     return n;
   } catch (e) {
@@ -225,6 +285,11 @@ async function boot(): Promise<void> {
     }
   }
   ready = true;
+  // pre-drafting starts at startup even when the first syncs failed and the index is from before
+  if (!syncState.lastOk)
+    void warmDecisions()
+      .then(() => preDraft())
+      .catch((e) => log({ msg: "warm failed", error: String(e) }));
 }
 void boot();
 
@@ -287,6 +352,33 @@ const dollarsToCents = (v: string | null): number | undefined => {
   return n === undefined ? undefined : Math.round(n * 100);
 };
 
+function parseAdded(v: unknown): Added[] {
+  if (v === undefined) return [];
+  if (!Array.isArray(v) || v.length > 10)
+    throw new HttpError(
+      400,
+      "bad_request",
+      "added must be a list of at most 10 entries",
+    );
+  return v.map((x) => {
+    const e = (x ?? {}) as Record<string, unknown>;
+    if (
+      typeof e["item"] !== "string" ||
+      typeof e["note"] !== "string" ||
+      !e["item"].trim() ||
+      !e["note"].trim() ||
+      e["item"].length > 120 ||
+      e["note"].length > 2000
+    )
+      throw new HttpError(
+        400,
+        "bad_request",
+        "each added entry needs an item (up to 120 characters) and a note (up to 2000)",
+      );
+    return { item: e["item"].trim(), note: e["note"].trim() };
+  });
+}
+
 async function loadRow(id: string) {
   const row = await store.get(id);
   if (!row)
@@ -311,10 +403,7 @@ async function route(
       status: 200,
       body: {
         paypalEnv: paypal.target.env,
-        llm: {
-          online: await llmOnline(),
-          label: (await llmOnline()) ? `AI (${llm.model})` : "offline fallback",
-        },
+        llm: await llmStatus(),
         cases: await store.count().catch(() => null),
         decide: { url: decideUrl, reachable: await decideReachable() },
         search: "Postgres full-text",
@@ -331,8 +420,13 @@ async function route(
   if (m === "GET" && p === "/api/cases") {
     const rows = await store.list();
     const now = Date.now();
-    const open = (r: { status: string }) =>
-      r.status === "WAITING_FOR_SELLER_RESPONSE" || r.status === "OPEN";
+    const open = waiting;
+    // never leave a waiting case without a call while decide is reachable
+    await runPool(
+      rows.filter((r) => waiting(r) && !decisionCache.has(r.dispute_id)),
+      4,
+      async (r) => (await ensureDecision(r), true),
+    );
     const views = rows.map((r) => toView(r, now));
     const currency =
       [
@@ -372,6 +466,7 @@ async function route(
             buyer: v.buyer,
             item: v.items[0]?.item_description ?? null,
             item_quantity: v.items[0]?.item_quantity ?? null,
+            items: v.items,
             due_at: v.due_at,
             days_left: v.days_left,
             evidence_on_file: v.evidence_on_file,
@@ -390,7 +485,7 @@ async function route(
       body: { engine: "Postgres full-text", q, hits: await store.search(q) },
     };
   }
-  const a = /^\/api\/cases\/([^/]+)\/(analysis|evidence|accept)$/.exec(p);
+  const a = /^\/api\/cases\/([^/]+)\/(analysis|evidence|accept|draft)$/.exec(p);
   if (a) {
     const id = decodeURIComponent(a[1]!);
     if (m === "GET" && a[2] === "analysis") {
@@ -424,6 +519,27 @@ async function route(
           marginal: out.decision.marginal,
         });
       return { status: 200, body: out };
+    }
+    if (m === "POST" && a[2] === "draft") {
+      // writes nothing to PayPal, so no confirm
+      const b = await readJson(req);
+      const added = parseAdded(b["added"]);
+      const row = await loadRow(id);
+      const precedents = await findPrecedents(store, row);
+      const o = {
+        prior: null,
+        handlingCostCents: DEFAULT_HANDLING_CENTS,
+        feeIfLostCents: 0,
+      };
+      const decision = await decideFor({ decideUrl }, row, precedents, o);
+      const draft = await drafts.get(
+        await viewOf(store, row),
+        decision,
+        precedents,
+        o,
+        added,
+      );
+      return { status: 200, body: { draft } };
     }
     if (m === "POST" && (a[2] === "evidence" || a[2] === "accept")) {
       const b = await readJson(
