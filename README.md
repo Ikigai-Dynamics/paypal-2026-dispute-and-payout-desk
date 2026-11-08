@@ -132,7 +132,7 @@ seller messages, item descriptions and evidence notes. **Elastic is not used.** 
 
 ## Demo script (2-3 minutes)
 
-Before recording, run `nix run .#demo-reset`. It reloads the shared dataset into the mock and syncs the desk. The three
+Before recording or judging, run `nix run .#demo-reset` (there is no reset button in the page). It reloads the shared dataset into the mock and syncs the desk. The three
 narrated cases are Sofia Lindqvist (gift card not received, USD 100), Marcus Bell (unauthorised big chargeback, USD 1,317)
 and Priya Nair (duplicate charge, USD 164). `nix run .#e2e` submits evidence on Marcus Bell's case and accepts Priya
 Nair's, so run `demo-reset` again after it.

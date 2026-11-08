@@ -87,6 +87,8 @@ export interface DecideRequest {
 
 export interface ChecklistItem {
   item: string;
+  /** exactly one item per reason must be supplied before the response can go */
+  required: boolean;
   status: "present" | "missing";
   why: string;
   /** set only on missing items the desk holds real data for */
