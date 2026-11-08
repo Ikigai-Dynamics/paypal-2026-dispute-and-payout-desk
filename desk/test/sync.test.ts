@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { Dispute } from "@jeirslab/paypal-client/types";
-import { buildSearchText, toCents, toRow } from "../src/sync.js";
+import {
+  buildSearchText,
+  parseExtra,
+  toCents,
+  toRow,
+  ValidationError,
+} from "../src/sync.js";
+import { clear, list, record } from "../src/activity.js";
 import { toPrecedent, topTermsQuery, toView } from "../src/analysis.js";
 
 const dispute: Dispute = {
@@ -94,5 +101,39 @@ describe("precedents", () => {
     const v = toView(toRow(dispute), Date.parse("2026-11-06T00:00:00Z"));
     assert.equal(v.days_left, 5);
     assert.equal(v.items[0]?.item_description, "Hardware kit");
+  });
+});
+
+describe("evidence validation", () => {
+  const ev = { item: "Tracking", evidence_type: "OTHER", notes: "n" };
+  const file = { name: "a.png", content_type: "image/png", data_base64: "AAAA" };
+  it("accepts a good payload and nothing", () => {
+    assert.equal(parseExtra({}), undefined);
+    const x = parseExtra({
+      evidence: [{ ...ev, tracking: { carrier: "UPS", number: "1Z 9-9" } }],
+      files: [file],
+    });
+    assert.equal(x?.evidence[0]?.tracking?.number, "1Z 9-9");
+    assert.equal(x?.files.length, 1);
+  });
+  it("rejects a bad content type, too many items, bad tracking, slashes", () => {
+    const no = (b: Record<string, unknown>) =>
+      assert.throws(() => parseExtra(b), ValidationError);
+    no({ files: [{ ...file, content_type: "text/html" }] });
+    no({ evidence: Array(6).fill(ev) });
+    no({ evidence: [{ ...ev, tracking: { carrier: "UPS", number: "1;2" } }] });
+    no({ files: [{ ...file, name: "a/b.png" }] });
+    no({ files: [{ ...file, data_base64: "" }] });
+  });
+});
+
+describe("paypal activity log", () => {
+  it("keeps the last 50, newest first", () => {
+    clear();
+    for (let i = 0; i < 60; i++)
+      record({ method: "GET", path: `/${i}`, status: 200, ms: 1 });
+    assert.equal(list(100).length, 50);
+    assert.equal(list(20)[0]?.path, "/59");
+    assert.equal(list(20).length, 20);
   });
 });
