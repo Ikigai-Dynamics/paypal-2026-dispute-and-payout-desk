@@ -46,6 +46,16 @@ const REASONS = {
   UNAUTHORISED: "Unauthorised",
   DUPLICATE_TRANSACTION: "Duplicate charge",
   CREDIT_NOT_PROCESSED: "Refund not processed",
+  OTHER: "Other: the buyer did not say what is wrong",
+  PROBLEM_WITH_REMITTANCE: "Payment didn't arrive as expected",
+  PAYMENT_BY_OTHER_MEANS: "Buyer says they paid another way",
+  CANCELED_RECURRING_BILLING: "Buyer says they cancelled before this charge",
+};
+// short names for the panel title; the plain sentence goes in the subtitle
+const REASON_SHORT = {
+  OTHER: "Other",
+  PROBLEM_WITH_REMITTANCE: "Payment problem",
+  PAYMENT_BY_OTHER_MEANS: "Paid another way",
   CANCELED_RECURRING_BILLING: "Cancelled subscription",
 };
 const sentence = (s) => {
@@ -55,6 +65,7 @@ const sentence = (s) => {
   return t.charAt(0).toUpperCase() + t.slice(1);
 };
 const reasonWords = (r) => REASONS[r] ?? sentence(r);
+const reasonShort = (r) => REASON_SHORT[r] ?? reasonWords(r);
 const needsResponse = (c) =>
   c.status === "WAITING_FOR_SELLER_RESPONSE" || c.status === "OPEN";
 const statusWords = (c) => {
@@ -102,11 +113,14 @@ const dateLong = (iso) =>
     month: "short",
     day: "numeric",
   });
+// calendar days in the browser's timezone, so the label does not depend on the time of day
+const dayDiff = (iso) => {
+  const mid = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  return Math.round((mid(new Date(iso)) - mid(new Date())) / DAY);
+};
 const inDays = (iso) => {
-  const d = (Date.parse(iso) - Date.now()) / DAY;
-  if (d < 0) return "overdue";
-  const n = Math.ceil(d);
-  return `in ${n} day${n === 1 ? "" : "s"}`;
+  const n = dayDiff(iso);
+  return n < 0 ? "overdue" : n === 0 ? "today" : n === 1 ? "tomorrow" : `in ${n} days`;
 };
 
 let gridApi;
@@ -117,6 +131,11 @@ let added = new Map(); // checklist item -> evidence held until submit
 let fightAnyway = false;
 let sent = null; // success message once a write went through
 let sentText = null; // the response text that went to PayPal
+let sentKind = null; // "evidence" or "accept" once a write went through
+let sentEvidence = []; // evidence that went with the response
+let storeKey = null; // localStorage key of the unsent work on this case
+let pinUntil = 0; // the footer shows the write until then
+let pinText = "";
 let summary = null;
 let pending = null; // action waiting on the in-page confirm
 
@@ -225,7 +244,7 @@ const needing = () =>
   allCases.filter((c) => needsResponse(c) && !missedDeadline(c)).sort(byDue);
 const missedList = () => allCases.filter(missedDeadline).sort(byDue);
 const dueSoon = (c) =>
-  !!c.due_at && Math.ceil((Date.parse(c.due_at) - Date.now()) / DAY) <= 3;
+  !!c.due_at && dayDiff(c.due_at) <= 3;
 const orderText = (c) => {
   const it = c.items?.length
     ? c.items
@@ -330,7 +349,7 @@ function renderTimeline(cases) {
     m.className = `marker ${r.kind}${dueSoon(c) ? " soon" : ""}`;
     m.style.left = `${left}%`;
     m.style.top = `${40 - (lane % 3) * 14}px`;
-    m.title = `${c.buyer} · ${money(c.amount_cents, c.currency)} · due ${dateShort(c.due_at)} · ${r.label}`;
+    m.title = `${c.buyer} · ${money(c.amount_cents, c.currency)} · due ${dateShort(c.due_at)} (${inDays(c.due_at)}) · ${r.label}`;
     m.onclick = () => openCase(c.dispute_id);
     el.appendChild(m);
   }
@@ -372,6 +391,10 @@ async function loadCase(id) {
   fightAnyway = false;
   sent = null;
   sentText = null;
+  sentKind = null;
+  sentEvidence = [];
+  storeKey = null;
+  $("math").open = false;
   drafting = false;
   draftSeq++;
   $("draft-note").hidden = true;
@@ -428,13 +451,14 @@ function recSentence(d, c, cost) {
   const cur = c.currency;
   const A = c.amount_cents;
   const cc = money(cost * 100, cur, true);
+  const few = d.n < 3;
   const basis =
-    d.n > 0
+    d.n > 0 && !few
       ? ` (based on ${d.n} similar past case${d.n === 1 ? "" : "s"})`
       : "";
   if (d.call === "fight")
-    return `You have a ${pct(d.p)}% chance of keeping ${money(A, cur)}${basis}. Fighting costs about ${cc}; if you lose, you refund what you would refund anyway.`;
-  return `Only a ${pct(d.p)}% chance of keeping ${money(A, cur)}${basis}, so fighting (about ${cc}) is unlikely to pay off. Refund it and close the case.`;
+    return `${few ? `Rough estimate (few similar past cases): about ${pct(d.p)}% chance of keeping ${money(A, cur)}.` : `You have a ${pct(d.p)}% chance of keeping ${money(A, cur)}${basis}.`} Fighting costs about ${cc}; if you lose, you refund what you would refund anyway.`;
+  return `${few ? `Rough estimate (few similar past cases): about ${pct(d.p)}% chance of keeping ${money(A, cur)}` : `Only a ${pct(d.p)}% chance of keeping ${money(A, cur)}${basis}`}, so fighting (about ${cc}) is unlikely to pay off. Refund it and close the case.`;
 }
 const unbracket = (t) => String(t ?? "").replace(/[[\]]/g, "");
 // seller messages may join several points with "; "
@@ -447,9 +471,13 @@ function renderAnalysis(a, fresh) {
   const c = a.case;
   const amt = money(c.amount_cents, c.currency);
   $("panel-title").textContent =
-    `${c.buyer} · ${reasonWords(c.reason)} · ${amt}`;
+    `${c.buyer} · ${reasonShort(c.reason)} · ${amt}`;
   const upd = Date.parse(c.updated_at);
+  if (fresh && !sent) restore(c);
   const rb = needsResponse(c) ? buyerOpen(c.buyer) : 0;
+  const reviewing = c.status === "UNDER_REVIEW" || sentKind === "evidence";
+  const refunded = sentKind === "accept" || c.outcome === "RESOLVED_BUYER_FAVOUR";
+  const done = reviewing || refunded;
   const status =
     c.status === "UNDER_REVIEW" && upd
       ? `Response sent ${dateShort(upd)} · PayPal usually decides by about ${dateShort(upd + 30 * DAY)}`
@@ -458,10 +486,10 @@ function renderAnalysis(a, fresh) {
         : c.due_at
           ? `Response due ${dateShort(c.due_at)} (${inDays(c.due_at)}) · ${statusWords(c)}`
           : statusWords(c);
-  $("panel-sub").textContent = status;
+  $("panel-sub").textContent = (REASON_SHORT[c.reason] ? `${REASONS[c.reason]} · ` : "") + status;
   $("repeat").hidden = rb < 2;
   $("repeat").textContent =
-    `${c.buyer} has ${rb} open disputes with you, a pattern PayPal reviewers look at.`;
+    `${c.buyer} has ${rb} open disputes with you. Repeat claims from one buyer are worth noting in your response; PayPal reviewers see the pattern too.`;
   $("caseref").textContent = `Case reference: ${c.dispute_id}`;
   const draftText = (a.draft?.response ?? "").trim();
   const isSellerText = (n) =>
@@ -476,17 +504,28 @@ function renderAnalysis(a, fresh) {
   const hidden = c.evidences.find(
     (e) => e.evidence_type === "OTHER" && isSellerText(e.notes),
   );
+  const noteSet = new Set(
+    [...c.evidences.map((e) => e.notes), ...sentEvidence.map((e) => e.notes)]
+      .map((n) => String(n ?? "").trim())
+      .filter(Boolean),
+  );
+  const respText = (sentText ?? hidden?.notes ?? "").trim();
+  const isNote = (l) => [...noteSet].some((n) => n === l || n.includes(l) || l.includes(n));
+  const sellerLines = (m) => {
+    const ls = lines(m.content).filter(
+      (l) => !(done && (l.trim() === respText || noteSet.has(l.trim()))),
+    );
+    return ls.map((l, i) => {
+      const tag = done && isNote(l.trim()) ? "Evidence: " : i === 0 ? "You: " : "";
+      return `<div class="msg">${tag ? `<b>${tag.replace(": ", "")}</b>: ` : ""}${esc(l)}</div>`;
+    });
+  };
   $("messages").innerHTML =
     c.messages
       .map((m) =>
         m.posted_by === "BUYER"
           ? `<div class="msg"><b>Buyer</b>: ${esc(m.content)}</div>`
-          : lines(m.content)
-              .map(
-                (l, i) =>
-                  `<div class="msg">${i ? "" : "<b>You</b>: "}${esc(l)}</div>`,
-              )
-              .join(""),
+          : sellerLines(m).join(""),
       )
       .join("") || '<p class="muted">No messages.</p>';
   $("items").innerHTML =
@@ -496,15 +535,7 @@ function renderAnalysis(a, fresh) {
           `<div class="msg">${esc(i.item_quantity)} × ${esc(i.item_description)}</div>`,
       )
       .join("") || '<p class="muted">No items listed.</p>';
-  $("evidence").innerHTML =
-    evs
-      .map((e) => {
-        const t = (e.evidence_info?.tracking_info ?? [])
-          .map((x) => `${x.carrier_name} ${x.tracking_number}`)
-          .join(", ");
-        return `<div class="msg">${t ? `<b>${esc(t)}</b> ` : ""}${esc(e.notes ?? "")}</div>`;
-      })
-      .join("") || '<p class="muted">Nothing yet</p>';
+  evsOnFile = evs;
   onFile = evs.length;
   const shownText = sentText ?? (hidden ? hidden.notes : null);
   $("sent-block").hidden = !shownText;
@@ -515,7 +546,14 @@ function renderAnalysis(a, fresh) {
   const d = a.decision;
   const r = d ? rec(d.call, d.marginal) : null;
   const box = $("rec");
-  if (d) {
+  $("math").hidden = done;
+  if (done) {
+    const when = dateShort((upd || Date.now()) + 30 * DAY);
+    box.className = "rec neutral";
+    box.innerHTML = refunded
+      ? '<div class="word">Refunded and closed</div>'
+      : `<div class="word">Response sent — waiting for PayPal</div><div>PayPal usually decides by about ${esc(when)}</div>`;
+  } else if (d) {
     const cost = Number($("in-c").value) || 15;
     box.className = `rec ${r.kind}`;
     box.innerHTML = `<div class="word">${d.marginal ? `Close call: ${d.call}` : d.call === "fight" ? "Fight" : "Accept"}</div><div>${esc(recSentence(d, c, cost))}</div>`;
@@ -532,7 +570,7 @@ function renderAnalysis(a, fresh) {
       .map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`)
       .join("");
     $("p0line").textContent =
-      `Starting estimate for this kind of dispute: ${pct(d.p0)}% (an assumption, not PayPal data)`;
+      `Typical win rate for ${reasonWords(c.reason).toLowerCase()} claims: ${pct(d.p0)}%`;
   } else {
     box.className = "rec";
     box.innerHTML =
@@ -546,10 +584,11 @@ function renderAnalysis(a, fresh) {
     : '<p class="muted">No similar resolved cases yet.</p>';
 
   const dr = a.draft;
-  if (fresh || !$("draft").value) $("draft").value = dr.response;
+  if (fresh && restoredDraft) $("draft").value = restoredDraft;
+  else if (fresh || !$("draft").value) $("draft").value = dr.response;
   const b = $("badge");
   const ai = dr.source === "llm";
-  b.textContent = ai ? "AI draft" : "Template draft";
+  b.textContent = ai ? (fresh && restoredDraft && added.size ? "AI draft, updated with your evidence" : "AI draft") : "Template draft";
   b.className = "pill " + (ai ? "green" : "grey");
   if (ai) setAi(true);
   $("explanation").textContent = dr.explanation ?? "";
@@ -557,6 +596,44 @@ function renderAnalysis(a, fresh) {
   renderActions();
 }
 let onFile = 0;
+let evsOnFile = [];
+function renderEvidence() {
+  const row = (e, mine) => {
+    const t = (e.evidence_info?.tracking_info ?? [])
+      .map((x) => `${x.carrier_name} ${x.tracking_number}`)
+      .join(", ");
+    const lead = mine ? e.item : t;
+    return `<div class="msg">${lead ? `<b>${esc(lead)}</b> ` : ""}${esc(e.notes ?? "")}${mine ? '<div class="muted mine">Added by you · will be sent with your response</div>' : ""}</div>`;
+  };
+  const have = new Set(evsOnFile.map((e) => String(e.notes ?? "").trim()));
+  const sentRows = sentEvidence.filter((e) => !have.has(String(e.notes ?? "").trim()));
+  const html =
+    evsOnFile.map((e) => row(e, false)).join("") +
+    sentRows.map((e) => row({ ...e, item: "" }, false)).join("") +
+    [...added.values()].map((e) => row(e, true)).join("");
+  $("evidence").innerHTML = html || '<p class="muted">Nothing yet</p>';
+}
+
+// unsent work survives a reload; keyed by the case version so a changed case starts clean
+const store = {
+  get: () => { try { return JSON.parse(localStorage.getItem(storeKey) ?? "null"); } catch { return null; } },
+  set: (v) => { try { localStorage.setItem(storeKey, JSON.stringify(v)); } catch {} },
+  clear: () => { try { localStorage.removeItem(storeKey); } catch {} },
+};
+let restoredDraft = null;
+function restore(c) {
+  storeKey = `dpd:${c.dispute_id}:${c.updated_at}`;
+  restoredDraft = null;
+  const v = store.get();
+  if (!v) return;
+  if (Array.isArray(v.added)) added = new Map(v.added);
+  if (typeof v.draft === "string" && v.draft.trim()) restoredDraft = v.draft;
+}
+function persist() {
+  if (!storeKey || sent) return;
+  if (!added.size && !restoredDraft) return store.clear();
+  store.set({ added: [...added.entries()], draft: $("draft").value });
+}
 
 const canAct = () =>
   currentAnalysis && needsResponse(currentAnalysis.case) && !sent;
@@ -564,11 +641,16 @@ const isFight = () =>
   !currentAnalysis.decision ||
   currentAnalysis.decision.call === "fight" ||
   fightAnyway;
+const required = (i) => i.required !== false; // old servers send no flag
 const missing = () =>
-  currentAnalysis.draft.checklist.filter((i) => i.status === "missing");
+  currentAnalysis.draft.checklist.filter(
+    (i) => i.status === "missing" && required(i),
+  );
 const stillMissing = () => missing().filter((i) => !added.has(i.item));
 
 function renderChecklist() {
+  renderEvidence();
+  persist();
   const a = currentAnalysis;
   const list = a.draft.checklist;
   $("fightbox").hidden = !(isFight() && needsResponse(a.case));
@@ -579,8 +661,8 @@ function renderChecklist() {
   else {
     cc.hidden = false;
     cc.textContent = miss
-      ? `${miss} of ${k} items missing`
-      : `All ${k} items ready`;
+      ? `${miss} required item${miss === 1 ? "" : "s"} missing`
+      : "Ready to submit";
     cc.className = "pill " + (miss ? "red" : "green");
   }
   const ul = $("checklist");
@@ -590,7 +672,7 @@ function renderChecklist() {
     const ok = i.status !== "missing";
     const ad = added.get(i.item);
     li.className = ok || ad ? "ok" : "no";
-    li.innerHTML = `<span class="ico">${ok || ad ? "✓" : "✗"}</span><b>${esc(i.item)}</b><span class="why">${ad ? "Added, will be sent with your response" : esc(i.why)}</span>`;
+    li.innerHTML = `<span class="ico">${ok || ad ? "✓" : "✗"}</span><b>${esc(i.item)}</b><span class="pill ${required(i) ? "amber" : "grey"}">${required(i) ? "Required" : "Recommended"}</span><span class="why">${ad ? "Added, will be sent with your response" : esc(i.why)}</span>`;
     if (ad) li.querySelector(".why").style.color = "var(--green)";
     if (ad) {
       const u = document.createElement("a");
@@ -778,7 +860,7 @@ function renderActions() {
   hint.className = "muted";
   hint.textContent = drafting
     ? "Updating the draft…"
-    : "Add the missing evidence to submit";
+    : "Add the required evidence to submit";
   hint.hidden = !left && !drafting;
   const accept = document.createElement("button");
   accept.textContent = `Accept and refund ${amt}`;
@@ -852,11 +934,24 @@ async function run(kind) {
     kind === "evidence"
       ? "Sent to PayPal. The case is now under review — PayPal usually decides within 30 days."
       : "Refund sent. Case resolved in the buyer's favour.";
-  if (kind === "evidence") sentText = body.text;
-  loadActivity();
+  if (kind === "evidence") {
+    sentText = body.text;
+    sentEvidence = [...added.values()].map(({ file, ...e }) => e);
+  }
+  sentKind = kind;
+  sent = msg;
+  store.clear();
+  added = new Map();
+  await loadActivity();
+  const w = calls.find((x) => x.method === "POST" && x.status < 300);
+  if (w) {
+    pinText = `Sent to PayPal: ${w.method} ${shortPath(w.path)} · ${w.status}`;
+    pinUntil = Date.now() + 30000;
+    renderActivity();
+    setTimeout(renderActivity, 30100);
+  }
   await loadCases().catch(() => {});
   await recompute(true);
-  sent = msg;
   $("action-result").innerHTML = `<div class="okbox">${esc(msg)}</div>`;
   renderChecklist();
   renderActions();
@@ -895,9 +990,13 @@ const ago = (iso) => {
 const shortPath = (p) => String(p).replace(/(\/disputes\/)[^/]+/, "$1…");
 function renderActivity() {
   const x = calls[0];
-  $("act-last").textContent = x
-    ? `Last PayPal call: ${x.method} ${shortPath(x.path)} · ${x.status} · ${x.ms} ms · ${ago(x.at)}`
-    : "PayPal calls: none yet";
+  const dot = (st) => `<i class="dot ${st < 300 ? "ok" : st < 400 ? "" : "bad"}"></i>`;
+  $("act-last").innerHTML =
+    Date.now() < pinUntil
+      ? `${dot(200)}${esc(pinText)}`
+      : x
+        ? `${dot(x.status)}Last PayPal call: ${esc(x.method)} ${esc(shortPath(x.path))} · ${esc(x.status)} · ${esc(x.ms)} ms · ${esc(ago(x.at))}`
+        : "PayPal calls: none yet";
   $("activity-list").innerHTML = calls
     .slice(0, 20)
     .map(
@@ -949,6 +1048,7 @@ async function init() {
     if (!e.target.value.trim()) $("results").hidden = true;
   };
   $("recompute").onclick = () => recompute(false);
+  $("draft").oninput = () => ((restoredDraft = $("draft").value), persist());
   $("start").onclick = startUrgent;
   $("close-panel").onclick = closeCase;
   $("confirm-ok").onclick = () => run(pending);
