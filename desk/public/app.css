@@ -107,3 +107,6 @@ textarea.dim { opacity: .5; }
 .rec.neutral { background: #f0f3f8; border: 1px solid #c3cad4; color: #1b2430; }
 .checklist .pill { font-size: 11px; }
 .evidence .mine, #evidence .mine { color: var(--green); font-size: 12px; }
+textarea.flagged { outline: 2px solid #c0392b; }
+.claim { margin: 8px 0; }
+.claim blockquote { margin: 0 0 4px; padding: 6px 10px; background: #fdecea; border-left: 4px solid #c0392b; font-weight: 400; }

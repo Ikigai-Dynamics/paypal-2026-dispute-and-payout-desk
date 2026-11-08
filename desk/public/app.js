@@ -139,7 +139,15 @@ let sent = null; // success message once a write went through
 let sentText = null; // the response text that went to PayPal
 let sentKind = null; // "evidence" or "accept" once a write went through
 let sentEvidence = []; // evidence that went with the response
-let storeKey = null; // localStorage key of the unsent work on this case
+let work = null; // the server-saved work on this case
+let editedLocal = false;
+let draftAi = false;
+let draftLabel = null;
+let vouched = [];
+let claims = []; // unsupported sentences the server found: {sentence, reason, ok}
+let baseConfirm = "";
+let saveTimer = null;
+let saveChain = Promise.resolve();
 let pinUntil = 0; // the footer shows the write until then
 let pinText = "";
 let summary = null;
@@ -229,7 +237,7 @@ async function loadCases() {
   gridApi.setGridOption("rowData", allCases);
   const sm = summary;
   $("all-sum").textContent = sm
-    ? `All cases (${sm.total}): ${sm.needs_response} need a response, ${sm.under_review} under review, ${sm.closed} closed`
+    ? `All cases (${sm.total}): ${buckets(sm).map(([n, l]) => `${n} ${l}`).join(", ")}`
     : `All cases (${allCases.length})`;
   renderSituation();
   renderCards();
@@ -263,6 +271,24 @@ const orderText = (c) => {
 };
 const buyerOpen = (name) => needing().filter((c) => c.buyer === name).length;
 
+// every bucket of the summary, so the numbers add up to the total
+const KNOWN = ["total", "needs_response", "under_review", "closed"];
+function buckets(sm) {
+  const out = [
+    [sm.needs_response, "need your response"],
+    [sm.under_review, "under review"],
+    [sm.closed, "closed"],
+  ];
+  let sum = KNOWN.slice(1).reduce((t, k) => t + (sm[k] ?? 0), 0);
+  for (const [k, v] of Object.entries(sm)) {
+    if (KNOWN.includes(k) || typeof v !== "number" || /cents|soon/.test(k))
+      continue;
+    out.push([v, k === "waiting_on_buyer" ? "waiting on the buyer" : sentence(k).toLowerCase()]);
+    sum += v;
+  }
+  if (sm.total > sum) out.push([sm.total - sum, "in other states"]);
+  return out.filter(([n]) => n > 0);
+}
 function renderSituation() {
   const n = needing();
   const soon = n.filter(dueSoon).length;
@@ -275,11 +301,14 @@ function renderSituation() {
   const a = n.filter((c) => rec(c.call).base === "accept").length;
   const need = sm?.needs_response ?? n.length;
   $("situation").textContent =
-    `${sm ? `${sm.total} disputes this month: ` : ""}${need} need${sm || need !== 1 ? "" : "s"} your response · ${soon} due in the next 3 days · ${money(stake, cur)} at stake · Recommended: fight ${f}, accept ${a}`;
+    `${sm ? `${sm.total} disputes this month: ${buckets(sm).map(([n, l]) => `${n} ${l}`).join(", ")}` : `${need} need${need !== 1 ? "" : "s"} your response`} · ${soon} due in the next 3 days · ${money(stake, cur)} at stake · Recommended: fight ${f}, accept ${a}`;
   $("holds").hidden = !stake;
   $("holds").textContent =
     `PayPal holds ${money(stake, cur)} of your payouts until these are settled.`;
   $("start").disabled = !n.length;
+  $("start").textContent = urgentCase()
+    ? "Fight the most urgent dispute"
+    : "Start with the most urgent case";
 }
 
 let showAll = false;
@@ -398,13 +427,20 @@ async function loadCase(id) {
   sentText = null;
   sentKind = null;
   sentEvidence = [];
-  storeKey = null;
+  work = null;
+  editedLocal = false;
+  draftLabel = null;
+  vouched = [];
+  claims = [];
+  clearTimeout(saveTimer);
   $("math").open = false;
   drafting = false;
   draftSeq++;
   $("draft-note").hidden = true;
   $("draft").classList.remove("dim");
   hideConfirm();
+  $("claim-note").hidden = true;
+  $("draft").classList.remove("flagged");
   $("panel").hidden = false;
   $("panel-title").textContent = "Loading...";
   $("panel-sub").textContent = "";
@@ -478,7 +514,7 @@ function renderAnalysis(a, fresh) {
   $("panel-title").textContent =
     `${c.buyer} · ${reasonShort(c.reason)} · ${amt}`;
   const upd = Date.parse(c.updated_at);
-  if (fresh && !sent) restore(c);
+  if (fresh) applyWork(a);
   const rb = needsResponse(c) ? buyerOpen(c.buyer) : 0;
   const reviewing = c.status === "UNDER_REVIEW" || sentKind === "evidence";
   const refunded =
@@ -486,7 +522,7 @@ function renderAnalysis(a, fresh) {
   const done = reviewing || refunded;
   const status =
     c.status === "UNDER_REVIEW" && upd
-      ? `Response sent ${dateShort(upd)} · PayPal usually decides by about ${dateShort(upd + 30 * DAY)}`
+      ? "Under review"
       : c.status === "RESOLVED" || c.outcome
         ? `Closed ${upd ? dateShort(upd) : ""} · ${c.outcome === "RESOLVED_SELLER_FAVOUR" ? "Decided for you" : c.outcome === "RESOLVED_BUYER_FAVOUR" ? "Decided for the buyer" : "Resolved"}`
         : c.due_at
@@ -497,7 +533,6 @@ function renderAnalysis(a, fresh) {
   $("repeat").hidden = rb < 2;
   $("repeat").textContent =
     `${c.buyer} has ${rb} open disputes with you. Repeat claims from one buyer are worth noting in your response; PayPal reviewers see the pattern too.`;
-  $("caseref").textContent = `Case reference: ${c.dispute_id}`;
   const draftText = (a.draft?.response ?? "").trim();
   const isSellerText = (n) =>
     n &&
@@ -556,6 +591,7 @@ function renderAnalysis(a, fresh) {
   const r = d ? rec(d.call, d.marginal) : null;
   const box = $("rec");
   $("math").hidden = done;
+  box.hidden = done && !!$("action-result").textContent;
   if (done) {
     const when = dateShort((upd || Date.now()) + 30 * DAY);
     box.className = "rec neutral";
@@ -593,20 +629,61 @@ function renderAnalysis(a, fresh) {
     : '<p class="muted">No similar resolved cases yet.</p>';
 
   const dr = a.draft;
-  if (fresh && restoredDraft) $("draft").value = restoredDraft;
+  if (fresh && work?.draft_text) $("draft").value = work.draft_text;
   else if (fresh || !$("draft").value) $("draft").value = dr.response;
-  const b = $("badge");
-  const ai = dr.source === "llm";
-  b.textContent = ai
-    ? fresh && restoredDraft && added.size
-      ? "AI draft, updated with your evidence"
-      : "AI draft"
-    : "Template draft";
-  b.className = "pill " + (ai ? "green" : "grey");
-  if (ai) setAi(true);
+  draftAi = dr.source === "llm";
+  if (fresh) draftLabel = work?.draft_label ?? null;
+  setBadge();
+  if (draftAi) setAi(true);
   $("explanation").textContent = dr.explanation ?? "";
   renderChecklist();
   renderActions();
+}
+function setBadge() {
+  const b = $("badge");
+  b.textContent = editedLocal
+    ? draftAi
+      ? "AI draft, edited by you"
+      : "Draft, edited by you"
+    : (draftLabel ?? (draftAi ? "AI draft" : "Template draft"));
+  b.className = "pill " + (draftAi ? "green" : "grey");
+}
+function applyWork(a) {
+  work = a.work ?? null;
+  added = new Map((work?.added ?? []).map((e) => [e.item, e]));
+  editedLocal = !!work?.edited;
+  if (a.sent) {
+    sentText = a.sent.text ?? sentText;
+    sentEvidence = a.sent.added ?? [];
+    vouched = a.sent.vouched ?? [];
+  }
+}
+// the server keeps the unsent work, so a reload or another browser sees it
+function saveWork(delay = 0) {
+  if (!current || sent || !currentAnalysis || !needsResponse(currentAnalysis.case))
+    return;
+  clearTimeout(saveTimer);
+  const id = current;
+  saveTimer = setTimeout(() => {
+    const body = JSON.stringify({
+      added: [...added.values()].map(({ file, ...e }) => e),
+      text: $("draft").value,
+      edited: editedLocal,
+    });
+    saveChain = saveChain.then(async () => {
+      try {
+        const r = await api(`/api/cases/${encodeURIComponent(id)}/work`, {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body,
+        });
+        if (id === current && r?.draft_label && !editedLocal) {
+          draftLabel = r.draft_label;
+          setBadge();
+        }
+      } catch {} // old server: nothing to save to
+    });
+  }, delay);
 }
 let onFile = 0;
 let evsOnFile = [];
@@ -615,7 +692,7 @@ function renderEvidence() {
     const t = (e.evidence_info?.tracking_info ?? [])
       .map((x) => `${x.carrier_name} ${x.tracking_number}`)
       .join(", ");
-    const lead = mine ? e.item : t;
+    const lead = mine ? e.item : t || e.item;
     return `<div class="msg">${lead ? `<b>${esc(lead)}</b> ` : ""}${esc(e.notes ?? "")}${mine ? '<div class="muted mine">Added by you · will be sent with your response</div>' : ""}</div>`;
   };
   const have = new Set(evsOnFile.map((e) => String(e.notes ?? "").trim()));
@@ -624,44 +701,10 @@ function renderEvidence() {
   );
   const html =
     evsOnFile.map((e) => row(e, false)).join("") +
-    sentRows.map((e) => row({ ...e, item: "" }, false)).join("") +
+    sentRows.map((e) => row(e, false)).join("") +
+    vouched.map((v) => `<div class="msg"><b>You confirmed:</b> ${esc(v)}</div>`).join("") +
     [...added.values()].map((e) => row(e, true)).join("");
   $("evidence").innerHTML = html || '<p class="muted">Nothing yet</p>';
-}
-
-// unsent work survives a reload; keyed by the case version so a changed case starts clean
-const store = {
-  get: () => {
-    try {
-      return JSON.parse(localStorage.getItem(storeKey) ?? "null");
-    } catch {
-      return null;
-    }
-  },
-  set: (v) => {
-    try {
-      localStorage.setItem(storeKey, JSON.stringify(v));
-    } catch {}
-  },
-  clear: () => {
-    try {
-      localStorage.removeItem(storeKey);
-    } catch {}
-  },
-};
-let restoredDraft = null;
-function restore(c) {
-  storeKey = `dpd:${c.dispute_id}:${c.updated_at}`;
-  restoredDraft = null;
-  const v = store.get();
-  if (!v) return;
-  if (Array.isArray(v.added)) added = new Map(v.added);
-  if (typeof v.draft === "string" && v.draft.trim()) restoredDraft = v.draft;
-}
-function persist() {
-  if (!storeKey || sent) return;
-  if (!added.size && !restoredDraft) return store.clear();
-  store.set({ added: [...added.entries()], draft: $("draft").value });
 }
 
 const canAct = () =>
@@ -679,7 +722,6 @@ const stillMissing = () => missing().filter((i) => !added.has(i.item));
 
 function renderChecklist() {
   renderEvidence();
-  persist();
   const a = currentAnalysis;
   const list = a.draft.checklist;
   $("fightbox").hidden = !(isFight() && needsResponse(a.case));
@@ -712,6 +754,7 @@ function renderChecklist() {
         added.delete(i.item),
         renderChecklist(),
         renderActions(),
+        saveWork(),
         redraft()
       );
       li.appendChild(u);
@@ -730,6 +773,7 @@ function renderChecklist() {
           });
           renderChecklist();
           renderActions();
+          saveWork();
           redraft();
         };
         const own = document.createElement("a");
@@ -824,6 +868,7 @@ function addForm(i) {
     added.set(i.item, ev);
     renderChecklist();
     renderActions();
+    saveWork();
     redraft();
   };
   return form;
@@ -857,14 +902,14 @@ async function redraft() {
   $("draft").classList.remove("dim");
   if (res?.response) {
     $("draft").value = res.response;
-    const ai = res.source === "llm";
-    const b = $("badge");
-    b.textContent = ai
-      ? "AI draft, updated with your evidence"
-      : "Template draft";
-    b.className = "pill " + (ai ? "green" : "grey");
-    if (ai) setAi(true);
+    draftAi = res.source === "llm";
+    editedLocal = false;
+    draftLabel = draftAi && added.size ? "AI draft, updated with your evidence" : null;
+    setBadge();
+    if (draftAi) setAi(true);
     note.hidden = true;
+    renderClaims();
+    saveWork();
   } else {
     note.className = "formerr";
     note.textContent =
@@ -913,13 +958,41 @@ function renderActions() {
 
 function hideConfirm() {
   pending = null;
+  claims = [];
   $("confirm").hidden = true;
+  $("claims").innerHTML = "";
+  $("confirm-ok").disabled = false;
+  $("claim-note").hidden = true;
+  $("draft").classList.remove("flagged");
+}
+// rows for sentences the server found with nothing on file behind them
+function renderClaims() {
+  const text = $("draft").value;
+  claims = claims.filter((c) => text.includes(c.sentence));
+  const on = claims.length > 0;
+  $("claim-note").hidden = !on;
+  $("draft").classList.toggle("flagged", on);
+  $("claims").innerHTML = claims
+    .map(
+      (c, i) =>
+        `<div class="claim"><blockquote>${esc(c.sentence)}</blockquote><div class="muted">${esc(c.reason ?? "")}</div><label><input type="checkbox" data-i="${i}"${c.ok ? " checked" : ""}> I have this evidence</label></div>`,
+    )
+    .join("");
+  for (const cb of $("claims").querySelectorAll("input"))
+    cb.onchange = () => ((claims[cb.dataset.i].ok = cb.checked), renderClaims());
+  $("confirm-text").textContent = on
+    ? "PayPal would see claims with no evidence on file:"
+    : baseConfirm;
+  $("confirm-ok").disabled = claims.some((c) => !c.ok);
 }
 // asks inside the page; run() sends once the person agrees
 function act(kind) {
   const c = currentAnalysis.case;
   const amt = money(c.amount_cents, c.currency);
   pending = kind;
+  claims = [];
+  $("claims").innerHTML = "";
+  $("confirm-ok").disabled = false;
   if (kind === "evidence") {
     const ready = currentAnalysis.draft.checklist.filter(
       (i) => i.status !== "missing",
@@ -933,12 +1006,14 @@ function act(kind) {
       `Refund ${amt} to ${c.buyer} and close the case?`;
     $("confirm-ok").textContent = "Refund";
   }
+  baseConfirm = $("confirm-text").textContent;
   $("confirm").hidden = false;
   $("confirm-ok").focus();
 }
 
 async function run(kind) {
-  hideConfirm();
+  const vouchedNow = claims.filter((c) => c.ok).map((c) => c.sentence);
+  $("confirm-ok").disabled = true;
   const path = `/api/cases/${encodeURIComponent(current)}/${kind}`;
   let body;
   if (kind === "evidence") {
@@ -948,40 +1023,49 @@ async function run(kind) {
     body = { confirm: true, text: $("draft").value };
     if (evidence.length) body.evidence = evidence;
     if (files.length) body.files = files;
+    if (vouchedNow.length) body.vouched = vouchedNow;
   } else {
     body = { note: "Accepted by the seller from the desk", confirm: true };
   }
   try {
     await post(path, body);
-  } catch {
+  } catch (e) {
+    if (e.status === 422 && e.body?.error === "unsupported_claim") {
+      claims = (e.body.sentences ?? []).map((x) => ({ ...x, ok: false }));
+      renderClaims();
+      return;
+    }
+    hideConfirm();
     $("action-result").innerHTML =
       `<div class="errbox">${kind === "evidence" ? "PayPal did not accept the response. Try again." : "PayPal did not accept the refund. Try again."}</div>`;
     loadActivity();
     return;
   }
+  hideConfirm();
+  clearTimeout(saveTimer);
   const msg =
     kind === "evidence"
-      ? "Sent to PayPal. The case is now under review — PayPal usually decides within 30 days."
-      : "Refund sent. Case resolved in the buyer's favour.";
+      ? "Sent to PayPal. The case is now under review; PayPal decides within about 30 days."
+      : "Refund sent. The case is closed.";
   if (kind === "evidence") {
     sentText = body.text;
     sentEvidence = [...added.values()].map(({ file, ...e }) => e);
+    vouched = vouchedNow;
   }
   sentKind = kind;
   sent = msg;
-  store.clear();
   added = new Map();
   await loadActivity();
   const w = calls.find((x) => x.method === "POST" && x.status < 300);
   if (w) {
-    pinText = `Sent to PayPal: ${w.method} ${shortPath(w.path)} · ${w.status}`;
+    pinText = `Sent to PayPal: ${callLabel(w)} · ${w.status}`;
     pinUntil = Date.now() + 30000;
     renderActivity();
     setTimeout(renderActivity, 30100);
   }
   await loadCases().catch(() => {});
-  await recompute(true);
   $("action-result").innerHTML = `<div class="okbox">${esc(msg)}</div>`;
+  await recompute(true);
   renderChecklist();
   renderActions();
 }
@@ -1016,7 +1100,16 @@ const ago = (iso) => {
       ? `${Math.round(t / 60)} min ago`
       : `${Math.round(t / 3600)} h ago`;
 };
-const shortPath = (p) => String(p).replace(/(\/disputes\/)[^/]+/, "$1…");
+// a plain verb: the last path segment that is not an id
+const verb = (p) => {
+  const seg = String(p).split("?")[0].split("/").filter(Boolean);
+  while (seg.length > 1 && /\d/.test(seg.at(-1))) seg.pop();
+  return seg.at(-1) ?? "";
+};
+const callLabel = (x) =>
+  x.buyer
+    ? `${x.method} ${verb(x.path)} · ${x.buyer}${x.amount_cents != null ? ` · ${money(x.amount_cents, x.currency || "USD")}` : ""}`
+    : `${x.method} ${verb(x.path)}`;
 function renderActivity() {
   const x = calls[0];
   const dot = (st) =>
@@ -1025,13 +1118,13 @@ function renderActivity() {
     Date.now() < pinUntil
       ? `${dot(200)}${esc(pinText)}`
       : x
-        ? `${dot(x.status)}Last PayPal call: ${esc(x.method)} ${esc(shortPath(x.path))} · ${esc(x.status)} · ${esc(x.ms)} ms · ${esc(ago(x.at))}`
+        ? `${dot(x.status)}Last PayPal call: ${esc(callLabel(x))} · ${esc(x.status)} · ${esc(x.ms)} ms · ${esc(ago(x.at))}`
         : "PayPal calls: none yet";
   $("activity-list").innerHTML = calls
     .slice(0, 20)
     .map(
       (x) =>
-        `<li>${esc(x.method)} ${esc(shortPath(x.path))} · <span class="${x.status < 400 ? "s-ok" : "s-bad"}">${esc(x.status)}</span> · ${esc(x.ms)} ms · ${ago(x.at)}</li>`,
+        `<li>${esc(callLabel(x))} · <span class="${x.status < 400 ? "s-ok" : "s-bad"}">${esc(x.status)}</span> · ${esc(x.ms)} ms · ${ago(x.at)}</li>`,
     )
     .join("");
 }
@@ -1061,8 +1154,11 @@ async function loadActivity() {
   }
 }
 
+// the soonest-due case recommended for a fight, else the first card shown
+const urgentCase = () =>
+  needing().find((c) => String(c.call ?? "").startsWith("fight"));
 function startUrgent() {
-  const c = needing()[0]; // the first card shown
+  const c = urgentCase() ?? needing()[0];
   if (c) openCase(c.dispute_id);
 }
 
@@ -1078,7 +1174,13 @@ async function init() {
     if (!e.target.value.trim()) $("results").hidden = true;
   };
   $("recompute").onclick = () => recompute(false);
-  $("draft").oninput = () => ((restoredDraft = $("draft").value), persist());
+  $("draft").oninput = () => {
+    editedLocal = true;
+    setBadge();
+    renderClaims();
+    if (!claims.length && !$("confirm").hidden) $("confirm-ok").disabled = false;
+    saveWork(800);
+  };
   $("start").onclick = startUrgent;
   $("close-panel").onclick = closeCase;
   $("confirm-ok").onclick = () => run(pending);
