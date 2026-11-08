@@ -10,20 +10,21 @@ import type {
   Precedent,
 } from "./types.js";
 
+export const LABEL_AI = "AI draft";
+export const LABEL_TEMPLATE = "Template draft (AI unavailable)";
+export const LABEL_AI_UPDATED = "AI draft, updated with your evidence";
+
 export const SYSTEM_PROMPT =
   "You write the merchant's written response to PayPal's dispute reviewer. It is not a letter to the buyer. " +
-  "Write as the merchant named in the input, using 'we'. " +
-  "Start with exactly 'Re: <buyer>'s claim about <items> (<amount>)' using the buyer, items and amount from the input, then continue in plain, factual prose. " +
-  "No salutation and no 'Dear ...'. Write 90 to 160 words. " +
-  "Write from our_position: it is what we say happened, and you argue it. Answer the buyer's own complaint from buyer_messages. " +
-  "Cite only facts_on_file, quoting tracking numbers and notes faithfully. Never name any document or evidence that is not in facts_on_file. " +
-  "Never say any evidence is missing, lacking, still needed or to follow, and never promise to send anything later. " +
-  "Never agree with the buyer's claim or concede it, and never apologise. " +
-  "If facts_on_file is empty, state our position, answer the complaint and ask PayPal to find in our favour, and mention no documents or evidence at all. " +
-  "State no fact, date, shipment, delivery, log result, record check or action as done unless it appears in facts_on_file. " +
-  "Never invent numbers, dates, carriers, tracking, order ids or any fact that is not in the input. " +
-  "Never use square-bracket placeholders. Never give a recommendation, odds or an opinion on how PayPal should rule beyond asking it to find in our favour. " +
-  "Never write the dispute id, a reason code, the words 'unauthorised' or 'unauthorized', or any internal field name. " +
+  "Write as the merchant named in the input, using 'we'. No salutation and no 'Dear ...'. " +
+  "Write 3 to 5 sentences of plain, factual prose, and do not repeat the buyer's name or the amount in a heading. " +
+  "State our_position, which is what we say happened, and argue it. Answer the buyer's own complaint from buyer_messages. " +
+  "Cite only facts_on_file, quoting dates, numbers and notes exactly as given. " +
+  "Never write a number, carrier, date, order id or document that is not in facts_on_file. " +
+  "Never use the words shipped, delivered, enclosed, attached, providing, lack or 'our records' unless facts_on_file says so. " +
+  "Never say any evidence is missing or still needed, and never promise to send anything later. If facts_on_file is empty, mention no documents or evidence at all. " +
+  "Never agree with the buyer or concede the claim, and never apologise. " +
+  "Never use square-bracket placeholders, never give a recommendation or odds, and never write the dispute id, a reason code, or any internal field name. " +
   'Return JSON {"response": string} and nothing else.';
 
 /** What we say happened, built from the dispute reason; the draft argues this and nothing else. */
@@ -47,7 +48,12 @@ const POSITION_KEY: Record<string, RegExp> = {
   MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED: /listing|matched|described/i,
   CREDIT_NOT_PROCESSED: /handled|return|refund/i,
 };
-const positionKey = (reason: string) => POSITION_KEY[reason] ?? /fulfil/i;
+// the grounded stand-in position also counts
+const positionKey = (reason: string) =>
+  new RegExp(
+    `${(POSITION_KEY[reason] ?? /fulfil/i).source}|dispute this claim|review whether`,
+    "i",
+  );
 
 const words = (s: string) => s.toLowerCase().replaceAll("_", " ");
 const money = (c: number, cur: string) => `${cur} ${(c / 100).toFixed(2)}`;
@@ -63,6 +69,48 @@ export function trackingOf(c: CaseView): { carrier: string; number: string }[] {
 
 const notesMatch = (c: CaseView, re: RegExp) =>
   c.evidences.some((e) => re.test(`${e.evidence_type} ${e.notes ?? ""}`));
+
+const NEUTRAL =
+  "We dispute this claim and ask PayPal to review the facts below.";
+
+/** Our position for this case: the reason's claim only when something on file supports it, else a neutral one. */
+export function positionFor(c: CaseView): string {
+  const tracking = trackingOf(c).length > 0;
+  // history we hold but have not attached is not evidence on file
+  const history = notesMatch(
+    c,
+    /other orders?|prior orders?|previous orders?|earlier orders?|repeat/i,
+  );
+  switch (c.reason) {
+    case "MERCHANDISE_OR_SERVICE_NOT_RECEIVED":
+      return tracking || notesMatch(c, /deliver|\bsent\b|ship/i)
+        ? positionOf(c.reason)
+        : NEUTRAL;
+    case "PAYMENT_BY_OTHER_MEANS":
+      return notesMatch(
+        c,
+        /one payment|single payment|paid (once|through paypal)/i,
+      )
+        ? "Our records show one payment for this order, through PayPal."
+        : "We have no record of another payment for this order.";
+    case "UNAUTHORISED":
+      return history || addressNote(c)
+        ? positionOf(c.reason)
+        : "We ask PayPal to review whether this payment was authorised, using the facts below.";
+    case "DUPLICATE_TRANSACTION":
+      return positionOf(c.reason);
+    case "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED":
+      return notesMatch(c, /listing|description|described/i)
+        ? positionOf(c.reason)
+        : NEUTRAL;
+    case "CREDIT_NOT_PROCESSED":
+      return notesMatch(c, /return|refund/i) ? positionOf(c.reason) : NEUTRAL;
+    default:
+      return tracking || notesMatch(c, /fulfil|deliver|ship|service/i)
+        ? positionOf(c.reason)
+        : NEUTRAL;
+  }
+}
 
 export const DIGITAL =
   /gift card|e-?gift|voucher|code|download|digital|licen[cs]e|subscription/i;
@@ -301,24 +349,16 @@ export function fallbackDraft(
   decision: Decision | null,
   handlingCents?: number,
 ): Omit<Draft, "source" | "label"> {
-  const tracking = trackingOf(c);
   const head = headOf(c);
-  const position = positionOf(c.reason);
-  const did =
-    c.reason === "MERCHANDISE_OR_SERVICE_NOT_RECEIVED" && tracking.length
-      ? `${position} We attach the tracking: ${tracking.map((t) => `${t.carrier} ${t.number}`).join("; ")}.`
-      : position;
   const cited = c.evidences.flatMap((e) => [
-    ...(e.notes ? [sentence(e.notes)] : []),
-    ...(c.reason === "MERCHANDISE_OR_SERVICE_NOT_RECEIVED"
-      ? []
-      : (e.evidence_info?.tracking_info ?? []).map(
-          (t) => `${t.carrier_name} tracking number ${t.tracking_number}.`,
-        )),
+    ...(e.notes ? [`On file: ${sentence(e.notes)}`] : []),
+    ...(e.evidence_info?.tracking_info ?? []).map(
+      (t) => `On file: ${t.carrier_name} tracking number ${t.tracking_number}.`,
+    ),
   ]);
   const body = [
-    did,
-    ...(cited.length ? ["The enclosed evidence supports this:", ...cited] : []),
+    positionFor(c),
+    ...cited,
     "We ask PayPal to find in our favour.",
   ].join(" ");
   return {
@@ -436,7 +476,7 @@ export function invalidReason(
 
 const LACK =
   /\b(lack|lacking|lacks|still need|missing|to follow|will provide|will send)\b/i;
-const ENCLOSE = /\b(enclosed?|enclosing|attached|providing|provide)\b/i;
+const ENCLOSE = /\b(enclosed?|enclosing|attached|providing)\b/i;
 const CONCEDE =
   /related to the same transaction|same transaction|charged twice|we apologi|we agree/i;
 const NO_EVIDENCE =
@@ -475,6 +515,7 @@ function groundingFlags(
   const ss = sentencesOf(response);
   const enclosing = ss.some((x) => ENCLOSE.test(x));
   const missing = checklist.filter((i) => i.status === "missing");
+  const onFile = checklist.filter((i) => i.status === "present");
   const out: { sentence: string; why: string }[] = [];
   for (const x of ss) {
     const why = LACK.test(x)
@@ -482,12 +523,16 @@ function groundingFlags(
       : CONCEDE.test(x) ||
           (/duplicate charge/i.test(x) && !/\b(not|no|never)\b/i.test(x))
         ? "it concedes the buyer's claim"
-        : ENCLOSE.test(x) && noFacts
-          ? "it says documents are enclosed but none are on file"
+        : ENCLOSE.test(x) && !onFile.some((i) => ITEM_NOUN[i.item]?.test(x))
+          ? noFacts
+            ? "it says documents are enclosed but none are on file"
+            : "it says documents are enclosed or provided, which the facts do not show"
           : missing.some((i) => ITEM_NOUN[i.item]?.test(x))
             ? "it names evidence that is not on file"
-            : NO_EVIDENCE.test(x) && enclosing
-              ? "it says there is no evidence while another sentence encloses some"
+            : NO_EVIDENCE.test(x)
+              ? enclosing
+                ? "it says there is no evidence while another sentence encloses some"
+                : "it talks about evidence being absent"
               : "";
     if (why) out.push({ sentence: x, why });
   }
@@ -538,7 +583,7 @@ export async function draftResponse(
       .filter((m) => m.posted_by === "BUYER")
       .map((m) => m.content),
     facts_on_file: facts,
-    our_position: positionOf(c.reason),
+    our_position: positionFor(c),
   });
   const proof = [
     c.purchased_at ? day(c.purchased_at) : "",
@@ -561,25 +606,27 @@ export async function draftResponse(
     );
   const stripHead = (t: string) =>
     t.trim().replace(/^Re:(?:[^.]*?\([^)]*\)\.?|[^.]*\.)\s*/i, "");
-  /** The grounded body of a model reply, or the reason it cannot be shown. */
+  const factsText = facts.join(" ");
+  /** The grounded sentences of a model reply, judged one by one, or why too few survive. */
   const check = (
     v: unknown,
   ): { body: string; bad?: undefined } | { bad: string; body?: undefined } => {
     const t = (v as { response?: unknown } | null)?.response;
     if (typeof t !== "string" || !t.trim())
       return { bad: "the reply did not match the draft shape" };
-    const invalid = invalidReason(t, user, proof);
-    if (invalid) return { bad: invalid };
-    const body = stripHead(t);
-    const flags = groundingFlags(body, fb.checklist, facts.join(" "));
-    const kept = sentencesOf(body).filter(
-      (x) => !flags.some((f) => f.sentence === x),
-    );
+    const dropped: string[] = [];
+    const kept = sentencesOf(stripHead(t)).filter((x) => {
+      const why =
+        invalidReason(x, user, proof) ??
+        groundingFlags(x, fb.checklist, factsText)[0]?.why;
+      if (why) dropped.push(`"${x}" (${why})`);
+      return !why;
+    });
     if (kept.length >= 2 && positionKey(c.reason).test(kept.join(" ")))
       return { body: kept.join(" ") };
     return {
-      bad: flags.length
-        ? `these sentences were not grounded in the facts on file: ${flags.map((f) => `"${f.sentence}" (${f.why})`).join("; ")}`
+      bad: dropped.length
+        ? `these sentences were not allowed: ${dropped.join("; ")}`
         : "it did not argue our position in at least two sentences",
     };
   };
@@ -599,13 +646,13 @@ export async function draftResponse(
       checklist: fb.checklist,
       explanation: fb.explanation,
       source: "llm",
-      label: r.label,
+      label: added?.length ? LABEL_AI_UPDATED : LABEL_AI,
       ...(r.model ? { model: r.model } : {}),
     };
   return {
     ...fb,
     source: "fallback",
-    label: r.source === "llm" ? "offline fallback" : r.label,
+    label: LABEL_TEMPLATE,
     error: res?.bad ?? r.error ?? "AI draft unavailable",
   };
 }
