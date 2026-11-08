@@ -6,6 +6,7 @@ import {
   explanationOf,
   draftResponse,
   fallbackDraft,
+  invalidReason,
   isDraftShape,
 } from "../src/draft.js";
 import type { CaseView, Decision } from "../src/types.js";
@@ -110,7 +111,7 @@ describe("fallback draft", () => {
     const r = fallbackDraft(base, decision).response;
     assert.ok(
       r.startsWith(
-        "We are Ikigai Outfitters responding to Ava Chen's claim about 2 × Hardware kit #1234 (USD 120.00).",
+        "Re: Ava Chen's claim about 2 × Hardware kit #1234 (USD 120.00).",
       ),
     );
     assert.ok(!/PP-D-|not received|NOT_RECEIVED/.test(r));
@@ -121,6 +122,82 @@ describe("fallback draft", () => {
     assert.equal(
       explanationOf({ ...decision, call: "accept" }, c),
       "We recommend accepting: about 45% chance of winning; fighting costs about €15, more than the €9 you could win back.",
+    );
+  });
+
+  it("cites the evidence on file in an unauthorised fallback", () => {
+    const marcus: CaseView = {
+      ...base,
+      reason: "UNAUTHORISED",
+      buyer: "Marcus Bell",
+      evidences: [
+        {
+          evidence_type: "PROOF_OF_FULFILLMENT",
+          evidence_info: {
+            tracking_info: [
+              { carrier_name: "UPS", tracking_number: "1Z999AA10123456784" },
+            ],
+          },
+          notes:
+            "Two tents shipped by UPS to the billing address; signature on delivery.",
+        },
+      ],
+    };
+    const r = fallbackDraft(marcus, decision).response;
+    assert.ok(r.includes("1Z999AA10123456784"));
+    assert.ok(r.includes("shipped by UPS to the billing address"));
+    assert.equal(invalidReason(r, r), null);
+  });
+
+  it("gives digital goods an email-log checklist with a suggestion", () => {
+    const gift: CaseView = {
+      ...base,
+      items: [
+        { item_description: "Ikigai Gift Card $100", item_quantity: "1" },
+      ],
+      purchased_at: "2026-10-30T00:00:00.000Z",
+      messages: [
+        {
+          posted_by: "SELLER",
+          time_posted: "2026-11-06T00:00:00Z",
+          content: "The code was emailed on the day of purchase.",
+        },
+      ],
+    };
+    const list = buildChecklist(gift);
+    assert.ok(!list.some((i) => i.item === "Tracking number"));
+    assert.deepEqual(
+      list.map((i) => i.item),
+      ["Proof the code was sent (email log)", "Code redemption record"],
+    );
+    assert.equal(
+      list[0]?.suggestion?.label,
+      "Attach email log: code sent Oct 30, 2026",
+    );
+    assert.equal(list[1]?.suggestion, undefined);
+  });
+
+  it("suggests the buyer's earlier orders", () => {
+    const l = buildChecklist({
+      ...base,
+      reason: "UNAUTHORISED",
+      buyer: "Marcus Bell",
+      buyer_history: [
+        {
+          dispute_id: "x",
+          date: "2026-10-03T00:00:00Z",
+          amount_cents: 60800,
+          items: "1 × Summit 4P Basecamp Tent",
+        },
+      ],
+    });
+    assert.equal(
+      l[1]?.suggestion?.label,
+      "Attach order history: 1 earlier order",
+    );
+    assert.match(
+      l[1]?.suggestion?.note ?? "",
+      /Oct 3, 2026, \$608\.00 \(1 × Summit 4P Basecamp Tent\)/,
     );
   });
 
@@ -168,6 +245,50 @@ describe("fallback draft", () => {
       ],
     };
     assert.equal(listing(withListing)?.status, "present");
+  });
+});
+
+describe("response validator", () => {
+  const input = JSON.stringify({ tracking: ["UPS 1Z999AA10123456784"] });
+  it("rejects invented numbers, placeholders, salutations and recommendations", () => {
+    assert.match(
+      invalidReason("Order 12345678901234567890 shipped.", input) ?? "",
+      /not in the input/,
+    );
+    assert.ok(invalidReason("Shipped on [date].", input));
+    assert.ok(invalidReason("Dear Priya, thanks.", input));
+    assert.ok(invalidReason("we recommend fighting", input));
+    assert.equal(
+      invalidReason(
+        "Tracking 1Z999AA10123456784 shows delivery for $1,317.00.",
+        input,
+      ),
+      null,
+    );
+  });
+  it("retries once with the reason, then falls back with an error", async () => {
+    let calls = 0;
+    const llm = createLlm({
+      env: { LLM_BASE_URL: "http://x", LLM_API_KEY: "k", LLM_MODEL: "m1" },
+      fetch: async () => {
+        calls++;
+        return new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({ response: "Dear Ava, hi" }),
+                },
+              },
+            ],
+          }),
+        );
+      },
+    });
+    const d = await draftResponse(llm, base, decision, []);
+    assert.equal(calls, 2);
+    assert.equal(d.source, "fallback");
+    assert.match(d.error ?? "", /addressed the buyer/);
   });
 });
 

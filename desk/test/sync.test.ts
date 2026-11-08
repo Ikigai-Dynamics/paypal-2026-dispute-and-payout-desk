@@ -9,7 +9,12 @@ import {
   toRow,
   ValidationError,
 } from "../src/sync.js";
-import { toPrecedent, topTermsQuery, toView } from "../src/analysis.js";
+import {
+  cleanSnippet,
+  toPrecedent,
+  topTermsQuery,
+  toView,
+} from "../src/analysis.js";
 
 const dispute: Dispute = {
   dispute_id: "PP-D-9",
@@ -166,5 +171,22 @@ describe("sync prunes", () => {
     };
     await assert.rejects(syncAll(paypal as never, sink));
     assert.equal(pruned, false);
+  });
+});
+
+describe("cleanSnippet", () => {
+  it("drops the leading reason word and marks, and cuts at a whole word", () => {
+    assert.equal(
+      cleanSnippet(
+        "unauthorised <mark>charge</mark> on my card",
+        "UNAUTHORISED",
+      ),
+      "charge on my card",
+    );
+    const long = cleanSnippet(
+      `duplicate ${"word ".repeat(60)}`,
+      "DUPLICATE_TRANSACTION",
+    );
+    assert.ok(long.length <= 141 && long.endsWith("word…"));
   });
 });

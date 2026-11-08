@@ -93,7 +93,7 @@ describe("sync and writes against the in-process mock", () => {
           {
             item: "Tracking",
             evidence_type: "PROOF_OF_FULFILLMENT",
-            notes: "Shipped with UPS",
+            notes: "Shipped with UPS; the code was sent by email",
             tracking: { carrier: "UPS", number: "1Z 999" },
           },
         ],
@@ -107,9 +107,8 @@ describe("sync and writes against the in-process mock", () => {
       },
     );
     assert.equal(row.status, "UNDER_REVIEW");
-    const tn = buildChecklist(toView(row)).find(
-      (c) => c.item === "Tracking number",
-    );
-    assert.equal(tn?.status, "present");
+    // the first item is the tracking number, or the email log for digital goods
+    const first = buildChecklist(toView(row))[0];
+    assert.equal(first?.status, "present");
   });
 });

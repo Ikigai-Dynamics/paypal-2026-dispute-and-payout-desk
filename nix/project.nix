@@ -53,7 +53,8 @@ in
     };
     services.desk = {
       package = desk;
-      replicas = 2;
+      # shortcut: drafts and decisions are cached in memory per pod; move them to Postgres before scaling out
+      replicas = 1;
       # LLM_BASE_URL, LLM_MODEL and LLM_API_KEY come from platform.llm
       env.DECIDE_URL = "http://decide";
       ingress.enable = true;

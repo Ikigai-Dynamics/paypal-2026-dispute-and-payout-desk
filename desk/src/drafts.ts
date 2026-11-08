@@ -1,7 +1,8 @@
 import type { Llm } from "@jeirslab/llm-client";
 import type { DecideOptions } from "./decide-client.js";
-import { draftResponse, fallbackDraft } from "./draft.js";
-import type { CaseView, Decision, Draft, Precedent } from "./types.js";
+import { createHash } from "node:crypto";
+import { draftResponse, fallbackDraft, withAdded } from "./draft.js";
+import type { Added, CaseView, Decision, Draft, Precedent } from "./types.js";
 
 /**
  * In-memory (per pod) cache of AI drafts. The response text is keyed by case, its last update
@@ -18,6 +19,8 @@ export class DraftCache {
   private pending = new Map<string, Promise<Draft>>();
   /** outcome of the last real completion; null until one ran */
   lastOk: boolean | null = null;
+  /** called after every real completion, so the page can re-probe at once on a failure */
+  onResult?: (ok: boolean) => void;
 
   constructor(private llm: Llm) {}
 
@@ -26,12 +29,23 @@ export class DraftCache {
     decision: Decision | null,
     precedents: Precedent[],
     o: DecideOptions,
+    added?: Added[],
   ): Promise<Draft> {
-    const key = `${c.dispute_id}|${c.updated_at}|${decision?.call ?? "none"}`;
+    const extra = added?.length
+      ? createHash("sha256")
+          .update(JSON.stringify(added))
+          .digest("hex")
+          .slice(0, 12)
+      : "";
+    const key = `${c.dispute_id}|${c.updated_at}|${decision?.call ?? "none"}|${extra}`;
     const knobs = `${o.prior ?? ""}|${o.handlingCostCents ?? ""}|${o.feeIfLostCents ?? ""}`;
     const hit = this.done.get(key);
     if (hit) {
-      const fb = fallbackDraft(c, decision, o.handlingCostCents);
+      const fb = fallbackDraft(
+        withAdded(c, added),
+        decision,
+        o.handlingCostCents,
+      );
       return hit.knobs === knobs
         ? { ...hit.draft, checklist: fb.checklist }
         : {
@@ -49,8 +63,10 @@ export class DraftCache {
         decision,
         precedents,
         o.handlingCostCents,
+        added,
       );
       this.lastOk = d.source === "llm";
+      this.onResult?.(this.lastOk);
       if (d.source === "llm") {
         if (this.done.size >= MAX) this.done.clear();
         this.done.set(key, { draft: d, knobs });
