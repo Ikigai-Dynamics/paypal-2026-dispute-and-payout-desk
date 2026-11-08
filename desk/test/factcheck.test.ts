@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { parseAdded } from "../src/sync.js";
 import { unsupportedClaims } from "../src/factcheck.js";
 
 const NO_SHIPMENT = "Purchased 2026-10-28. 1 × Sleeping bag.";
@@ -33,6 +34,35 @@ describe("unsupportedClaims", () => {
     assert.deepEqual(
       unsupportedClaims("The buyer ordered one sleeping bag.", NO_SHIPMENT),
       [],
+    );
+  });
+});
+
+describe("parseAdded", () => {
+  it("takes the page's shape and keeps it canonical", () => {
+    const page = {
+      item: "Email log",
+      evidence_type: "PROOF_OF_FULFILLMENT",
+      notes: "Code sent Oct 28",
+      tracking: { carrier: "UPS", number: "1Z 999" },
+    };
+    assert.deepEqual(parseAdded([page]), [page]);
+  });
+  it("maps note to notes and a missing type from the item", () => {
+    const r = parseAdded([
+      { item: "Delivery photo", note: "x" },
+      { item: "Refund receipt", note: "x" },
+      { item: "Something else", notes: "x" },
+    ]);
+    assert.deepEqual(
+      r.map((x) => x.evidence_type),
+      ["PROOF_OF_FULFILLMENT", "PROOF_OF_REFUND", "OTHER"],
+    );
+    assert.equal(r[0]!.notes, "x");
+  });
+  it("rejects an unknown type", () => {
+    assert.throws(() =>
+      parseAdded([{ item: "a", notes: "b", evidence_type: "NOPE" }]),
     );
   });
 });

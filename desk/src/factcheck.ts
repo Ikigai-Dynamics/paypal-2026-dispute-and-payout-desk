@@ -1,3 +1,5 @@
+import type { CaseView } from "./types.js";
+
 export interface Unsupported {
   sentence: string;
   reason: string;
@@ -76,20 +78,49 @@ export function unsupportedClaims(
   return out;
 }
 
-/** The gate before a send: sentences still unsupported after the vouched ones, and the text to send with the vouched ones noted. */
+const MON = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split(" ");
+/** Everything a sentence of the response may rest on: what is on file, the seller's own messages, the merchant's added notes, and this send's own evidence. */
+export function proofText(
+  view: CaseView,
+  added: {
+    item: string;
+    notes: string;
+    tracking?: { carrier: string; number: string };
+  }[],
+): string {
+  const lines: string[] = view.items.map(
+    (i) => `${i.item_quantity} ${i.item_description}`,
+  );
+  if (view.purchased_at) {
+    const dt = new Date(view.purchased_at);
+    lines.push(
+      `purchased ${view.purchased_at.slice(0, 10)} ${MON[dt.getUTCMonth()]} ${dt.getUTCDate()}`,
+    );
+  }
+  for (const m of view.messages)
+    if (m.posted_by === "SELLER") lines.push(m.content);
+  for (const e of view.evidences) {
+    lines.push(e.notes ?? "");
+    for (const t of e.evidence_info?.tracking_info ?? [])
+      lines.push(`${t.carrier_name ?? ""} ${t.tracking_number ?? ""}`);
+  }
+  for (const a of added)
+    lines.push(
+      `${a.item}: ${a.notes}`,
+      a.tracking ? `${a.tracking.carrier} ${a.tracking.number}` : "",
+    );
+  return lines.join("\n");
+}
+
+/** The gate before a send, and the dry run: sentences still unsupported after the vouched ones. The text goes out exactly as written. */
 export function gateEvidence(
   text: string,
   proofText: string,
   vouched: string[],
 ) {
   const claims = unsupportedClaims(text, proofText);
-  const held = claims.map((c) => c.sentence).filter((x) => vouched.includes(x));
   return {
     unsupported: claims.filter((c) => !vouched.includes(c.sentence)),
-    held,
-    sentText: [
-      text,
-      ...held.map((x) => `Merchant confirms they hold this evidence: ${x}`),
-    ].join("\n"),
+    held: claims.map((c) => c.sentence).filter((x) => vouched.includes(x)),
   };
 }

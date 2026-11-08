@@ -44,25 +44,40 @@ export function record(
     );
 }
 
-/** Newest first. */
+/** The dispute a call is about, only when its path names one: the list call has none. */
+export const disputeIdOf = (path: string): string | null =>
+  /\/v1\/customer\/disputes\/([^/?]+)/.exec(path)?.[1] ?? null;
+
+/** Newest first. Buyer and amount are joined on the exact dispute id in the path. */
 export async function list(limit = 20): Promise<Call[]> {
   if (!pool) return [];
   const r = await pool.query(
-    `select p.at, p.method, p.path, p.status, p.ms, c.dispute_id, c.buyer, c.amount_cents::float8 as amount_cents, c.currency
-     from paypal_calls p
-     left join cases c on c.dispute_id = substring(p.path from '/v1/customer/disputes/([^/?]+)')
-     order by p.id desc limit $1`,
+    "select at, method, path, status, ms from paypal_calls order by id desc limit $1",
     [limit],
   );
-  return r.rows.map((x) => ({
-    at: new Date(x.at).toISOString(),
-    method: x.method,
-    path: x.path,
-    status: Number(x.status),
-    ms: Number(x.ms),
-    dispute_id: x.dispute_id ?? null,
-    buyer: x.buyer ?? null,
-    amount_cents: x.amount_cents === null ? null : Number(x.amount_cents),
-    currency: x.currency ?? null,
-  }));
+  const ids = [...new Set(r.rows.map((x) => disputeIdOf(x.path)))].filter(
+    (x): x is string => x !== null,
+  );
+  const cases = ids.length
+    ? await pool.query(
+        "select dispute_id, buyer, amount_cents::float8 as amount_cents, currency from cases where dispute_id = any($1::text[])",
+        [ids],
+      )
+    : { rows: [] };
+  const byId = new Map(cases.rows.map((c) => [c.dispute_id as string, c]));
+  return r.rows.map((x) => {
+    const id = disputeIdOf(x.path);
+    const c = id ? byId.get(id) : undefined;
+    return {
+      at: new Date(x.at).toISOString(),
+      method: x.method,
+      path: x.path,
+      status: Number(x.status),
+      ms: Number(x.ms),
+      dispute_id: c ? id : null,
+      buyer: c?.buyer ?? null,
+      amount_cents: c ? Number(c.amount_cents) : null,
+      currency: c?.currency ?? null,
+    };
+  });
 }
