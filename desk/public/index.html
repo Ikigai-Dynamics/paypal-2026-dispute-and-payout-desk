@@ -3,66 +3,89 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Dispute and Payout Desk</title>
+<title>Dispute Desk</title>
 <link rel="stylesheet" href="/app.css">
 </head>
 <body>
-<div id="banner" class="banner" hidden>Synthetic disputes from the PayPal mock</div>
-<div id="unreachable" class="banner warn" hidden>PayPal unreachable: showing the last synced cases</div>
-<header>
-  <h1>Dispute and Payout Desk</h1>
-  <span id="status" class="muted"></span>
+<div id="unreachable" class="banner warn" hidden>PayPal is unreachable right now: showing the last synced cases.</div>
+<header class="card head">
+  <div class="title-row">
+    <h1>Dispute Desk</h1>
+    <span id="env-pill" class="pill grey" hidden>PayPal Sandbox</span>
+    <span id="ai-pill" class="pill green" hidden>AI drafting on</span>
+  </div>
+  <p class="story">PayPal disputes come in; the desk recommends fight or accept for each, drafts your response with AI, and sends it to PayPal when you confirm.</p>
+  <p id="situation" class="situation">Loading your disputes...</p>
+  <button id="start" class="primary" disabled>Start with the most urgent case</button>
 </header>
-<section class="bar">
-  <form id="search-form">
-    <input id="search" placeholder="Search past cases (Postgres full-text), e.g. tracking" size="44">
-    <button>Search</button>
-    <span class="muted">Search is Postgres full-text.</span>
-  </form>
-  <input id="quick" placeholder="Quick filter the grid" size="24">
-  <button id="sync">Sync from PayPal</button>
-</section>
-<section id="results" hidden></section>
-<section>
-  <div id="grid" class="grid"></div>
-</section>
-<section>
-  <h2>Timeline (built in; Bryntum is evaluated separately)</h2>
-  <div id="timeline" class="timeline"></div>
-</section>
-<section id="panel" hidden>
-  <h2 id="panel-title"></h2>
+<section id="panel" class="card" hidden>
+  <div class="panel-head">
+    <div>
+      <h2 id="panel-title"></h2>
+      <p id="panel-sub" class="muted"></p>
+    </div>
+    <button id="close-panel" type="button">Close</button>
+  </div>
+  <div id="panel-error" class="errbox" hidden></div>
   <div class="cols">
     <div>
-      <h3>Case</h3>
-      <div id="facts"></div>
-      <h3>Messages</h3><div id="messages"></div>
-      <h3>Items</h3><div id="items"></div>
-      <h3>Evidence on file</h3><div id="evidence"></div>
-      <h3>Precedents</h3><div id="precedents"></div>
+      <h3>What the buyer said</h3><div id="messages"></div>
+      <h3>Order</h3><div id="items"></div>
+      <h3>Evidence already on file</h3><div id="evidence"></div>
     </div>
     <div>
-      <h3>Decision</h3>
-      <div class="inputs">
-        <label>p0 override <input id="in-prior" placeholder="table" size="6"></label>
-        <label>c ($) <input id="in-c" value="15.00" size="6"></label>
-        <label>F ($) <input id="in-fee" value="0.00" size="6"></label>
-        <button id="recompute">Recompute</button>
+      <div id="rec" class="rec"></div>
+      <details id="math">
+        <summary>Show the math</summary>
+        <pre id="terms"></pre>
+        <p id="p0line" class="muted"></p>
+        <p id="explanation" class="muted"></p>
+        <h4>Similar past cases</h4><div id="precedents"></div>
+        <div class="inputs">
+          <label>Win chance override (%) <input id="in-prior" inputmode="decimal" placeholder="use the estimate" size="8"></label>
+          <label>Cost to fight ($) <input id="in-c" value="15.00" inputmode="decimal" size="6"><span class="hint">your time and handling</span></label>
+          <label>Extra fee if you lose ($) <input id="in-fee" value="0.00" inputmode="decimal" size="6"></label>
+          <button id="recompute" type="button">Recalculate</button>
+        </div>
+      </details>
+      <div id="fightbox">
+        <h3>Response to PayPal <span id="badge" class="pill"></span></h3>
+        <textarea id="draft" rows="9"></textarea>
+        <h3>Evidence checklist <span id="check-count" class="pill"></span></h3>
+        <ul id="checklist" class="checklist"></ul>
       </div>
-      <div id="call" class="call"></div>
-      <pre id="terms"></pre>
-      <h3>Draft response <span id="badge" class="badge"></span></h3>
-      <textarea id="draft" rows="9"></textarea>
-      <h3>Checklist</h3><ul id="checklist"></ul>
-      <p id="explanation" class="muted"></p>
-      <div class="actions">
-        <button id="submit-evidence" class="primary">Submit evidence</button>
-        <button id="accept-claim" class="danger">Accept claim</button>
-      </div>
-      <p id="action-result" class="muted"></p>
+      <div id="actions" class="actions"></div>
+      <div id="action-result"></div>
     </div>
   </div>
 </section>
+<section id="needs" class="card">
+  <h2>Disputes that need your response</h2>
+  <div id="cards" class="cards"></div>
+  <p><a href="#" id="show-all" hidden></a></p>
+</section>
+<section class="card">
+  <h2>Deadlines, next 21 days</h2>
+  <div id="timeline" class="timeline"></div>
+  <div class="legend muted">Green fight · red accept · amber close call · grey not analysed</div>
+</section>
+<details id="all" class="card">
+  <summary id="all-sum">All cases</summary>
+  <section class="bar">
+    <form id="search-form">
+      <input id="search" placeholder="Search past cases, e.g. tracking" size="40">
+      <button>Search</button>
+    </form>
+    <input id="quick" placeholder="Quick filter the grid" size="24">
+    <button id="sync" type="button">Refresh from PayPal</button>
+  </section>
+  <section id="results" hidden></section>
+  <div id="grid" class="grid"></div>
+</details>
+<details id="activity" class="activity" hidden>
+  <summary>PayPal API · live</summary>
+  <ul id="activity-list"></ul>
+</details>
 <script src="/vendor/ag-grid-community.min.js"></script>
 <script type="module" src="/app.js"></script>
 </body>
