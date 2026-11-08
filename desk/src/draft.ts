@@ -445,7 +445,8 @@ const NO_EVIDENCE =
 const ITEM_NOUN: Record<string, RegExp> = {
   "Tracking number": /tracking/i,
   "Delivery confirmation": /delivery confirmation|confirmation of delivery/i,
-  "Proof the code was sent (email log)": /e-?mail logs?|proof the code was sent/i,
+  "Proof the code was sent (email log)":
+    /e-?mail logs?|proof the code was sent/i,
   "Code redemption record": /redemption|redeem/i,
   "Listing description": /listing (description|details|page|screenshot)/i,
   "Photos of the item": /photos?\b/i,
@@ -516,7 +517,11 @@ export async function draftResponse(
   // the model sees only what is on file: never a list of what we lack
   const facts = c.evidences.flatMap((e) => [
     ...(e.notes
-      ? [e.evidence_type === "ADDED_BY_THE_MERCHANT" ? e.notes : `Note: "${e.notes}"`]
+      ? [
+          e.evidence_type === "ADDED_BY_THE_MERCHANT"
+            ? e.notes
+            : `Note: "${e.notes}"`,
+        ]
       : []),
     ...(e.evidence_info?.tracking_info ?? []).map(
       (t) => `${t.carrier_name} tracking ${t.tracking_number}`,

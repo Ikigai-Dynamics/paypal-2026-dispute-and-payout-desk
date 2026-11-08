@@ -77,7 +77,11 @@ export function unsupportedClaims(
 }
 
 /** The gate before a send: sentences still unsupported after the vouched ones, and the text to send with the vouched ones noted. */
-export function gateEvidence(text: string, proofText: string, vouched: string[]) {
+export function gateEvidence(
+  text: string,
+  proofText: string,
+  vouched: string[],
+) {
   const claims = unsupportedClaims(text, proofText);
   const held = claims.map((c) => c.sentence).filter((x) => vouched.includes(x));
   return {

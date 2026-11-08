@@ -705,7 +705,11 @@ async function route(
         const vouched = parseVouched(b["vouched"]);
         const work = await store.getWork(id);
         const proof = proofText(toView(row0), work?.added ?? [], extra);
-        const { unsupported, held, sentText } = gateEvidence(text, proof, vouched);
+        const { unsupported, held, sentText } = gateEvidence(
+          text,
+          proof,
+          vouched,
+        );
         if (unsupported.length)
           throw new HttpError(
             422,

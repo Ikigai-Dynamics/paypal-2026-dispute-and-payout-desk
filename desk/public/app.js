@@ -237,7 +237,9 @@ async function loadCases() {
   gridApi.setGridOption("rowData", allCases);
   const sm = summary;
   $("all-sum").textContent = sm
-    ? `All cases (${sm.total}): ${buckets(sm).map(([n, l]) => `${n} ${l}`).join(", ")}`
+    ? `All cases (${sm.total}): ${buckets(sm)
+        .map(([n, l]) => `${n} ${l}`)
+        .join(", ")}`
     : `All cases (${allCases.length})`;
   renderSituation();
   renderCards();
@@ -283,7 +285,12 @@ function buckets(sm) {
   for (const [k, v] of Object.entries(sm)) {
     if (KNOWN.includes(k) || typeof v !== "number" || /cents|soon/.test(k))
       continue;
-    out.push([v, k === "waiting_on_buyer" ? "waiting on the buyer" : sentence(k).toLowerCase()]);
+    out.push([
+      v,
+      k === "waiting_on_buyer"
+        ? "waiting on the buyer"
+        : sentence(k).toLowerCase(),
+    ]);
     sum += v;
   }
   if (sm.total > sum) out.push([sm.total - sum, "in other states"]);
@@ -300,8 +307,13 @@ function renderSituation() {
   const f = n.filter((c) => rec(c.call).base === "fight").length;
   const a = n.filter((c) => rec(c.call).base === "accept").length;
   const need = sm?.needs_response ?? n.length;
-  $("situation").textContent =
-    `${sm ? `${sm.total} disputes this month: ${buckets(sm).map(([n, l]) => `${n} ${l}`).join(", ")}` : `${need} need${need !== 1 ? "" : "s"} your response`} · ${soon} due in the next 3 days · ${money(stake, cur)} at stake · Recommended: fight ${f}, accept ${a}`;
+  $("situation").textContent = `${
+    sm
+      ? `${sm.total} disputes this month: ${buckets(sm)
+          .map(([n, l]) => `${n} ${l}`)
+          .join(", ")}`
+      : `${need} need${need !== 1 ? "" : "s"} your response`
+  } · ${soon} due in the next 3 days · ${money(stake, cur)} at stake · Recommended: fight ${f}, accept ${a}`;
   $("holds").hidden = !stake;
   $("holds").textContent =
     `PayPal holds ${money(stake, cur)} of your payouts until these are settled.`;
@@ -660,7 +672,12 @@ function applyWork(a) {
 }
 // the server keeps the unsent work, so a reload or another browser sees it
 function saveWork(delay = 0) {
-  if (!current || sent || !currentAnalysis || !needsResponse(currentAnalysis.case))
+  if (
+    !current ||
+    sent ||
+    !currentAnalysis ||
+    !needsResponse(currentAnalysis.case)
+  )
     return;
   clearTimeout(saveTimer);
   const id = current;
@@ -702,7 +719,9 @@ function renderEvidence() {
   const html =
     evsOnFile.map((e) => row(e, false)).join("") +
     sentRows.map((e) => row(e, false)).join("") +
-    vouched.map((v) => `<div class="msg"><b>You confirmed:</b> ${esc(v)}</div>`).join("") +
+    vouched
+      .map((v) => `<div class="msg"><b>You confirmed:</b> ${esc(v)}</div>`)
+      .join("") +
     [...added.values()].map((e) => row(e, true)).join("");
   $("evidence").innerHTML = html || '<p class="muted">Nothing yet</p>';
 }
@@ -904,7 +923,8 @@ async function redraft() {
     $("draft").value = res.response;
     draftAi = res.source === "llm";
     editedLocal = false;
-    draftLabel = draftAi && added.size ? "AI draft, updated with your evidence" : null;
+    draftLabel =
+      draftAi && added.size ? "AI draft, updated with your evidence" : null;
     setBadge();
     if (draftAi) setAi(true);
     note.hidden = true;
@@ -979,7 +999,10 @@ function renderClaims() {
     )
     .join("");
   for (const cb of $("claims").querySelectorAll("input"))
-    cb.onchange = () => ((claims[cb.dataset.i].ok = cb.checked), renderClaims());
+    cb.onchange = () => (
+      (claims[cb.dataset.i].ok = cb.checked),
+      renderClaims()
+    );
   $("confirm-text").textContent = on
     ? "PayPal would see claims with no evidence on file:"
     : baseConfirm;
@@ -1178,7 +1201,8 @@ async function init() {
     editedLocal = true;
     setBadge();
     renderClaims();
-    if (!claims.length && !$("confirm").hidden) $("confirm-ok").disabled = false;
+    if (!claims.length && !$("confirm").hidden)
+      $("confirm-ok").disabled = false;
     saveWork(800);
   };
   $("start").onclick = startUrgent;

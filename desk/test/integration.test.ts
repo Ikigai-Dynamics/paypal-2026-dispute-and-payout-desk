@@ -131,7 +131,12 @@ describe("sync and writes against the in-process mock", () => {
       ok.sentText,
       /Merchant confirms they hold this evidence: UPS tracking/,
     );
-    const row = await submitEvidence(paypal, sink, open.dispute_id, ok.sentText);
+    const row = await submitEvidence(
+      paypal,
+      sink,
+      open.dispute_id,
+      ok.sentText,
+    );
     assert.equal(row.status, "UNDER_REVIEW");
   });
 });

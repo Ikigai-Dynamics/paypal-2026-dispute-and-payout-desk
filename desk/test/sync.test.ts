@@ -188,7 +188,10 @@ describe("cleanSnippet", () => {
       "DUPLICATE_TRANSACTION",
     );
     assert.equal(
-      cleanSnippet("First sentence. Second one is longer and runs on " + "x ".repeat(200), "OTHER"),
+      cleanSnippet(
+        "First sentence. Second one is longer and runs on " + "x ".repeat(200),
+        "OTHER",
+      ),
       "First sentence.",
     );
     assert.ok(long.length <= 201 && long.endsWith("word…"));

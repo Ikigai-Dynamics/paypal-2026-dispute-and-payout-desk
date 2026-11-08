@@ -355,7 +355,8 @@ describe("draftResponse", () => {
               {
                 message: {
                   content: JSON.stringify({
-                    response: "The order was fulfilled as placed. We ask PayPal to find in our favour.",
+                    response:
+                      "The order was fulfilled as placed. We ask PayPal to find in our favour.",
                     checklist: [{ item: "i", status: "missing", why: "w" }],
                     explanation: "E",
                   }),
@@ -387,7 +388,8 @@ describe("draftResponse", () => {
               {
                 message: {
                   content: JSON.stringify({
-                    response: "The order was fulfilled as placed. We ask PayPal to find in our favour.",
+                    response:
+                      "The order was fulfilled as placed. We ask PayPal to find in our favour.",
                     checklist: [{ item: "Bogus", status: "present", why: "w" }],
                     explanation: "E",
                   }),
@@ -537,11 +539,22 @@ describe("grounded drafting over the seeded cases", () => {
     purchased_at: "2026-10-17T05:03:00.282Z",
     items: [{ item_quantity: "1", item_description: "Ember 20F Sleeping Bag" }],
     messages: [
-      msg("BUYER", "There is a problem with this payment and I need help resolving it."),
-      msg("SELLER", "We are sorry to hear that. Can you send a photo of the item and the packaging?"),
+      msg(
+        "BUYER",
+        "There is a problem with this payment and I need help resolving it.",
+      ),
+      msg(
+        "SELLER",
+        "We are sorry to hear that. Can you send a photo of the item and the packaging?",
+      ),
     ],
     buyer_history: [
-      { dispute_id: "PP-D-2", date: "2026-10-11T04:23:45.569Z", amount_cents: 11800, items: "2 × Pocket Canister Stove" },
+      {
+        dispute_id: "PP-D-2",
+        date: "2026-10-11T04:23:45.569Z",
+        amount_cents: 11800,
+        items: "2 × Pocket Canister Stove",
+      },
     ],
   });
   const tent = seeded({
@@ -556,8 +569,14 @@ describe("grounded drafting over the seeded cases", () => {
       { item_quantity: "1", item_description: "Pocket Canister Stove" },
     ],
     messages: [
-      msg("BUYER", "There is a problem with this payment and I need help resolving it."),
-      msg("BUYER", "I already contacted you twice with photos and got no reply."),
+      msg(
+        "BUYER",
+        "There is a problem with this payment and I need help resolving it.",
+      ),
+      msg(
+        "BUYER",
+        "I already contacted you twice with photos and got no reply.",
+      ),
     ],
   });
   const hana = seeded({
@@ -566,11 +585,30 @@ describe("grounded drafting over the seeded cases", () => {
     buyer: "Hana Kobayashi",
     amount_cents: 16400,
     purchased_at: "2026-10-27T23:50:36.515Z",
-    items: [{ item_quantity: "1", item_description: "Alder Waterproof Hiking Boots" }],
-    messages: [msg("BUYER", "I did not authorise Alder Waterproof Hiking Boots; my card was stolen last month.")],
+    items: [
+      { item_quantity: "1", item_description: "Alder Waterproof Hiking Boots" },
+    ],
+    messages: [
+      msg(
+        "BUYER",
+        "I did not authorise Alder Waterproof Hiking Boots; my card was stolen last month.",
+      ),
+    ],
     buyer_history: [
-      { dispute_id: "PP-D-1", date: "2026-10-14T02:01:11.625Z", amount_cents: 20300, items: "1 × Alder Waterproof Hiking Boots, 1 × Lumen Rechargeable Headlamp" },
-      { dispute_id: "PP-D-9", date: "2026-10-20T02:01:11.625Z", amount_cents: 3900, items: "1 × Lumen Rechargeable Headlamp", disputed: true } as never,
+      {
+        dispute_id: "PP-D-1",
+        date: "2026-10-14T02:01:11.625Z",
+        amount_cents: 20300,
+        items:
+          "1 × Alder Waterproof Hiking Boots, 1 × Lumen Rechargeable Headlamp",
+      },
+      {
+        dispute_id: "PP-D-9",
+        date: "2026-10-20T02:01:11.625Z",
+        amount_cents: 3900,
+        items: "1 × Lumen Rechargeable Headlamp",
+        disputed: true,
+      } as never,
     ],
   });
   const priya = seeded({
@@ -579,14 +617,37 @@ describe("grounded drafting over the seeded cases", () => {
     buyer: "Priya Nair",
     amount_cents: 16400,
     purchased_at: "2026-11-03T21:55:43.450Z",
-    items: [{ item_quantity: "1", item_description: "Alder Waterproof Hiking Boots" }],
-    messages: [msg("BUYER", "I was charged twice for one pair of Alder boots, three minutes apart. I only placed one order.")],
+    items: [
+      { item_quantity: "1", item_description: "Alder Waterproof Hiking Boots" },
+    ],
+    messages: [
+      msg(
+        "BUYER",
+        "I was charged twice for one pair of Alder boots, three minutes apart. I only placed one order.",
+      ),
+    ],
   });
   const cases: [string, CaseView, string][] = [
-    ["Marcus Bell sleeping bag", bag, "The order was fulfilled as placed on the buyer's PayPal account. We answer the complaint directly and ask PayPal to find in our favour."],
-    ["Marcus Bell tent", tent, "The order was fulfilled as placed on the buyer's PayPal account. We answer the complaint directly and ask PayPal to find in our favour."],
-    ["Hana Kobayashi", hana, "The buyer authorised this payment on their own PayPal account. We ask PayPal to find in our favour."],
-    ["Priya Nair", priya, "The two charges are for two separate orders, not one charge taken twice. We ask PayPal to find in our favour."],
+    [
+      "Marcus Bell sleeping bag",
+      bag,
+      "The order was fulfilled as placed on the buyer's PayPal account. We answer the complaint directly and ask PayPal to find in our favour.",
+    ],
+    [
+      "Marcus Bell tent",
+      tent,
+      "The order was fulfilled as placed on the buyer's PayPal account. We answer the complaint directly and ask PayPal to find in our favour.",
+    ],
+    [
+      "Hana Kobayashi",
+      hana,
+      "The buyer authorised this payment on their own PayPal account. We ask PayPal to find in our favour.",
+    ],
+    [
+      "Priya Nair",
+      priya,
+      "The two charges are for two separate orders, not one charge taken twice. We ask PayPal to find in our favour.",
+    ],
   ];
   const bad = [
     "We are providing the item in evidence we still lack. There is no evidence on file. We have enclosed the available documentation.",
@@ -603,7 +664,11 @@ describe("grounded drafting over the seeded cases", () => {
         seen.push(String(init?.body));
         const t = texts[Math.min(n++, texts.length - 1)]!;
         return new Response(
-          JSON.stringify({ choices: [{ message: { content: JSON.stringify({ response: t }) } }] }),
+          JSON.stringify({
+            choices: [
+              { message: { content: JSON.stringify({ response: t }) } },
+            ],
+          }),
         );
       },
     });
@@ -643,7 +708,14 @@ describe("grounded drafting over the seeded cases", () => {
       const d = await draftResponse(createLlm({ env: {} }), c, decision, []);
       assert.equal(d.source, "fallback");
       assertClean(c, d.response, false);
-      assert.deepEqual(groundingProblems(fallbackDraft(c, decision).response, buildChecklist(c), ""), []);
+      assert.deepEqual(
+        groundingProblems(
+          fallbackDraft(c, decision).response,
+          buildChecklist(c),
+          "",
+        ),
+        [],
+      );
     });
 
     it(`${name}: two ungrounded drafts fall back to the template`, async () => {
@@ -656,46 +728,102 @@ describe("grounded drafting over the seeded cases", () => {
 
   it("regenerates exactly once and tells the model which sentence was rejected", async () => {
     const seen: string[] = [];
-    const d = await draftResponse(fake([bad[0]!, cases[0]![2]], seen), bag, decision, []);
+    const d = await draftResponse(
+      fake([bad[0]!, cases[0]![2]], seen),
+      bag,
+      decision,
+      [],
+    );
     assert.equal(d.source, "llm");
     assert.equal(seen.length, 2);
-    assert.match(JSON.parse(seen[1]!).messages.at(-1).content, /rejected because.*still lack/s);
+    assert.match(
+      JSON.parse(seen[1]!).messages.at(-1).content,
+      /rejected because.*still lack/s,
+    );
   });
 
   it("drops the flagged sentences and keeps the rest without asking again", async () => {
     const seen: string[] = [];
     const d = await draftResponse(
-      fake(["The order was fulfilled as placed. We have enclosed the documentation. We ask PayPal to find in our favour."], seen),
-      bag, decision, [],
+      fake(
+        [
+          "The order was fulfilled as placed. We have enclosed the documentation. We ask PayPal to find in our favour.",
+        ],
+        seen,
+      ),
+      bag,
+      decision,
+      [],
     );
     assert.equal(seen.length, 1);
     assert.equal(d.source, "llm");
     assert.doesNotMatch(d.response, /enclosed/);
-    assert.match(d.response, /The order was fulfilled as placed\. We ask PayPal/);
+    assert.match(
+      d.response,
+      /The order was fulfilled as placed\. We ask PayPal/,
+    );
   });
 
   it("cites an attached item by name and may then say it is enclosed", async () => {
-    const added = [{ item: "Prior orders from this buyer", note: "Hana Kobayashi has 1 other order with us on this PayPal account: Oct 14, 2026, $203.00." }];
+    const added = [
+      {
+        item: "Prior orders from this buyer",
+        note: "Hana Kobayashi has 1 other order with us on this PayPal account: Oct 14, 2026, $203.00.",
+      },
+    ];
     const seen: string[] = [];
-    const text = "The buyer authorised this payment. We enclose the prior orders from this buyer on the same PayPal account. We ask PayPal to find in our favour.";
-    const d = await draftResponse(fake([text], seen), hana, decision, [], undefined, added);
+    const text =
+      "The buyer authorised this payment. We enclose the prior orders from this buyer on the same PayPal account. We ask PayPal to find in our favour.";
+    const d = await draftResponse(
+      fake([text], seen),
+      hana,
+      decision,
+      [],
+      undefined,
+      added,
+    );
     assert.equal(d.source, "llm");
     assert.match(d.response, /prior orders/i);
-    assert.match(JSON.parse(JSON.parse(seen[0]!).messages.at(-1).content).facts_on_file[0], /^Prior orders from this buyer:/);
-    const off = await draftResponse(createLlm({ env: {} }), hana, decision, [], undefined, added);
-    assert.deepEqual(groundingProblems(off.response, buildChecklist(withAdded(hana, added)), "x"), []);
+    assert.match(
+      JSON.parse(JSON.parse(seen[0]!).messages.at(-1).content).facts_on_file[0],
+      /^Prior orders from this buyer:/,
+    );
+    const off = await draftResponse(
+      createLlm({ env: {} }),
+      hana,
+      decision,
+      [],
+      undefined,
+      added,
+    );
+    assert.deepEqual(
+      groundingProblems(
+        off.response,
+        buildChecklist(withAdded(hana, added)),
+        "x",
+      ),
+      [],
+    );
   });
 
   it("leaves orders that are disputes themselves out of the prior-orders evidence", () => {
-    const prior = buildChecklist(hana).find((i) => i.item === "Prior orders from this buyer");
+    const prior = buildChecklist(hana).find(
+      (i) => i.item === "Prior orders from this buyer",
+    );
     assert.match(prior?.suggestion?.label ?? "", /1 other order$/);
     assert.ok(!prior?.suggestion?.note.includes("39.00"));
   });
 
   it("flags the contradiction markers on their own", () => {
     const cl = buildChecklist(priya);
-    for (const t of bad)
-      assert.ok(groundingProblems(t, cl, "").length > 0, t);
-    assert.deepEqual(groundingProblems("The two charges are for two separate orders, not one charge taken twice.", cl, ""), []);
+    for (const t of bad) assert.ok(groundingProblems(t, cl, "").length > 0, t);
+    assert.deepEqual(
+      groundingProblems(
+        "The two charges are for two separate orders, not one charge taken twice.",
+        cl,
+        "",
+      ),
+      [],
+    );
   });
 });
