@@ -494,7 +494,7 @@ describe("grounding", () => {
     const d = await draftResponse(
       fake(
         [
-          "Re: Sofia's claim. The order was fulfilled and the code was issued. We ask PayPal to find in our favour.",
+          "Re: Sofia's claim. The order was fulfilled. We ask PayPal to find in our favour.",
         ],
         seen,
       ),
@@ -634,12 +634,12 @@ describe("grounded drafting over the seeded cases", () => {
     [
       "Marcus Bell sleeping bag",
       bag,
-      "The order was fulfilled as placed on the buyer's PayPal account. We answer the complaint directly and ask PayPal to find in our favour.",
+      "The order was fulfilled as placed on the buyer's PayPal account. We ask PayPal to find in our favour.",
     ],
     [
       "Marcus Bell tent",
       tent,
-      "The order was fulfilled as placed on the buyer's PayPal account. We answer the complaint directly and ask PayPal to find in our favour.",
+      "The order was fulfilled as placed on the buyer's PayPal account. We ask PayPal to find in our favour.",
     ],
     [
       "Hana Kobayashi",

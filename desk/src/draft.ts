@@ -463,8 +463,58 @@ export function unbackedClaim(
     /\b(two|2) (distinct |separate )?(purchases|orders)\b/i.test(x)
   )
     return "it contradicts the buyer's message";
+  if (
+    /\b(buyer|customer|cardholder)\b[^.]{0,40}\b(has not|did not|never|failed to|hasn't|didn't|has provided|provided|did provide|responded)\b/i.test(
+      x,
+    )
+  )
+    return "it says what the buyer did or did not do, which is not on file";
+  if (
+    /\b(system|systems|platform|checkout)\b[^.]{0,30}\b(shows?|indicates?|confirms?|verified|verifies|processed|transmitted)\b|\bverified\b|\bno (prior|other|additional|further) (disputes?|refunds?|returns?|complaints?|fraud)/i.test(
+      x,
+    ) &&
+    !/record|log|system/i.test(proof)
+  )
+    return "it cites a system check or history that no evidence note backs";
   return null;
 }
+
+// words a supporting sentence may use whatever the case: they assert nothing about what happened
+const COMMON = new Set(
+  (
+    "the a an and or but not no of to in on at by for with from as is are was were be been it its this that these those we our us ask paypal please " +
+    "find favour favor review reviewer facts fact claim dispute disputed order orders charge charges payment payments transaction transactions purchase purchases " +
+    "buyer buyer's account amount item items placed made through also which who has have had will would should can could may than then there their they them " +
+    "so such any all each both only other same one two three about over under into out up after before during while when where what whether because since " +
+    "respectfully therefore thus according per based complaint position response"
+  ).split(" "),
+);
+/** Content words of a sentence that nothing the model was given contains; numbers count double. */
+export function unsupportedWords(x: string, source: string): string[] {
+  const stem = (w: string) =>
+    w
+      .toLowerCase()
+      .replace(/[^a-z0-9.]/g, "")
+      .slice(0, 5);
+  const known = new Set(
+    (source.match(/[A-Za-z0-9]+(?:[.'][A-Za-z0-9]+)*/g) ?? []).map(stem),
+  );
+  return (x.match(/[A-Za-z0-9]+(?:[.'][A-Za-z0-9]+)*/g) ?? []).flatMap((w) => {
+    const t = stem(w);
+    if (
+      t.length < 3 ||
+      COMMON.has(w.toLowerCase().replace(/'s$/, "")) ||
+      known.has(t)
+    )
+      return [];
+    return /\d/.test(t) ? [w, w] : [w];
+  });
+}
+
+const restates = (x: string, position: string) => {
+  const words = unsupportedWords(x, "");
+  return words.length > 0 && unsupportedWords(x, position).length === 0;
+};
 
 const MONTH =
   /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? (\d{1,2})\b/gi;
@@ -622,6 +672,11 @@ export async function draftResponse(
       .map((m) => m.content),
     facts_on_file: facts,
     our_position: position,
+    ...(c.purchased_at
+      ? {
+          example_sentence: `The purchase was made on ${day(c.purchased_at)} for ${c.items.map((i) => i.item_description).join(" and ")}.`,
+        }
+      : {}),
     task: "our_position is already written as the opening sentence. Add 2 to 4 supporting sentences that use only facts_on_file.",
   });
   const proof = [
@@ -659,11 +714,13 @@ export async function draftResponse(
       return { bad: "the reply did not match the draft shape" };
     const dropped: string[] = [];
     const kept = sentencesOf(stripHead(t)).filter((x) => {
+      // a restatement of the opening sentence adds nothing and is not an error
+      if (restates(x, position)) return false;
       const why =
         invalidReason(x, user, proof) ??
         unbackedClaim(x, proof, buyerText) ??
-        (x.toLowerCase() === position.toLowerCase()
-          ? "it repeated the opening sentence"
+        (unsupportedWords(x, user).length >= 2
+          ? `it says things the case does not (${unsupportedWords(x, user).slice(0, 3).join(", ")})`
           : undefined) ??
         groundingFlags(x, fb.checklist, factsText)[0]?.why ??
         // the same test the send gate applies, so a draft never trips it
