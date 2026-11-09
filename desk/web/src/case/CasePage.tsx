@@ -72,7 +72,7 @@ export function CasePage({
     : c.status === "UNDER_REVIEW" && upd
       ? "Under review"
       : c.status === "RESOLVED" || c.outcome
-        ? `Closed ${upd ? dateShort(upd) : ""} · ${c.outcome === "RESOLVED_SELLER_FAVOUR" ? "Decided for you" : c.outcome === "RESOLVED_BUYER_FAVOUR" ? "Decided for the buyer" : "Resolved"}`
+        ? `Closed ${upd ? dateShort(new Date(upd).toISOString()) : ""} · ${c.outcome === "RESOLVED_SELLER_FAVOUR" ? "Decided for you" : c.outcome === "RESOLVED_BUYER_FAVOUR" ? "Decided for the buyer" : "Resolved"}`
         : c.due_at
           ? `Response due ${dateShort(c.due_at)} (${inDays(c.due_at)}) · ${statusWords(c)}`
           : statusWords(c);
@@ -174,7 +174,7 @@ export function CasePage({
               vouched={s.vouched}
               added={s.added}
               sentText={s.sentText}
-              sent={!!s.sent}
+              sent={s.sentKind === "evidence"}
             />
           </div>
           <div>

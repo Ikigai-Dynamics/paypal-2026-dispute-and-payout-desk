@@ -44,7 +44,12 @@ export function EvidenceOnFile({
     );
   };
   const have = new Set(onFile.map((e) => trim(e.notes)));
-  const sentRows = sentEvidence.filter((e) => !have.has(trim(e.notes)));
+  // a vouched statement shows once, as "Your statement", not also as the stored "Merchant attests:" note
+  const attested = (n: unknown) =>
+    vouched.some((v) => trim(n) === `Merchant attests: ${v}`);
+  const sentRows = sentEvidence.filter(
+    (e) => !have.has(trim(e.notes)) && !attested(e.notes),
+  );
   const commOk = a.draft.checklist.some(
     (i) => i.item === "Communication with the buyer" && i.status !== "missing",
   );
@@ -67,7 +72,9 @@ export function EvidenceOnFile({
           );
         });
   const rows = [
-    ...onFile.map((e, i) => row(e, false, `f${i}`)),
+    ...onFile
+      .filter((e) => !attested(e.notes))
+      .map((e, i) => row(e, false, `f${i}`)),
     ...sentRows.map((e, i) => row(e, false, `s${i}`)),
     ...vouched.map((v, i) => (
       <div className="msg" key={`v${i}`}>
