@@ -7,14 +7,26 @@ const NO_SHIPMENT = "Purchased 2026-10-28. 1 × Sleeping bag.";
 const UPS =
   "UPS tracking 1Z999AA10123456784 shows the order was delivered Oct 30.";
 
+const FULL =
+  "UPS tracking 1Z999AA10123456784 shows the sleeping bag was delivered Oct 30 to the buyer's verified shipping address.";
+
 describe("unsupportedClaims", () => {
+  it("words the reasons as capitalised sentences with a display date", () => {
+    const [r] = unsupportedClaims(FULL, NO_SHIPMENT);
+    assert.equal(
+      r!.reason,
+      "Mentions UPS tracking 1Z999AA10123456784, but no shipment is on file. Gives the date Oct 30, but no shipment or delivery on file has that date. Mentions a shipping address match, but none is on file.",
+    );
+    for (const s of r!.reason.split(/(?<=\.) /)) assert.match(s, /^[A-Z]/);
+    assert.ok(!r!.reason.includes("oct 30"));
+  });
   it("flags the invented UPS delivery", () => {
     const r = unsupportedClaims(UPS, NO_SHIPMENT);
     assert.equal(r.length, 1);
     assert.equal(r[0]!.sentence, UPS);
     assert.match(
       r[0]!.reason,
-      /UPS tracking 1Z999AA10123456784, but no shipment is on file/,
+      /UPS tracking 1Z999AA10123456784, but no shipment is on file\./,
     );
   });
   it("flags an address match only when no address note exists", () => {

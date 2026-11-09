@@ -36,5 +36,11 @@ reset_demo() {
 
   echo "== sync the desk from PayPal"
   desk -X POST "http://${H}/api/sync" | jq -c .
+
+  echo "== check the reset took"
+  [ "$(desk "http://${H}/api/cases" | jq -r '.cases[] | select(.dispute_id=="PP-D-GIFTCARD-0001") | .status')" = WAITING_FOR_SELLER_RESPONSE ] ||
+    fail "the gift card case (PP-D-GIFTCARD-0001) is not open after the reset"
+  [ "$(desk "http://${H}/api/cases/PP-D-3237289029/analysis" | jq -r '.work')" = null ] ||
+    fail "a case still has saved work after the reset"
 }
 reset_demo

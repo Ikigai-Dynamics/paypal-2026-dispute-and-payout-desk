@@ -1,7 +1,3 @@
-# Run right after every deploy. Reseed the demo from the shared dataset: the three narrated cases are open and synced.
-echo "demo ready (nix run .#demo-reset):"
-echo "  gift card not received: Sofia Lindqvist, USD 100.00 (PP-D-GIFTCARD-0001)"
-echo "  big chargeback to fight: Marcus Bell, USD 1,317.00 (PP-D-BIGCHARGEBACK-0002)"
-echo "  duplicate charge to accept: Priya Nair, USD 164.00 (PP-D-DUPLICATE-0003)"
-echo "  unauthorised with order history: Hana Kobayashi, USD 203.00 (PP-D-8800318893)"
-echo "  other: Marcus Bell, no evidence yet (PP-D-3237289029)"
+# Run right after every deploy. Reseed the demo from the shared dataset: the narrated cases are open and synced.
+echo "demo ready (nix run .#demo-reset), open cases the landing page lists, most urgent first:"
+desk "http://${H}/api/cases" | jq -r '[.cases[] | select(.status == "WAITING_FOR_SELLER_RESPONSE" or .status == "OPEN")] | sort_by(.days_left)[:8][] | "  \(.buyer), \(.currency) \(.amount_cents / 100) (\(.dispute_id)), \(.call)"'
