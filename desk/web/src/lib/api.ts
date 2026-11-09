@@ -174,6 +174,7 @@ export interface ActivityCall {
 }
 
 export interface Info {
+  bootId?: string;
   paypalEnv: string;
   llm: { online: boolean; label?: string };
   sync: { error?: string | null };

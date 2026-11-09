@@ -34,7 +34,8 @@ echo "== analysis: the fight case (Marcus Bell, USD 1,317)"
 fight=$(desk "http://${H}/api/cases/${FIGHT}/analysis")
 show "$FIGHT" "$fight"
 assert "call is fight" "$(echo "$fight" | jq '.decision.call == "fight"')"
-assert "checklist: exactly one item missing" "$(echo "$fight" | jq '[.draft.checklist[] | select(.status == "missing")] | length == 1')"
+# a billing address is not an address match, so that item stays missing
+assert "checklist: the address item is missing" "$(echo "$fight" | jq '[.draft.checklist[] | select(.status == "missing") | .item] | index("Shipping address matches the buyer") != null')"
 assert "explanation is plain English" "$(echo "$fight" | jq '.draft.explanation | test("p =|EV") | not')"
 assert "response names no dispute id" "$(echo "$fight" | jq '.draft.response | contains("PP-D-") | not')"
 
@@ -86,11 +87,15 @@ put=$(desk -X PUT -H 'content-type: application/json' \
 assert "PUT /work accepts the page's payload" "$(echo "$put" | jq '.work.added[0].evidence_type == "PROOF_OF_FULFILLMENT"')"
 reload=$(desk "http://${H}/api/cases/${GC}/analysis")
 assert "a reload returns the saved evidence" "$(echo "$reload" | jq '.work.added | length == 1')"
+OWN='The gift card code was emailed to the buyer; the email log is attached.'
 dry=$(desk -X POST -H 'content-type: application/json' \
-  -d '{"text":"The gift card code was emailed to the buyer; the email log is attached."}' "http://${H}/api/cases/${GC}/check")
-assert "dry run finds nothing invented" "$(echo "$dry" | jq '.sentences | length == 0')"
+  -d "$(jq -n --arg s "$OWN" '{text:$s}')" "http://${H}/api/cases/${GC}/check")
+assert "dry run flags only the sentence the merchant wrote, as added" "$(echo "$dry" | jq --arg s "$OWN" '.sentences == [.sentences[0]] and .sentences[0].sentence == $s and .sentences[0].kind == "added"')"
+dry=$(desk -X POST -H 'content-type: application/json' \
+  -d "$(jq -n --arg s "$OWN" '{text:$s, attested:[$s]}')" "http://${H}/api/cases/${GC}/check")
+assert "dry run finds nothing invented once the sentence is attested" "$(echo "$dry" | jq '.sentences | length == 0')"
 res=$(desk -X POST -H 'content-type: application/json' \
-  -d '{"text":"The gift card code was emailed to the buyer; the email log is attached.","confirm":true}' "http://${H}/api/cases/${GC}/evidence")
+  -d "$(jq -n --arg s "$OWN" '{text:$s, attested:[$s], confirm:true}')" "http://${H}/api/cases/${GC}/evidence")
 assert "send with the saved evidence is UNDER_REVIEW" "$(echo "$res" | jq '.case.status == "UNDER_REVIEW"')"
 sent=$(desk "http://${H}/api/cases/${GC}/analysis")
 assert "the sent record lists the evidence" "$(echo "$sent" | jq '.sent.added | length == 1')"

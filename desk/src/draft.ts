@@ -354,23 +354,28 @@ export function explanationOf(
     : `We recommend accepting: ${chance}, which is too low to justify the cost of about ${cost} to fight.`;
 }
 
-/** The order, every evidence item on the case and the buyer's latest message: the facts sentence, nothing else. */
+/** "a", "a and b", "a, b, and c" */
+const listOf = (xs: string[]) =>
+  xs.length <= 1
+    ? xs.join("")
+    : `${xs.slice(0, -1).join(", ")}${xs.length > 2 ? "," : ""} and ${xs.at(-1)}`;
+
+/** Two sentences at most: the order and the buyer's latest message on file, then every evidence item on the case. */
 export function factsSentence(c: CaseView): string {
   const order = c.items
     .map((i) => `${i.item_quantity} × ${i.item_description}`)
     .join(", ");
-  const clauses = [
-    `the order${c.purchased_at ? ` of ${day(c.purchased_at)}` : ""}${order ? ` for ${order}` : ""}, ${money(c.amount_cents, c.currency)}`,
-    ...c.evidences.flatMap((e) => [
-      ...(e.notes ? [e.notes.trim().replace(/[.\s]+$/, "")] : []),
-      ...(e.evidence_info?.tracking_info ?? []).map(
-        (t) => `${t.carrier_name} tracking number ${t.tracking_number}`,
-      ),
-    ]),
-  ];
   const msg = c.messages.findLast((m) => m.posted_by === "BUYER");
-  if (msg) clauses.push(`${c.buyer}'s message of ${day(msg.time_posted)}`);
-  return `On file: ${clauses.join("; ")}.`;
+  const onFile = `On file: the order${c.purchased_at ? ` of ${day(c.purchased_at)}` : ""}${order ? ` for ${order}` : ""}, ${money(c.amount_cents, c.currency)}${msg ? `, and ${c.buyer}'s message of ${day(msg.time_posted)}` : ""}.`;
+  const evidence = c.evidences.flatMap((e) => [
+    ...(e.notes ? [e.notes.trim().replace(/[.\s]+$/, "")] : []),
+    ...(e.evidence_info?.tracking_info ?? []).map(
+      (t) => `${t.carrier_name} tracking number ${t.tracking_number}`,
+    ),
+  ]);
+  return evidence.length
+    ? `${onFile} Our evidence: ${listOf(evidence)}.`
+    : onFile;
 }
 
 /** The buyer pattern, only when the buyer has 3 or more disputes open with us at once. */
