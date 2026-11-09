@@ -110,3 +110,12 @@ export async function pool<T>(
   };
   await Promise.all(Array.from({ length: n }, worker));
 }
+
+/** For pool(): keep going until `n` drafts in a row found the gateway down; one slow call or a grounding fallback never stops it. */
+export function stopAfterDown(n = 2): (d: Draft) => boolean {
+  let downs = 0;
+  return (d) => {
+    downs = d.fallback_reason === "ai_down" ? downs + 1 : 0;
+    return downs < n;
+  };
+}

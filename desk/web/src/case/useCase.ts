@@ -42,6 +42,12 @@ interface State {
   saveTimer: ReturnType<typeof setTimeout> | null;
   saveChain: Promise<void>;
   draftSeq: number;
+  /** the server is asking the model for a fresh draft; the fallback on screen is temporary */
+  aiPending: boolean;
+  polling: boolean;
+  /** the last draft text the server gave, to tell whether the merchant changed the editor */
+  serverText: string;
+  newDraft: { text: string; label: string | null } | null;
 }
 
 const fresh = (id: string): State => ({
@@ -72,6 +78,10 @@ const fresh = (id: string): State => ({
   saveTimer: null,
   saveChain: Promise.resolve(),
   draftSeq: 0,
+  aiPending: false,
+  polling: false,
+  serverText: "",
+  newDraft: null,
 });
 
 const canon = (added: Map<string, AddedEvidence>) =>
@@ -100,17 +110,76 @@ export function useCase(
   };
   const url = (tail: string) => `/api/cases/${encodeURIComponent(id)}${tail}`;
 
-  async function recompute(fresh: boolean) {
+  function query(): URLSearchParams | null {
     const q = new URLSearchParams();
     const p = s.inputs.prior.trim();
     if (p !== "") {
       const v = Number(p);
-      if (!(v >= 0 && v <= 100))
-        return set({ error: "Win chance must be between 0 and 100." });
+      if (!(v >= 0 && v <= 100)) return null;
       q.set("prior", String(v / 100));
     }
     q.set("c", s.inputs.c || "15");
     q.set("fee", s.inputs.fee || "0");
+    return q;
+  }
+
+  // the model is still writing: look again every 3s for up to 40s, never overwriting the merchant's text
+  function pollDraft() {
+    if (s.polling) return;
+    s.polling = true;
+    const t0 = Date.now();
+    const tick = async () => {
+      if (!live()) return;
+      const q = query();
+      let a: Analysis | null = null;
+      try {
+        if (q) a = await api<Analysis>(url(`/analysis?${q}`));
+      } catch {}
+      if (!live()) return;
+      const dr = a?.draft;
+      if (a && dr?.source === "llm") {
+        const mine = !s.editedLocal && s.draftText === s.serverText;
+        set({
+          analysis: a,
+          aiPending: false,
+          polling: false,
+          serverText: dr.response,
+          ...(mine
+            ? {
+                draftText: dr.response,
+                draftLabel: dr.label ?? null,
+                draftAi: true,
+                newDraft: null,
+              }
+            : { newDraft: { text: dr.response, label: dr.label ?? null } }),
+        });
+        if (mine) opts.onAiDraft();
+      } else if (a?.drafting && Date.now() - t0 < 40_000) {
+        setTimeout(() => void tick(), 3000);
+      } else {
+        set({ aiPending: false, polling: false });
+      }
+    };
+    setTimeout(() => void tick(), 3000);
+  }
+
+  function useNewDraft() {
+    const n = s.newDraft;
+    if (!n) return;
+    set({
+      draftText: n.text,
+      draftLabel: n.label,
+      draftAi: true,
+      editedLocal: false,
+      serverText: n.text,
+      newDraft: null,
+    });
+    saveWork();
+  }
+
+  async function recompute(fresh: boolean) {
+    const q = query();
+    if (!q) return set({ error: "Win chance must be between 0 and 100." });
     let a: Analysis;
     try {
       a = await api<Analysis>(url(`/analysis?${q}`));
@@ -138,11 +207,15 @@ export function useCase(
       patch.draftText = patch.work.draft_text;
     else if (fresh || !s.draftText) patch.draftText = dr.response;
     if (fresh) patch.draftLabel = patch.work?.draft_label ?? dr.label ?? null;
+    if (fresh || !s.draftText)
+      patch.serverText = patch.draftText ?? dr.response;
+    patch.aiPending = !!a.drafting && dr.source !== "llm";
     const label = fresh ? patch.draftLabel : s.draftLabel;
     patch.draftAi = dr.source === "llm" || /^AI draft/.test(label ?? "");
     if (fresh) patch.loading = false;
     set(patch);
     if (patch.draftAi) opts.onAiDraft();
+    if (patch.aiPending) pollDraft();
   }
 
   // the server keeps the unsent work, so a reload or another browser sees it
@@ -190,6 +263,9 @@ export function useCase(
       set({
         drafting: false,
         draftText: res.response,
+        serverText: res.response,
+        newDraft: null,
+        aiPending: false,
         draftAi,
         editedLocal: false,
         draftLabel: res.label ?? null,
@@ -355,12 +431,14 @@ export function useCase(
   const chose = s.fightAnyway && d?.call === "accept";
   const badge = !a
     ? "Drafting with AI…"
-    : s.editedLocal
-      ? s.draftAi
-        ? "AI draft, edited by you"
-        : "Template, edited by you"
-      : (s.draftLabel ??
-        (s.draftAi ? "AI draft" : "Drafted from the case facts"));
+    : s.aiPending && !s.editedLocal
+      ? "AI is drafting..."
+      : s.editedLocal
+        ? s.draftAi
+          ? "AI draft, edited by you"
+          : "Template, edited by you"
+        : (s.draftLabel ??
+          (s.draftAi ? "AI draft" : "Drafted from the case facts"));
   const labelGreen = !!a && s.draftAi && !/^Drafted from/.test(badge);
   const confirmText = c
     ? (() => {
@@ -421,6 +499,8 @@ export function useCase(
     confirmText,
     badge,
     labelGreen,
+    newDraft: s.newDraft,
+    useNewDraft,
     cost: Number(s.inputs.c) || 15,
   };
 }
