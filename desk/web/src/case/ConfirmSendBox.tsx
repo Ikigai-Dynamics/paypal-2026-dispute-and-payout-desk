@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import type { Claim } from "./types";
+import type { Claim } from "../lib/api";
 
 export type ConfirmSendBoxProps = {
   kind: "evidence" | "accept";

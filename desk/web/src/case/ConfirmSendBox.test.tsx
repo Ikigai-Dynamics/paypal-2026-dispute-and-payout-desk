@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { describe, expect, it } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { ConfirmSendBox } from "./ConfirmSendBox";
-import type { Claim } from "./types";
+import type { Claim } from "../lib/api";
 
 const noop = () => {};
 

@@ -115,7 +115,10 @@ export function useCase(
     try {
       a = await api<Analysis>(url(`/analysis?${q}`));
     } catch {
-      return set({ error: "Could not load this case. Try again.", loading: false });
+      return set({
+        error: "Could not load this case. Try again.",
+        loading: false,
+      });
     }
     if (!live()) return;
     const patch: Partial<State> = { analysis: a, error: null };
@@ -131,7 +134,8 @@ export function useCase(
       }
     }
     const dr = a.draft;
-    if (fresh && patch.work?.draft_text) patch.draftText = patch.work.draft_text;
+    if (fresh && patch.work?.draft_text)
+      patch.draftText = patch.work.draft_text;
     else if (fresh || !s.draftText) patch.draftText = dr.response;
     if (fresh) patch.draftLabel = patch.work?.draft_label ?? dr.label ?? null;
     const label = fresh ? patch.draftLabel : s.draftLabel;
@@ -355,7 +359,8 @@ export function useCase(
       ? s.draftAi
         ? "AI draft, edited by you"
         : "Template, edited by you"
-      : (s.draftLabel ?? (s.draftAi ? "AI draft" : "Drafted from the case facts"));
+      : (s.draftLabel ??
+        (s.draftAi ? "AI draft" : "Drafted from the case facts"));
   const labelGreen = !!a && s.draftAi && !/^Drafted from/.test(badge);
   const confirmText = c
     ? (() => {

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import type { AddedEvidence, ChecklistItem } from "./types";
+import type { AddedEvidence, ChecklistItem } from "../lib/api";
 
 export const evType = (item: string) =>
   /tracking|delivery|email log|code sent|fulfil/i.test(item)
