@@ -39,6 +39,8 @@ export interface CaseView {
   purchased_at?: string;
   /** the buyer's other orders the desk knows of, oldest first */
   buyer_history?: BuyerOrder[];
+  /** disputes of this buyer waiting for a response, this case included */
+  buyer_open_disputes?: number;
 }
 
 export interface BuyerOrder {

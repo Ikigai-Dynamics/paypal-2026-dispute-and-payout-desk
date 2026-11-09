@@ -101,8 +101,14 @@ export function proofText(
       `purchased ${view.purchased_at.slice(0, 10)} ${MON[dt.getUTCMonth()]} ${dt.getUTCDate()}`,
     );
   }
-  for (const m of view.messages)
+  for (const m of view.messages) {
     if (m.posted_by === "SELLER") lines.push(m.content);
+    // only the date of the buyer's message is on file for a facts sentence, not what it says
+    else {
+      const dt = new Date(m.time_posted);
+      lines.push(`buyer message ${MON[dt.getUTCMonth()]} ${dt.getUTCDate()}`);
+    }
+  }
   for (const e of view.evidences) {
     lines.push(e.notes ?? "");
     for (const t of e.evidence_info?.tracking_info ?? [])

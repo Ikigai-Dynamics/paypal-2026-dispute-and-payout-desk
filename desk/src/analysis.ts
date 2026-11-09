@@ -223,11 +223,15 @@ export async function decideFor(
 /** The case view plus the buyer's earlier orders the desk knows of. */
 export async function viewOf(store: PgStore, row: CaseRow): Promise<CaseView> {
   const view = toView(row);
-  const history = buyerHistory(
-    row,
-    await store.byBuyer(row.buyer, row.dispute_id),
-  );
-  return history.length ? { ...view, buyer_history: history } : view;
+  const others = await store.byBuyer(row.buyer, row.dispute_id);
+  const history = buyerHistory(row, others);
+  const waiting = (r: CaseRow) =>
+    r.status === "WAITING_FOR_SELLER_RESPONSE" || r.status === "OPEN";
+  return {
+    ...view,
+    ...(history.length ? { buyer_history: history } : {}),
+    buyer_open_disputes: [row, ...others].filter(waiting).length,
+  };
 }
 
 export async function analyse(

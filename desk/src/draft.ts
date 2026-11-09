@@ -21,7 +21,7 @@ export const SYSTEM_PROMPT =
   "You write the merchant's written response to PayPal's dispute reviewer. It is not a letter to the buyer. " +
   "Write as the merchant named in the input, using 'we'. No salutation and no 'Dear ...'. " +
   "Write plain, factual prose, and do not repeat the buyer's name or the amount in a heading. " +
-  "our_position is already written as the first sentence of the response: do not repeat or restate it. Add 2 to 4 supporting sentences that answer the buyer's own complaint from buyer_messages. " +
+  "our_position (the opening sentence) and the facts sentence are already written: do not repeat or restate them. Add exactly one supporting sentence that answers the buyer's own complaint from buyer_messages. " +
   "Cite only facts_on_file, quoting dates, numbers and notes exactly as given. " +
   "Never write a number, carrier, date, order id or document that is not in facts_on_file. " +
   "Never use the words shipped, delivered, enclosed, attached, providing, lack or 'our records' unless facts_on_file says so. " +
@@ -61,46 +61,62 @@ export function trackingOf(c: CaseView): { carrier: string; number: string }[] {
 const notesMatch = (c: CaseView, re: RegExp) =>
   c.evidences.some((e) => re.test(`${e.evidence_type} ${e.notes ?? ""}`));
 
-const NEUTRAL =
-  "We dispute this claim and ask PayPal to review the facts below.";
-
-/** Our position for this case: the reason's claim only when something on file supports it, else a neutral one. */
-export function positionFor(c: CaseView): string {
-  const tracking = trackingOf(c).length > 0;
-  // history we hold but have not attached is not evidence on file
-  const history = notesMatch(
-    c,
-    /other orders?|prior orders?|previous orders?|earlier orders?|repeat/i,
-  );
-  switch (c.reason) {
-    case "MERCHANDISE_OR_SERVICE_NOT_RECEIVED":
-      return tracking || notesMatch(c, /deliver|\bsent\b|ship/i)
-        ? positionOf(c.reason)
-        : NEUTRAL;
-    case "PAYMENT_BY_OTHER_MEANS":
-      return notesMatch(
-        c,
-        /one payment|single payment|paid (once|through paypal)/i,
-      )
-        ? "Our records show one payment for this order, through PayPal."
-        : "We have no record of another payment for this order.";
-    case "UNAUTHORISED":
-      return history || addressNote(c)
-        ? positionOf(c.reason)
-        : "We ask PayPal to review whether this payment was authorised, using the facts below.";
+/** What we ask PayPal to check when nothing on file backs the claim of the reason. */
+const requestFor = (reason: string): string => {
+  switch (reason) {
     case "DUPLICATE_TRANSACTION":
-      return positionOf(c.reason);
+      return "We ask PayPal to check whether these two charges are for separate orders rather than one charge taken twice.";
+    case "UNAUTHORISED":
+      return "We ask PayPal to review whether this payment was authorised.";
     case "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED":
-      return notesMatch(c, /listing|description|described/i)
-        ? positionOf(c.reason)
-        : NEUTRAL;
+      return "We ask PayPal to check whether the item matched its listing.";
     case "CREDIT_NOT_PROCESSED":
-      return notesMatch(c, /return|refund/i) ? positionOf(c.reason) : NEUTRAL;
+      return "We ask PayPal to check whether this order and any return were handled correctly.";
+    case "PAYMENT_BY_OTHER_MEANS":
+      return "We ask PayPal to confirm that this order was paid only once, through PayPal.";
     default:
-      return tracking || notesMatch(c, /fulfil|deliver|ship|service/i)
-        ? positionOf(c.reason)
-        : NEUTRAL;
+      return "We ask PayPal to review whether the order was fulfilled as placed.";
   }
+};
+
+// the checklist items whose presence backs the assertive sentence of a reason
+const BACKING = (c: CaseView): string[] => {
+  switch (c.reason) {
+    case "DUPLICATE_TRANSACTION":
+      return ["Proof the two charges are separate orders"];
+    case "UNAUTHORISED":
+      return [
+        "Prior orders from this buyer",
+        "Shipping address matches the buyer",
+      ];
+    case "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED":
+      return ["Listing description"];
+    case "CREDIT_NOT_PROCESSED":
+      return ["Return received record"];
+    case "MERCHANDISE_OR_SERVICE_NOT_RECEIVED":
+      return c.items.some((i) => DIGITAL.test(i.item_description))
+        ? ["Proof the code was sent (email log)"]
+        : ["Tracking number"];
+    default:
+      return ["Proof of fulfilment or service"];
+  }
+};
+
+/** Our position: the reason's claim only when a checklist item backing it is on file, else a request to PayPal. */
+export function positionFor(c: CaseView): string {
+  if (c.reason === "PAYMENT_BY_OTHER_MEANS")
+    return notesMatch(
+      c,
+      /one payment|single payment|paid (once|through paypal)/i,
+    )
+      ? "Our records show one payment for this order, through PayPal."
+      : requestFor(c.reason);
+  const backing = BACKING(c);
+  return buildChecklist(c).some(
+    (i) => i.status === "present" && backing.includes(i.item),
+  )
+    ? positionOf(c.reason)
+    : requestFor(c.reason);
 }
 
 export const DIGITAL =
@@ -115,13 +131,9 @@ const day = (iso: string) =>
   });
 const orderLine = (o: BuyerOrder, cur: string) =>
   `${day(o.date)}, ${new Intl.NumberFormat("en-US", { style: "currency", currency: cur }).format(o.amount_cents / 100)} (${o.items})`;
-/** The evidence note that already speaks of the billing address, quoted. */
-const addressNote = (c: CaseView) => {
-  const n = c.evidences.find((e) =>
-    /billing address/i.test(e.notes ?? ""),
-  )?.notes;
-  return n ? `"${n}"` : undefined;
-};
+/** An evidence note that explicitly says the shipping address matches; a billing address is not a match. */
+const ADDRESS_MATCH =
+  /shipping address (matches|matched|is the same as|same as)|address (matches|matched)|address match/i;
 
 /** The per-reason checklist, computed from what is actually on the case. */
 export function buildChecklist(c: CaseView): ChecklistItem[] {
@@ -230,13 +242,9 @@ export function buildChecklist(c: CaseView): ChecklistItem[] {
         item(
           "Shipping address matches the buyer",
           false,
-          notesMatch(c, /address/i),
+          notesMatch(c, ADDRESS_MATCH),
           "An evidence note refers to the address match.",
           "No address match is on file.",
-          addressNote(c) && {
-            label: "Attach address match from the shipment record",
-            note: addressNote(c)!,
-          },
         ),
         item(
           "Prior orders from this buyer",
@@ -262,13 +270,6 @@ export function buildChecklist(c: CaseView): ChecklistItem[] {
             label: `Attach the order record: ${day(c.purchased_at)}`,
             note: `Order record: ${order || "the order"}, ${money(c.amount_cents, c.currency)}, placed ${day(c.purchased_at)}.`,
           },
-        ),
-        item(
-          "Refund issued for the duplicate",
-          false,
-          notesMatch(c, /refund/i),
-          "An evidence note refers to a refund.",
-          "No refund for the duplicate is on file.",
         ),
       ];
     case "CREDIT_NOT_PROCESSED":
@@ -336,32 +337,45 @@ export function explanationOf(
     : `We recommend accepting: ${chance}, which is too low to justify the cost of about ${cost} to fight.`;
 }
 
-const sentence = (t: string) => t.trim().replace(/[.\s]+$/, "") + ".";
+/** The order, every evidence item on the case and the buyer's latest message: the facts sentence, nothing else. */
+export function factsSentence(c: CaseView): string {
+  const order = c.items
+    .map((i) => `${i.item_quantity} × ${i.item_description}`)
+    .join(", ");
+  const clauses = [
+    `the order${c.purchased_at ? ` of ${day(c.purchased_at)}` : ""}${order ? ` for ${order}` : ""}, ${money(c.amount_cents, c.currency)}`,
+    ...c.evidences.flatMap((e) => [
+      ...(e.notes ? [e.notes.trim().replace(/[.\s]+$/, "")] : []),
+      ...(e.evidence_info?.tracking_info ?? []).map(
+        (t) => `${t.carrier_name} tracking number ${t.tracking_number}`,
+      ),
+    ]),
+  ];
+  const msg = c.messages.findLast((m) => m.posted_by === "BUYER");
+  if (msg) clauses.push(`${c.buyer}'s message of ${day(msg.time_posted)}`);
+  return `On file: ${clauses.join("; ")}.`;
+}
 
-/** The opening sentence, always with the buyer's full name. */
-export const headOf = (c: CaseView) =>
-  `Re: ${c.buyer}'s claim about ${c.items.map((i) => `${i.item_quantity} × ${i.item_description}`).join(", ") || "the order"} (${money(c.amount_cents, c.currency)}).`;
+/** The buyer pattern, only when the buyer has 3 or more disputes open with us at once. */
+export const patternSentence = (c: CaseView): string | undefined =>
+  (c.buyer_open_disputes ?? 0) >= 3
+    ? `${c.buyer} has ${c.buyer_open_disputes} open disputes with us at the same time; we ask PayPal to take this pattern into account.`
+    : undefined;
 
-/** Deterministic template per reason: what we did, then the evidence on file quoted. Cites only what is present. */
+const CLOSING = "We ask PayPal to find in our favour.";
+const compose = (c: CaseView, position: string, support?: string) =>
+  [position, factsSentence(c), support, patternSentence(c), CLOSING]
+    .filter(Boolean)
+    .join(" ");
+
+/** Deterministic template per reason: position, the facts on file, the buyer pattern, the closing request. */
 export function fallbackDraft(
   c: CaseView,
   decision: Decision | null,
   handlingCents?: number,
 ): Omit<Draft, "source" | "label"> {
-  const head = headOf(c);
-  const cited = c.evidences.flatMap((e) => [
-    ...(e.notes ? [`On file: ${sentence(e.notes)}`] : []),
-    ...(e.evidence_info?.tracking_info ?? []).map(
-      (t) => `On file: ${t.carrier_name} tracking number ${t.tracking_number}.`,
-    ),
-  ]);
-  const body = [
-    positionFor(c),
-    ...cited,
-    "We ask PayPal to find in our favour.",
-  ].join(" ");
   return {
-    response: `${head} ${body}`,
+    response: compose(c, positionFor(c)),
     checklist: buildChecklist(c),
     explanation: explanationOf(decision, c, handlingCents),
   };
@@ -581,7 +595,6 @@ const ITEM_NOUN: Record<string, RegExp> = {
   "Shipping address matches the buyer": /address/i,
   "Prior orders from this buyer":
     /prior orders?|order history|previous orders?|earlier orders?/i,
-  "Refund issued for the duplicate": /refund/i,
   "Refund issued": /refund/i,
   "Return received record": /return received|returned item/i,
 };
@@ -660,6 +673,7 @@ export async function draftResponse(
     ),
   ]);
   const position = positionFor(c);
+  const factsLine = factsSentence(c);
   const user = JSON.stringify({
     merchant: c.merchant,
     buyer: c.buyer,
@@ -677,7 +691,7 @@ export async function draftResponse(
           example_sentence: `The purchase was made on ${day(c.purchased_at)} for ${c.items.map((i) => i.item_description).join(" and ")}.`,
         }
       : {}),
-    task: "our_position is already written as the opening sentence. Add 2 to 4 supporting sentences that use only facts_on_file.",
+    task: "our_position is already written as the opening sentence and the facts on file as the second. Add exactly one supporting sentence that uses only facts_on_file.",
   });
   const proof = [
     c.purchased_at ? day(c.purchased_at) : "",
@@ -715,7 +729,11 @@ export async function draftResponse(
     const dropped: string[] = [];
     const kept = sentencesOf(stripHead(t)).filter((x) => {
       // a restatement of the opening sentence adds nothing and is not an error
-      if (restates(x, position)) return false;
+      if (
+        /find in our favou?r/i.test(x) ||
+        restates(x, `${position} ${factsLine}`)
+      )
+        return false;
       const why =
         invalidReason(x, user, proof) ??
         unbackedClaim(x, proof, buyerText) ??
@@ -728,7 +746,7 @@ export async function draftResponse(
       if (why) dropped.push(`"${x}" (${why})`);
       return !why;
     });
-    if (kept.length >= 1) return { body: kept.join(" ") };
+    if (kept.length >= 1) return { body: kept[0]! };
     return {
       bad: dropped.length
         ? `these sentences were not allowed: ${dropped.join("; ")}`
@@ -745,8 +763,7 @@ export async function draftResponse(
   }
   if (r.source === "llm" && res?.body)
     return {
-      // the computed head names the buyer in full, whatever the model opened with
-      response: `${headOf(c)} ${position} ${res.body}`,
+      response: compose(c, position, res.body),
       // the computed checklist and explanation are the truth the page gates on
       checklist: fb.checklist,
       explanation: fb.explanation,

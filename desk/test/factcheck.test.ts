@@ -78,3 +78,14 @@ describe("parseAdded", () => {
     );
   });
 });
+
+describe("billing address", () => {
+  it("is no proof of a shipping address match", () => {
+    const s = "The shipping address matches the buyer's PayPal address.";
+    assert.equal(
+      unsupportedClaims(s, "Two tents shipped by UPS to the billing address")
+        .length,
+      1,
+    );
+  });
+});
