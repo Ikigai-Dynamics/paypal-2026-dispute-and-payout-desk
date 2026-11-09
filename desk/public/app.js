@@ -538,7 +538,8 @@ function renderAnalysis(a, fresh) {
           : statusWords(c);
   $("panel-sub").textContent =
     (REASON_SHORT[c.reason] ? `${REASONS[c.reason]} · ` : "") + status;
-  $("repeat").hidden = rb < 2 || !(fightAnyway || !a.decision || a.decision.call === "fight");
+  $("repeat").hidden =
+    rb < 2 || !(fightAnyway || !a.decision || a.decision.call === "fight");
   $("repeat").textContent =
     `${c.buyer} has ${rb} open disputes with you. Repeat claims from one buyer are worth noting in your response; PayPal reviewers see the pattern too.`;
   const draftText = (a.draft?.response ?? "").trim();
@@ -650,10 +651,10 @@ function setBadge() {
     ? draftAi
       ? "AI draft, edited by you"
       : "Template, edited by you"
-    : (draftLabel ??
-      (draftAi ? "AI draft" : "Drafted from the case facts"));
+    : (draftLabel ?? (draftAi ? "AI draft" : "Drafted from the case facts"));
   b.className =
-    "pill " + (draftAi && !/^Drafted from/.test(b.textContent) ? "green" : "grey");
+    "pill " +
+    (draftAi && !/^Drafted from/.test(b.textContent) ? "green" : "grey");
 }
 function applyWork(a) {
   work = a.work ?? null;
@@ -725,7 +726,10 @@ function renderEvidence() {
   const mine = !commOk
     ? ""
     : cur.case.messages
-        .filter((m) => m.posted_by !== "BUYER" && !m.content.includes(sentText ?? "\0"))
+        .filter(
+          (m) =>
+            m.posted_by !== "BUYER" && !m.content.includes(sentText ?? "\0"),
+        )
         .map((m) => {
           let t = m.content.trim();
           if (t.length > 140) t = t.slice(0, 140).replace(/\s+\S*$/, "") + "…";
@@ -1028,7 +1032,16 @@ function renderClaims() {
       claims
         .map(
           (c, i) =>
-            `<div class="claim"><blockquote>${esc(c.sentence)}</blockquote><div class="muted">${String(c.reason ?? "").replace(/^./, (ch) => ch.toUpperCase()).split(/;\s*|\.\s+(?=[A-Za-z])/).filter(Boolean).map((p) => `<div>${esc(p.replace(/\.$/, ""))}</div>`).join("")}</div><label><input type="checkbox" data-i="${i}"${c.ok ? " checked" : ""}> I have this evidence</label></div>`,
+            `<div class="claim"><blockquote>${esc(c.sentence)}</blockquote><div class="muted">${String(
+              c.reason ?? "",
+            )
+              .replace(/^./, (ch) => ch.toUpperCase())
+              .split(/;\s*|\.\s+(?=[A-Za-z])/)
+              .filter(Boolean)
+              .map((p) => `<div>${esc(p.replace(/\.$/, ""))}</div>`)
+              .join(
+                "",
+              )}</div><label><input type="checkbox" data-i="${i}"${c.ok ? " checked" : ""}> I have this evidence</label></div>`,
         )
         .join("") +
       '<p class="muted">Fix these sentences in your draft, or tick I have this evidence. <button id="recheck" type="button">Check again</button></p>'
@@ -1189,8 +1202,8 @@ const callLabel = (x) =>
     : x.method === "GET" && x.buyer
       ? `GET dispute · ${x.buyer}${x.amount_cents != null ? ` · ${money(x.amount_cents, x.currency || "USD")}` : ""}`
       : x.buyer
-    ? `${x.method} ${verb(x.path)} · ${x.buyer}${x.amount_cents != null ? ` · ${money(x.amount_cents, x.currency || "USD")}` : ""}`
-    : `${x.method} ${verb(x.path)}`;
+        ? `${x.method} ${verb(x.path)} · ${x.buyer}${x.amount_cents != null ? ` · ${money(x.amount_cents, x.currency || "USD")}` : ""}`
+        : `${x.method} ${verb(x.path)}`;
 function renderActivity() {
   const x = calls[0];
   const dot = (st) =>
