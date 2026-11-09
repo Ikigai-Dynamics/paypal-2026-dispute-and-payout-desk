@@ -60,7 +60,6 @@ table.prec td, table.prec th { border-bottom: 1px solid #eef0f3; padding: 3px 6p
 .checklist form .row label { flex: 1; }
 .formerr { color: var(--red); font-size: 12px; }
 .actions { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; align-items: center; }
-.okbox { background: #dcf5e6; border: 1px solid #9ad8b3; color: #075c2d; padding: 10px 14px; border-radius: 8px; margin-top: 10px; }
 .errbox { background: #fde2e1; border: 1px solid #e5a3a0; color: var(--red); padding: 8px 12px; border-radius: 8px; margin: 8px 0; }
 .bar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 10px 0; }
 .bar form { display: flex; gap: 6px; }

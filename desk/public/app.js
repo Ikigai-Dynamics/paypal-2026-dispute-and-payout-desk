@@ -539,9 +539,9 @@ function renderAnalysis(a, fresh) {
   $("panel-sub").textContent =
     (REASON_SHORT[c.reason] ? `${REASONS[c.reason]} · ` : "") + status;
   $("repeat").hidden =
-    rb < 2 || !(fightAnyway || !a.decision || a.decision.call === "fight");
+    rb < 3 || !(fightAnyway || !a.decision || a.decision.call === "fight");
   $("repeat").textContent =
-    `${c.buyer} has ${rb} open disputes with you. Repeat claims from one buyer are worth noting in your response; PayPal reviewers see the pattern too.`;
+    `${c.buyer} has ${rb} open disputes with you. Your response mentions the pattern; PayPal reviewers see it too.`;
   const draftText = (a.draft?.response ?? "").trim();
   const isSellerText = (n) =>
     n &&
@@ -618,8 +618,12 @@ function renderAnalysis(a, fresh) {
     $("terms-list").innerHTML = rows
       .map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`)
       .join("");
+    const kind = c.reason === "OTHER" ? "disputes where the buyer gave no reason" : `${reasonWords(c.reason).toLowerCase()} disputes`;
+    const won = Number.isFinite(d.wins) ? ` (${d.wins} won)` : "";
     $("p0line").textContent =
-      `Sellers win about ${pct(d.p0)}% of ${c.reason === "OTHER" ? "disputes where the buyer gave no reason" : `${reasonWords(c.reason).toLowerCase()} disputes like this`}`;
+      d.n > 0
+        ? `Sellers win about ${pct(d.p0)}% of ${kind} on average. Your ${d.n} similar past case${d.n === 1 ? "" : "s"}${won} ${pct(d.p) < pct(d.p0) ? "lower" : "raise"} your chance to ${pct(d.p)}%.`
+        : `About ${pct(d.p0)}% of ${kind} are won by sellers; with no similar past cases, your chance stays at ${pct(d.p)}%.`;
   } else {
     box.className = "rec";
     box.innerHTML =
@@ -628,8 +632,13 @@ function renderAnalysis(a, fresh) {
     $("terms-list").innerHTML = "";
     $("p0line").textContent = "";
   }
-  $("precedents").innerHTML = a.precedents.length
-    ? `<table class="prec"><tr><th>Outcome</th><th>Snippet</th></tr>${a.precedents.map((p) => `<tr><td>${p.won ? "You won" : "Buyer won"}</td><td>${esc(unbracket(p.snippet))}</td></tr>`).join("")}</table>`
+  const precs = new Map();
+  for (const p of a.precedents.filter((p) => p.outcome != null)) {
+    const k = `${p.won}|${unbracket(p.snippet)}`;
+    precs.set(k, { p, n: (precs.get(k)?.n ?? 0) + 1 });
+  }
+  $("precedents").innerHTML = precs.size
+    ? `<table class="prec"><tr><th>Outcome</th><th>Snippet</th></tr>${[...precs.values()].map(({ p, n }) => `<tr><td>${p.won ? "You won" : "Buyer won"}${n > 1 ? ` · ${n} cases` : ""}</td><td>${esc(unbracket(p.snippet))}</td></tr>`).join("")}</table>`
     : '<p class="muted">No similar resolved cases yet.</p>';
 
   const dr = a.draft;
@@ -781,7 +790,7 @@ function renderChecklist() {
     const ok = i.status !== "missing";
     const ad = added.get(i.item);
     li.className = ok || ad ? "ok" : "no";
-    li.innerHTML = `<span class="ico">${ok || ad ? "✓" : "✗"}</span><b>${esc(i.item)}</b><span class="pill ${required(i) ? "amber" : "grey"}">${required(i) ? "Required" : "Recommended"}</span><span class="why">${ad ? "Added, will be sent with your response" : esc(i.why)}</span>`;
+    li.innerHTML = `<span class="ico">${ok || ad ? "✓" : "✗"}</span><b>${esc(i.item)}</b><span class="pill ${required(i) ? "amber" : "grey"}">${required(i) ? "Required" : "Optional"}</span><span class="why">${ad ? "Added, will be sent with your response" : esc(i.why)}</span>`;
     if (ad) li.querySelector(".why").style.color = "var(--green)";
     if (ad) {
       const u = document.createElement("a");
@@ -1153,7 +1162,7 @@ async function run(kind) {
     setTimeout(renderActivity, 30100);
   }
   await loadCases().catch(() => {});
-  $("action-result").innerHTML = `<div class="okbox">${esc(msg)}</div>`;
+  $("action-result").innerHTML = ""; // the rec box is the single status message
   await recompute(true);
   renderChecklist();
   renderActions();
