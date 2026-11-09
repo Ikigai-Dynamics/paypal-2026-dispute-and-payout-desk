@@ -70,7 +70,9 @@ export interface BuyerOrder {
 export interface Evidence {
   evidence_type?: string;
   notes?: string;
-  evidence_info?: { tracking_info?: { carrier_name?: string; tracking_number?: string }[] };
+  evidence_info?: {
+    tracking_info?: { carrier_name?: string; tracking_number?: string }[];
+  };
 }
 
 export interface CaseView {
