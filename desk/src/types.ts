@@ -106,10 +106,12 @@ export interface Draft {
   checklist: ChecklistItem[];
   explanation: string;
   source: "llm" | "fallback";
-  /** "AI draft", "AI draft, updated with your evidence" or "Template draft (AI unavailable)", shown verbatim next to the text */
+  /** "AI draft", "AI draft, updated with your evidence", "Drafted from the case facts" / "Drafted from your evidence" or "Template draft (AI unavailable)", shown verbatim next to the text */
   label: string;
   model?: string;
   error?: string;
+  /** set on a fallback: the model call failed, or nothing it wrote was grounded */
+  fallback_reason?: "ai_down" | "grounding";
 }
 
 /** Validated structured evidence and files sent with a response. */

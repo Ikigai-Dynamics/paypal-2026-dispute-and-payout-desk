@@ -22,7 +22,16 @@ export class DraftCache {
   /** called after every real completion, so the page can re-probe at once on a failure */
   onResult?: (ok: boolean) => void;
 
+  /** the stored source of each case's latest draft, so a first edit is labelled by what it edits */
+  readonly lastSource = new Map<string, "llm" | "fallback" | "grounded">();
+
   constructor(private llm: Llm) {}
+
+  clear(): void {
+    this.done.clear();
+    this.pending.clear();
+    this.lastSource.clear();
+  }
 
   async get(
     c: CaseView,
@@ -37,7 +46,7 @@ export class DraftCache {
           .digest("hex")
           .slice(0, 12)
       : "";
-    const key = `v6|${c.dispute_id}|${c.updated_at}|${decision?.call ?? "none"}|${extra}`;
+    const key = `v7|${c.dispute_id}|${c.updated_at}|${decision?.call ?? "none"}|${extra}`;
     const knobs = `${o.prior ?? ""}|${o.handlingCostCents ?? ""}|${o.feeIfLostCents ?? ""}`;
     const hit = this.done.get(key);
     if (hit) {
@@ -65,7 +74,15 @@ export class DraftCache {
         o.handlingCostCents,
         added,
       );
-      this.lastOk = d.source === "llm";
+      this.lastOk = d.fallback_reason !== "ai_down";
+      this.lastSource.set(
+        c.dispute_id,
+        d.source === "llm"
+          ? "llm"
+          : d.fallback_reason === "grounding"
+            ? "grounded"
+            : "fallback",
+      );
       this.onResult?.(this.lastOk);
       if (d.source === "llm") {
         if (this.done.size >= MAX) this.done.clear();

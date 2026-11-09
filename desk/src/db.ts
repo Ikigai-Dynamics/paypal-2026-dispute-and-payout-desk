@@ -29,7 +29,7 @@ export interface CaseWork {
   added: AddedEv[];
   draft_text: string | null;
   draft_label: string | null;
-  draft_source: "llm" | "fallback" | null;
+  draft_source: "llm" | "fallback" | "grounded" | null;
   edited: boolean;
   updated_at: string;
 }
@@ -238,7 +238,7 @@ export class PgStore {
       added?: AddedEv[];
       text?: string;
       label?: string | null;
-      source?: "llm" | "fallback";
+      source?: "llm" | "fallback" | "grounded";
       edited?: boolean;
     },
   ): Promise<CaseWork> {

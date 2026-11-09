@@ -14,17 +14,20 @@ import type {
 export const LABEL_AI = "AI draft";
 export const LABEL_TEMPLATE = "Template draft (AI unavailable)";
 export const LABEL_AI_UPDATED = "AI draft, updated with your evidence";
+export const LABEL_GROUNDED = (added: boolean) =>
+  added ? "Drafted from your evidence" : "Drafted from the case facts";
 
 export const SYSTEM_PROMPT =
   "You write the merchant's written response to PayPal's dispute reviewer. It is not a letter to the buyer. " +
   "Write as the merchant named in the input, using 'we'. No salutation and no 'Dear ...'. " +
-  "Write 3 to 5 sentences of plain, factual prose, and do not repeat the buyer's name or the amount in a heading. " +
-  "State our_position, which is what we say happened, and argue it. Answer the buyer's own complaint from buyer_messages. " +
+  "Write plain, factual prose, and do not repeat the buyer's name or the amount in a heading. " +
+  "our_position is already written as the first sentence of the response: do not repeat or restate it. Add 2 to 4 supporting sentences that answer the buyer's own complaint from buyer_messages. " +
   "Cite only facts_on_file, quoting dates, numbers and notes exactly as given. " +
   "Never write a number, carrier, date, order id or document that is not in facts_on_file. " +
   "Never use the words shipped, delivered, enclosed, attached, providing, lack or 'our records' unless facts_on_file says so. " +
   "Never say any evidence is missing or still needed, and never promise to send anything later. If facts_on_file is empty, mention no documents or evidence at all. " +
   "Never agree with the buyer or concede the claim, and never apologise. " +
+  "Never say the buyer acknowledged, admitted, confirmed or agreed to anything unless buyer_messages says so. Never say our system or records show anything, and never write about shipments, cardholders, timing between charges or the number of purchases unless facts_on_file says so. " +
   "Never use square-bracket placeholders, never give a recommendation or odds, and never write the dispute id, a reason code, or any internal field name. " +
   'Return JSON {"response": string} and nothing else.';
 
@@ -43,19 +46,6 @@ export const positionOf = (reason: string): string => {
       return "The order was fulfilled.";
   }
 };
-const POSITION_KEY: Record<string, RegExp> = {
-  DUPLICATE_TRANSACTION: /separate|two (different )?orders/i,
-  UNAUTHORISED: /authori[sz]ed|authori[sz]ation/i,
-  MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED: /listing|matched|described/i,
-  CREDIT_NOT_PROCESSED: /handled|return|refund/i,
-};
-// the grounded stand-in position also counts
-const positionKey = (reason: string) =>
-  new RegExp(
-    `${(POSITION_KEY[reason] ?? /fulfil/i).source}|dispute this claim|review whether`,
-    "i",
-  );
-
 const words = (s: string) => s.toLowerCase().replaceAll("_", " ");
 const money = (c: number, cur: string) => `${cur} ${(c / 100).toFixed(2)}`;
 
@@ -164,6 +154,14 @@ export function buildChecklist(c: CaseView): ChecklistItem[] {
     c.messages.some(
       (m) => m.posted_by === "SELLER" && /e-?mail/i.test(m.content),
     );
+  const sellerMsg = c.messages.findLast((m) => m.posted_by === "SELLER");
+  const sellerDay = sellerMsg
+    ? new Date(sellerMsg.time_posted).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        timeZone: "UTC",
+      })
+    : "";
   switch (c.reason) {
     case "MERCHANDISE_OR_SERVICE_NOT_RECEIVED":
       if (digital)
@@ -231,7 +229,7 @@ export function buildChecklist(c: CaseView): ChecklistItem[] {
       return [
         item(
           "Shipping address matches the buyer",
-          !c.buyer_history?.length,
+          false,
           notesMatch(c, /address/i),
           "An evidence note refers to the address match.",
           "No address match is on file.",
@@ -242,7 +240,7 @@ export function buildChecklist(c: CaseView): ChecklistItem[] {
         ),
         item(
           "Prior orders from this buyer",
-          !!c.buyer_history?.length,
+          true,
           notesMatch(c, /prior order|previous order|earlier order|repeat/i),
           "An evidence note refers to other orders.",
           "No order history is on file.",
@@ -307,7 +305,7 @@ export function buildChecklist(c: CaseView): ChecklistItem[] {
           "Communication with the buyer",
           true,
           c.messages.some((m) => m.posted_by === "SELLER"),
-          "A seller message is on the thread.",
+          `Your message to the buyer on ${sellerDay} is on the thread and is sent with your response.`,
           "There is no seller message on the thread yet.",
         ),
       ];
@@ -430,6 +428,94 @@ const CLAIMS: [RegExp, RegExp][] = [
   [/\bonly one (order|charge|transaction|payment)\b/i, /only one/i],
   [/\b(has|was|been|were) redeemed\b|\bredeemed (on|by)\b/i, /redeem/i],
 ];
+/** Sentences that assert what only the buyer's messages or an evidence note could back; the reason when `x` is one. */
+export function unbackedClaim(
+  x: string,
+  proof: string,
+  buyerText: string,
+): string | null {
+  const adm =
+    /\b(buyer|customer|cardholder) (?:has |have )?(acknowledged|admitted|confirmed|agreed|stated|said)\b/i.exec(
+      x,
+    );
+  if (adm && !new RegExp(adm[2]!.slice(0, 5), "i").test(buyerText))
+    return "it states something the buyer never said";
+  if (
+    /\bour system (shows?|records?)|recorded in our system|\bas recorded\b|\bno record of any\b|\bno reported issues\b|\bcompleted successfully\b/i.test(
+      x,
+    ) &&
+    !/record|log/i.test(proof)
+  )
+    return "it cites our system, which no evidence note backs";
+  const separate = /separate|two orders|different order/i.test(proof);
+  if (
+    !separate &&
+    /\bauthori[sz]ed by the same cardholder|\bsame customer\b|\bwithin (a few )?minutes\b|\b(two|2|both) (distinct |separate |different )?(purchases|orders|transactions)\b|\bseparate (purchases|orders)\b/i.test(
+      x,
+    )
+  )
+    return "it says the charges were separate or related, which no evidence note says";
+  if (/\bshipments?\b/i.test(x) && !separate && !/ship|tracking/i.test(proof))
+    return "it mentions shipments, which no evidence note does";
+  if (
+    /only (placed|made) one order/i.test(buyerText) &&
+    !separate &&
+    /\b(two|2) (distinct |separate )?(purchases|orders)\b/i.test(x)
+  )
+    return "it contradicts the buyer's message";
+  if (
+    /\b(buyer|customer|cardholder)\b[^.]{0,40}\b(has not|did not|never|failed to|hasn't|didn't|has provided|provided|did provide|responded)\b/i.test(
+      x,
+    )
+  )
+    return "it says what the buyer did or did not do, which is not on file";
+  if (
+    /\b(system|systems|platform|checkout)\b[^.]{0,30}\b(shows?|indicates?|confirms?|verified|verifies|processed|transmitted)\b|\bverified\b|\bno (prior|other|additional|further) (disputes?|refunds?|returns?|complaints?|fraud)/i.test(
+      x,
+    ) &&
+    !/record|log|system/i.test(proof)
+  )
+    return "it cites a system check or history that no evidence note backs";
+  return null;
+}
+
+// words a supporting sentence may use whatever the case: they assert nothing about what happened
+const COMMON = new Set(
+  (
+    "the a an and or but not no of to in on at by for with from as is are was were be been it its this that these those we our us ask paypal please " +
+    "find favour favor review reviewer facts fact claim dispute disputed order orders charge charges payment payments transaction transactions purchase purchases " +
+    "buyer buyer's account amount item items placed made through also which who has have had will would should can could may than then there their they them " +
+    "so such any all each both only other same one two three about over under into out up after before during while when where what whether because since " +
+    "respectfully therefore thus according per based complaint position response"
+  ).split(" "),
+);
+/** Content words of a sentence that nothing the model was given contains; numbers count double. */
+export function unsupportedWords(x: string, source: string): string[] {
+  const stem = (w: string) =>
+    w
+      .toLowerCase()
+      .replace(/[^a-z0-9.]/g, "")
+      .slice(0, 5);
+  const known = new Set(
+    (source.match(/[A-Za-z0-9]+(?:[.'][A-Za-z0-9]+)*/g) ?? []).map(stem),
+  );
+  return (x.match(/[A-Za-z0-9]+(?:[.'][A-Za-z0-9]+)*/g) ?? []).flatMap((w) => {
+    const t = stem(w);
+    if (
+      t.length < 3 ||
+      COMMON.has(w.toLowerCase().replace(/'s$/, "")) ||
+      known.has(t)
+    )
+      return [];
+    return /\d/.test(t) ? [w, w] : [w];
+  });
+}
+
+const restates = (x: string, position: string) => {
+  const words = unsupportedWords(x, "");
+  return words.length > 0 && unsupportedWords(x, position).length === 0;
+};
+
 const MONTH =
   /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? (\d{1,2})\b/gi;
 const dates = (t: string) =>
@@ -573,6 +659,7 @@ export async function draftResponse(
       (t) => `${t.carrier_name} tracking ${t.tracking_number}`,
     ),
   ]);
+  const position = positionFor(c);
   const user = JSON.stringify({
     merchant: c.merchant,
     buyer: c.buyer,
@@ -584,7 +671,13 @@ export async function draftResponse(
       .filter((m) => m.posted_by === "BUYER")
       .map((m) => m.content),
     facts_on_file: facts,
-    our_position: positionFor(c),
+    our_position: position,
+    ...(c.purchased_at
+      ? {
+          example_sentence: `The purchase was made on ${day(c.purchased_at)} for ${c.items.map((i) => i.item_description).join(" and ")}.`,
+        }
+      : {}),
+    task: "our_position is already written as the opening sentence. Add 2 to 4 supporting sentences that use only facts_on_file.",
   });
   const proof = [
     c.purchased_at ? day(c.purchased_at) : "",
@@ -608,6 +701,10 @@ export async function draftResponse(
   const stripHead = (t: string) =>
     t.trim().replace(/^Re:(?:[^.]*?\([^)]*\)\.?|[^.]*\.)\s*/i, "");
   const factsText = facts.join(" ");
+  const buyerText = c.messages
+    .filter((m) => m.posted_by === "BUYER")
+    .map((m) => m.content)
+    .join(" ");
   /** The grounded sentences of a model reply, judged one by one, or why too few survive. */
   const check = (
     v: unknown,
@@ -617,20 +714,25 @@ export async function draftResponse(
       return { bad: "the reply did not match the draft shape" };
     const dropped: string[] = [];
     const kept = sentencesOf(stripHead(t)).filter((x) => {
+      // a restatement of the opening sentence adds nothing and is not an error
+      if (restates(x, position)) return false;
       const why =
         invalidReason(x, user, proof) ??
+        unbackedClaim(x, proof, buyerText) ??
+        (unsupportedWords(x, user).length >= 2
+          ? `it says things the case does not (${unsupportedWords(x, user).slice(0, 3).join(", ")})`
+          : undefined) ??
         groundingFlags(x, fb.checklist, factsText)[0]?.why ??
         // the same test the send gate applies, so a draft never trips it
         unsupportedClaims(x, `${proofText(c, [])}\n${factsText}`)[0]?.reason;
       if (why) dropped.push(`"${x}" (${why})`);
       return !why;
     });
-    if (kept.length >= 2 && positionKey(c.reason).test(kept.join(" ")))
-      return { body: kept.join(" ") };
+    if (kept.length >= 1) return { body: kept.join(" ") };
     return {
       bad: dropped.length
         ? `these sentences were not allowed: ${dropped.join("; ")}`
-        : "it did not argue our position in at least two sentences",
+        : "it added no supporting sentence",
     };
   };
   let r = await ask(user);
@@ -644,7 +746,7 @@ export async function draftResponse(
   if (r.source === "llm" && res?.body)
     return {
       // the computed head names the buyer in full, whatever the model opened with
-      response: `${headOf(c)} ${res.body}`,
+      response: `${headOf(c)} ${position} ${res.body}`,
       // the computed checklist and explanation are the truth the page gates on
       checklist: fb.checklist,
       explanation: fb.explanation,
@@ -652,10 +754,12 @@ export async function draftResponse(
       label: added?.length ? LABEL_AI_UPDATED : LABEL_AI,
       ...(r.model ? { model: r.model } : {}),
     };
+  const down = r.source !== "llm";
   return {
     ...fb,
     source: "fallback",
-    label: LABEL_TEMPLATE,
+    fallback_reason: down ? "ai_down" : "grounding",
+    label: down ? LABEL_TEMPLATE : LABEL_GROUNDED(!!added?.length),
     error: res?.bad ?? r.error ?? "AI draft unavailable",
   };
 }
