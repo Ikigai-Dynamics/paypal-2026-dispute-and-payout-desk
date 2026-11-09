@@ -785,7 +785,7 @@ export async function draftResponse(
           : undefined) ??
         invalidReason(x, user, proof) ??
         unbackedClaim(x, proof, buyerText) ??
-        (unsupportedWords(x, user).length >= 2
+        (unsupportedWords(x, user).length >= 3
           ? `it says things the case does not (${unsupportedWords(x, user).slice(0, 3).join(", ")})`
           : undefined) ??
         groundingFlags(x, fb.checklist, factsText)[0]?.why ??
