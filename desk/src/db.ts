@@ -22,6 +22,7 @@ const SCHEMA = [
     method text, path text, status int, ms int)`,
   `create table if not exists case_work (dispute_id text primary key, added jsonb not null default '[]', draft_text text, draft_label text, edited boolean not null default false, updated_at timestamptz not null default now())`,
   `alter table case_work add column if not exists draft_source text`,
+  `create table if not exists case_generated (dispute_id text primary key, text text not null)`,
   `create table if not exists case_sent (id bigserial primary key, dispute_id text not null, at timestamptz not null default now(), text text not null, added jsonb not null default '[]', vouched jsonb not null default '[]')`,
 ];
 
@@ -265,6 +266,22 @@ export class PgStore {
     return (await this.getWork(id))!;
   }
 
+  /** The last draft the desk wrote for a case: what the merchant's edits are diffed against. */
+  async getGenerated(id: string): Promise<string | null> {
+    const r = await this.pool.query(
+      "select text from case_generated where dispute_id=$1",
+      [id],
+    );
+    return r.rows[0]?.text ?? null;
+  }
+  async setGenerated(id: string, text: string): Promise<void> {
+    await this.pool.query(
+      `insert into case_generated (dispute_id, text) values ($1,$2)
+       on conflict (dispute_id) do update set text = $2`,
+      [id, text],
+    );
+  }
+
   async deleteWork(id: string): Promise<void> {
     await this.pool.query("delete from case_work where dispute_id=$1", [id]);
   }
@@ -298,6 +315,8 @@ export class PgStore {
   }
 
   async resetWork(): Promise<void> {
-    await this.pool.query("truncate case_work, case_sent, paypal_calls");
+    await this.pool.query(
+      "truncate case_work, case_generated, case_sent, paypal_calls",
+    );
   }
 }

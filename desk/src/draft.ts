@@ -12,22 +12,21 @@ import type {
 } from "./types.js";
 
 export const LABEL_AI = "AI draft";
-export const LABEL_TEMPLATE = "Template draft (AI unavailable)";
+export const LABEL_TEMPLATE = "Draft (AI unavailable)";
 export const LABEL_AI_UPDATED = "AI draft, updated with your evidence";
 export const LABEL_GROUNDED = (added: boolean) =>
   added ? "Drafted from your evidence" : "Drafted from the case facts";
 
 export const SYSTEM_PROMPT =
   "You write the merchant's written response to PayPal's dispute reviewer. It is not a letter to the buyer. " +
-  "Write as the merchant named in the input, using 'we'. No salutation and no 'Dear ...'. " +
-  "Write plain, factual prose, and do not repeat the buyer's name or the amount in a heading. " +
-  "our_position (the opening sentence) and the facts sentence are already written: do not repeat or restate them. Add exactly one supporting sentence that answers the buyer's own complaint from buyer_messages. " +
-  "Cite only facts_on_file, quoting dates, numbers and notes exactly as given. " +
-  "Never write a number, carrier, date, order id or document that is not in facts_on_file. " +
-  "Never use the words shipped, delivered, enclosed, attached, providing, lack or 'our records' unless facts_on_file says so. " +
-  "Never say any evidence is missing or still needed, and never promise to send anything later. If facts_on_file is empty, mention no documents or evidence at all. " +
+  "Write as the merchant named in the input, using 'we'. No salutation and no 'Dear ...'. Plain, factual prose; no headings. " +
+  "Write 3 to 5 sentences: our position, the facts on file in prose, the buyer pattern when facts_on_file has one, and one closing request to PayPal. " +
+  "Mention every evidence item in facts_on_file by name (tracking, photos, email log, order record, prior orders and so on). " +
+  "Never state a claim that is not in facts_on_file or our_position: no number, carrier, date, order id or document that is not there. " +
+  "Never use the words shipped, delivered, enclosed, attached or 'our records' unless facts_on_file says so. " +
+  "Never say any evidence is missing or still needed, and never promise to send anything later. " +
   "Never agree with the buyer or concede the claim, and never apologise. " +
-  "Never say the buyer acknowledged, admitted, confirmed or agreed to anything unless buyer_messages says so. Never say our system or records show anything, and never write about shipments, cardholders, timing between charges or the number of purchases unless facts_on_file says so. " +
+  "Never say the buyer acknowledged, admitted or agreed to anything unless facts_on_file says so. " +
   "Never use square-bracket placeholders, never give a recommendation or odds, and never write the dispute id, a reason code, or any internal field name. " +
   'Return JSON {"response": string} and nothing else.';
 
@@ -65,7 +64,7 @@ const notesMatch = (c: CaseView, re: RegExp) =>
 const requestFor = (reason: string): string => {
   switch (reason) {
     case "DUPLICATE_TRANSACTION":
-      return "We ask PayPal to check whether these two charges are for separate orders rather than one charge taken twice.";
+      return "We ask PayPal to review the two charges against the one order we have on file.";
     case "UNAUTHORISED":
       return "We ask PayPal to review whether this payment was authorised.";
     case "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED":
@@ -134,6 +133,23 @@ const orderLine = (o: BuyerOrder, cur: string) =>
 /** An evidence note that explicitly says the shipping address matches; a billing address is not a match. */
 const ADDRESS_MATCH =
   /shipping address (matches|matched|is the same as|same as)|address (matches|matched)|address match/i;
+
+/** Two distinct order records, or a merchant note that says so; the checklist item's own name is not evidence. */
+const twoOrders = (c: CaseView): boolean => {
+  const notes = c.evidences.map((e) =>
+    (e.notes ?? "").replace(
+      /^Proof the two charges are separate orders:\s*/,
+      "",
+    ),
+  );
+  const records = new Set(notes.filter((n) => /^Order record:/i.test(n)));
+  return (
+    records.size >= 2 ||
+    notes.some((n) =>
+      /(two|2) separate orders|separate orders|different orders/i.test(n),
+    )
+  );
+};
 
 /** The per-reason checklist, computed from what is actually on the case. */
 export function buildChecklist(c: CaseView): ChecklistItem[] {
@@ -263,8 +279,8 @@ export function buildChecklist(c: CaseView): ChecklistItem[] {
         item(
           "Proof the two charges are separate orders",
           true,
-          notesMatch(c, /separate|two orders|different order|order number/i),
-          "An evidence note shows the two charges are separate orders.",
+          twoOrders(c),
+          "Two order records, or a note saying so, show the two charges are separate orders.",
           "Nothing on file shows the two charges are separate orders.",
           !!c.purchased_at && {
             label: `Attach the order record: ${day(c.purchased_at)}`,
@@ -525,11 +541,6 @@ export function unsupportedWords(x: string, source: string): string[] {
   });
 }
 
-const restates = (x: string, position: string) => {
-  const words = unsupportedWords(x, "");
-  return words.length > 0 && unsupportedWords(x, position).length === 0;
-};
-
 const MONTH =
   /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? (\d{1,2})\b/gi;
 const dates = (t: string) =>
@@ -649,6 +660,43 @@ export const groundingProblems = (
     (f) => `"${f.sentence}": ${f.why}`,
   );
 
+// words that name an evidence item; a draft must use each one that is on file
+const NOTE_NOUNS: RegExp[] = [
+  /photos?\b/i,
+  /e-?mail logs?/i,
+  /prior orders?|order history|other orders?/i,
+  /order record/i,
+  /return policy/i,
+  /listing/i,
+  /address/i,
+  /refund/i,
+  /return/i,
+  /redeem|redemption/i,
+];
+/** One regex per evidence item on file: the key noun the draft must contain. */
+export const evidenceNouns = (c: CaseView): RegExp[] =>
+  c.evidences.flatMap((e) => [
+    ...((e.evidence_info?.tracking_info ?? []).length ? [/tracking/i] : []),
+    ...(e.notes
+      ? NOTE_NOUNS.filter((re) => re.test(e.notes!)).slice(0, 1)
+      : []),
+  ]);
+
+// sentences that assert what only a backing checklist item can support
+const POSITION_CLAIM =
+  /separate orders|(two|2) (distinct )?orders|\b(buyer|customer) authori[sz]ed|\bwas fulfilled\b|\bmatched (its|the) listing\b|handled (this|the) order/i;
+/** The position claim a reason's own backing evidence supports. */
+const OWN_CLAIM = (reason: string): RegExp =>
+  reason === "DUPLICATE_TRANSACTION"
+    ? /separate orders|(two|2) (distinct )?orders/i
+    : reason === "UNAUTHORISED"
+      ? /authori[sz]ed/i
+      : reason === "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED"
+        ? /matched/i
+        : reason === "CREDIT_NOT_PROCESSED"
+          ? /handled/i
+          : /fulfilled/i;
+
 export async function draftResponse(
   llm: Llm,
   c0: CaseView,
@@ -659,42 +707,43 @@ export async function draftResponse(
 ): Promise<Draft> {
   const c = withAdded(c0, added);
   const fb = fallbackDraft(c, decision, handlingCents);
+  const position = positionFor(c);
+  const backed = position === positionOf(c.reason);
+  const msg = c.messages.findLast((m) => m.posted_by === "BUYER");
+  const order = c.items.map(
+    (i) => `${i.item_quantity} × ${i.item_description}`,
+  );
   // the model sees only what is on file: never a list of what we lack
-  const facts = c.evidences.flatMap((e) => [
-    ...(e.notes
+  const facts = [
+    `Dispute reason: ${words(c.reason).replace("unauthorised", "payment not recognised")}`,
+    `Order${c.purchased_at ? ` placed ${day(c.purchased_at)}` : ""}: ${order.join(", ")}, ${money(c.amount_cents, c.currency)}`,
+    ...c.evidences.flatMap((e) => [
+      ...(e.notes ? [`Evidence on file: ${e.notes}`] : []),
+      ...(e.evidence_info?.tracking_info ?? []).map(
+        (t) =>
+          `Evidence on file: ${t.carrier_name} tracking number ${t.tracking_number}`,
+      ),
+    ]),
+    ...(msg
+      ? [`${c.buyer}'s message of ${day(msg.time_posted)}: "${msg.content}"`]
+      : []),
+    ...(patternSentence(c)
       ? [
-          e.evidence_type === "ADDED_BY_THE_MERCHANT"
-            ? e.notes
-            : `Note: "${e.notes}"`,
+          `${c.buyer} has ${c.buyer_open_disputes} open disputes with us at the same time`,
         ]
       : []),
-    ...(e.evidence_info?.tracking_info ?? []).map(
-      (t) => `${t.carrier_name} tracking ${t.tracking_number}`,
-    ),
-  ]);
-  const position = positionFor(c);
-  const factsLine = factsSentence(c);
+  ];
   const user = JSON.stringify({
     merchant: c.merchant,
     buyer: c.buyer,
-    claim: words(c.reason).replace("unauthorised", "payment not recognised"),
-    amount: money(c.amount_cents, c.currency),
-    ...(c.purchased_at ? { purchased_on: day(c.purchased_at) } : {}),
-    items: c.items.map((i) => `${i.item_quantity} × ${i.item_description}`),
-    buyer_messages: c.messages
-      .filter((m) => m.posted_by === "BUYER")
-      .map((m) => m.content),
-    facts_on_file: facts,
+    position: "fight",
     our_position: position,
-    ...(c.purchased_at
-      ? {
-          example_sentence: `The purchase was made on ${day(c.purchased_at)} for ${c.items.map((i) => i.item_description).join(" and ")}.`,
-        }
-      : {}),
-    task: "our_position is already written as the opening sentence and the facts on file as the second. Add exactly one supporting sentence that uses only facts_on_file.",
+    facts_on_file: facts,
+    task: "Write the response in 3 to 5 sentences, mentioning every evidence item in facts_on_file.",
   });
   const proof = [
     c.purchased_at ? day(c.purchased_at) : "",
+    msg ? day(msg.time_posted) : "",
     ...c.evidences.flatMap((e) => [
       e.notes ?? "",
       ...(e.evidence_info?.tracking_info ?? []).map(
@@ -719,7 +768,7 @@ export async function draftResponse(
     .filter((m) => m.posted_by === "BUYER")
     .map((m) => m.content)
     .join(" ");
-  /** The grounded sentences of a model reply, judged one by one, or why too few survive. */
+  /** The grounded sentences of a model reply, judged one by one, or why the reply cannot be used. */
   const check = (
     v: unknown,
   ): { body: string; bad?: undefined } | { bad: string; body?: undefined } => {
@@ -728,13 +777,12 @@ export async function draftResponse(
       return { bad: "the reply did not match the draft shape" };
     const dropped: string[] = [];
     const kept = sentencesOf(stripHead(t)).filter((x) => {
-      // a restatement of the opening sentence adds nothing and is not an error
-      if (
-        /find in our favou?r/i.test(x) ||
-        restates(x, `${position} ${factsLine}`)
-      )
-        return false;
       const why =
+        (POSITION_CLAIM.test(x) &&
+        !/^We ask PayPal to (review|check|confirm)/i.test(x) &&
+        !(backed && OWN_CLAIM(c.reason).test(x))
+          ? "it states a position that no evidence on file backs"
+          : undefined) ??
         invalidReason(x, user, proof) ??
         unbackedClaim(x, proof, buyerText) ??
         (unsupportedWords(x, user).length >= 2
@@ -746,24 +794,34 @@ export async function draftResponse(
       if (why) dropped.push(`"${x}" (${why})`);
       return !why;
     });
-    if (kept.length >= 1) return { body: kept[0]! };
-    return {
-      bad: dropped.length
-        ? `these sentences were not allowed: ${dropped.join("; ")}`
-        : "it added no supporting sentence",
-    };
+    const why = dropped.length
+      ? `these sentences were not allowed: ${dropped.join("; ")}`
+      : "";
+    if (!kept.some((x) => /\bask PayPal\b/i.test(x)) && kept.length < 5)
+      kept.push(CLOSING);
+    if (kept.length < 3 || kept.length > 5)
+      return {
+        bad: `${why ? `${why}; ` : ""}it came to ${kept.length} usable sentences, not 3 to 5`,
+      };
+    const body = kept.join(" ");
+    const gone = evidenceNouns(c).filter((re) => !re.test(body));
+    if (gone.length)
+      return {
+        bad: `${why ? `${why}; ` : ""}it did not mention every evidence item on file (${gone.map((re) => re.source).join(", ")})`,
+      };
+    return { body };
   };
   let r = await ask(user);
   let res = r.source === "llm" ? check(r.value) : undefined;
   if (r.source === "llm" && res?.bad) {
     r = await ask(
-      `${user}\n\nYour previous answer was rejected because ${res.bad}. Write it again without that, using only facts_on_file and our_position.`,
+      `${user}\n\nYour previous answer was rejected because ${res.bad}. Write it again without that, in 3 to 5 sentences, using only facts_on_file and our_position.`,
     );
     res = r.source === "llm" ? check(r.value) : undefined;
   }
   if (r.source === "llm" && res?.body)
     return {
-      response: compose(c, position, res.body),
+      response: res.body,
       // the computed checklist and explanation are the truth the page gates on
       checklist: fb.checklist,
       explanation: fb.explanation,

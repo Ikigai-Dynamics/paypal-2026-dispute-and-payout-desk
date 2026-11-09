@@ -134,3 +134,32 @@ export function gateEvidence(
     held: claims.map((c) => c.sentence).filter((x) => vouched.includes(x)),
   };
 }
+
+const split = (t: string) =>
+  t
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((x) => x.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+/** Sentences of `text` that are not in the last generated draft `base`: added or changed by the merchant. */
+export const addedSentences = (base: string, text: string): string[] => {
+  const known = new Set(split(base));
+  return split(text).filter((x) => !known.has(x));
+};
+
+const ADDED_WHY =
+  "You added this statement. PayPal reads it as a claim; confirm you hold evidence for it.";
+/** The gate's unsupported sentences plus every added sentence not yet attested, once each; `kind: "added"` marks the merchant's own. */
+export function claimsOf(
+  unsupported: Unsupported[],
+  added: string[],
+  attested: string[],
+): (Unsupported & { kind?: "added" })[] {
+  const out: (Unsupported & { kind?: "added" })[] = unsupported.map((u) =>
+    added.includes(u.sentence) ? { ...u, kind: "added" } : u,
+  );
+  for (const x of added)
+    if (!attested.includes(x) && !out.some((o) => o.sentence === x))
+      out.push({ sentence: x, reason: ADDED_WHY, kind: "added" });
+  return out;
+}

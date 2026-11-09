@@ -319,6 +319,12 @@ function renderSituation() {
   $("start").textContent = urgentCase()
     ? "Fight the most urgent dispute"
     : "Start with the most urgent case";
+  const first = n[0];
+  const fightable = urgentCase();
+  $("start-note").hidden = !(first && fightable && first !== fightable);
+  if (!$("start-note").hidden)
+    $("start-note").textContent =
+      `${first.buyer} is due first but is an Accept; opening ${fightable.buyer}`;
 }
 
 let showAll = false;
@@ -595,7 +601,7 @@ function renderAnalysis(a, fresh) {
   const r = d ? rec(d.call, d.marginal) : null;
   const box = $("rec");
   $("math").hidden = done;
-  box.hidden = false;
+  box.hidden = fightAnyway && d?.call === "accept" && !done;
   if (done) {
     const when = dateShort((upd || Date.now()) + 30 * DAY);
     box.className = "rec neutral";
@@ -618,7 +624,10 @@ function renderAnalysis(a, fresh) {
     $("terms-list").innerHTML = rows
       .map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`)
       .join("");
-    const kind = c.reason === "OTHER" ? "disputes where the buyer gave no reason" : `${reasonWords(c.reason).toLowerCase()} disputes`;
+    const kind =
+      c.reason === "OTHER"
+        ? "disputes where the buyer gave no reason"
+        : `${reasonWords(c.reason).toLowerCase()} disputes`;
     const won = Number.isFinite(d.wins) ? ` (${d.wins} won)` : "";
     $("p0line").textContent =
       d.n > 0
@@ -772,6 +781,9 @@ function renderChecklist() {
   const a = currentAnalysis;
   const list = a.draft.checklist;
   $("fightbox").hidden = !(isFight() && needsResponse(a.case));
+  const chose = fightAnyway && a.decision?.call === "accept";
+  $("fight-note").hidden = !chose;
+  $("rec").hidden = chose;
   const miss = stillMissing().length;
   const k = list.length;
   const cc = $("check-count");
@@ -1036,24 +1048,41 @@ function renderClaims() {
   const on = claims.length > 0;
   $("claim-note").hidden = !on;
   $("draft").classList.toggle("flagged", on);
+  const block = (list, head, label, tail) =>
+    list.length
+      ? `<p class="claims-head">${head}</p>` +
+        list
+          .map(
+            ([c, i]) =>
+              `<div class="claim"><blockquote>${esc(c.sentence)}</blockquote>${
+                c.kind === "added"
+                  ? ""
+                  : `<div class="muted">${String(c.reason ?? "")
+                      .replace(/^./, (ch) => ch.toUpperCase())
+                      .split(/;\s*|\.\s+(?=[A-Za-z])/)
+                      .filter(Boolean)
+                      .map((p) => `<div>${esc(p.replace(/\.$/, ""))}</div>`)
+                      .join("")}</div>`
+              }<label><input type="checkbox" data-i="${i}"${c.ok ? " checked" : ""}> ${label}</label></div>`,
+          )
+          .join("") +
+        tail
+      : "";
+  const idx = claims.map((c, i) => [c, i]);
   $("claims").innerHTML = on
-    ? '<p class="claims-head">PayPal would see claims with no evidence on file:</p>' +
-      claims
-        .map(
-          (c, i) =>
-            `<div class="claim"><blockquote>${esc(c.sentence)}</blockquote><div class="muted">${String(
-              c.reason ?? "",
-            )
-              .replace(/^./, (ch) => ch.toUpperCase())
-              .split(/;\s*|\.\s+(?=[A-Za-z])/)
-              .filter(Boolean)
-              .map((p) => `<div>${esc(p.replace(/\.$/, ""))}</div>`)
-              .join(
-                "",
-              )}</div><label><input type="checkbox" data-i="${i}"${c.ok ? " checked" : ""}> I have this evidence</label></div>`,
-        )
-        .join("") +
-      '<p class="muted">Fix these sentences in your draft, or tick I have this evidence. <button id="recheck" type="button">Check again</button></p>'
+    ? block(
+        idx.filter(([c]) => c.kind === "added"),
+        "You added these statements. PayPal reads them as claims; confirm you hold evidence for each:",
+        "I hold evidence for this statement",
+        "",
+      ) +
+      block(
+        idx.filter(([c]) => c.kind !== "added"),
+        "PayPal would see claims with no evidence on file:",
+        "I have this evidence",
+        "",
+      ) +
+      '<p class="muted">Fix these sentences in your draft, or tick the box under each. <button id="recheck" type="button">Check again</button></p>'
     : "";
   for (const cb of $("claims").querySelectorAll("input"))
     cb.onchange = () => (
@@ -1073,6 +1102,7 @@ async function checkDraft() {
       text: $("draft").value,
       evidence: canon(),
       vouched: [],
+      attested: [],
     });
     claims = (r.sentences ?? r.unsupported ?? []).map((x) => ({
       ...x,
@@ -1110,6 +1140,9 @@ async function act(kind) {
 
 async function run(kind) {
   const vouchedNow = claims.filter((c) => c.ok).map((c) => c.sentence);
+  const attestedNow = claims
+    .filter((c) => c.ok && c.kind === "added")
+    .map((c) => c.sentence);
   $("confirm-ok").disabled = true;
   const path = `/api/cases/${encodeURIComponent(current)}/${kind}`;
   let body;
@@ -1121,6 +1154,7 @@ async function run(kind) {
     if (evidence.length) body.evidence = evidence;
     if (files.length) body.files = files;
     if (vouchedNow.length) body.vouched = vouchedNow;
+    if (attestedNow.length) body.attested = attestedNow;
   } else {
     body = { note: "Accepted by the seller from the desk", confirm: true };
   }

@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { parseAdded } from "../src/sync.js";
-import { unsupportedClaims } from "../src/factcheck.js";
+import {
+  addedSentences,
+  claimsOf,
+  unsupportedClaims,
+} from "../src/factcheck.js";
 
 const NO_SHIPMENT = "Purchased 2026-10-28. 1 × Sleeping bag.";
 const UPS =
@@ -87,5 +91,31 @@ describe("billing address", () => {
         .length,
       1,
     );
+  });
+});
+
+describe("merchant-added statements", () => {
+  const base =
+    "We ask PayPal to review the two charges. We hold one order record. We ask PayPal to find in our favour.";
+  const lie =
+    "The buyer received a full refund already and signed for delivery twice.";
+  it("lists every added or changed sentence and none of the draft's own", () => {
+    assert.deepEqual(addedSentences(base, base), []);
+    assert.deepEqual(addedSentences(base, `${base} ${lie}`), [lie]);
+    assert.deepEqual(
+      addedSentences(
+        base,
+        base.replace("one order record", "two order records"),
+      ),
+      ["We hold two order records."],
+    );
+  });
+  it("asks for an attestation per sentence until it is given", () => {
+    const added = addedSentences(base, `${base} ${lie}`);
+    assert.deepEqual(
+      claimsOf([], added, []).map((c) => [c.sentence, c.kind]),
+      [[lie, "added"]],
+    );
+    assert.deepEqual(claimsOf([], added, [lie]), []);
   });
 });

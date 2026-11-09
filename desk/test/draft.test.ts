@@ -10,6 +10,7 @@ import {
   groundingProblems,
   invalidReason,
   positionFor,
+  positionOf,
   isDraftShape,
   withAdded,
 } from "../src/draft.js";
@@ -340,11 +341,13 @@ describe("response validator", () => {
   });
 });
 
+const REPLY =
+  "We ask PayPal to review whether the order was fulfilled as placed. The order was for 2 × Hardware kit #1234. We ask PayPal to find in our favour.";
 describe("draftResponse", () => {
   it("uses the fallback offline and labels it", async () => {
     const d = await draftResponse(createLlm({ env: {} }), base, decision, []);
     assert.equal(d.source, "fallback");
-    assert.equal(d.label, "Template draft (AI unavailable)");
+    assert.equal(d.label, "Draft (AI unavailable)");
     assert.ok(d.error);
   });
 
@@ -358,8 +361,7 @@ describe("draftResponse", () => {
               {
                 message: {
                   content: JSON.stringify({
-                    response:
-                      "The charge was made through the buyer's PayPal account.",
+                    response: REPLY,
                     checklist: [{ item: "i", status: "missing", why: "w" }],
                     explanation: "E",
                   }),
@@ -372,12 +374,7 @@ describe("draftResponse", () => {
     const d = await draftResponse(llm, base, decision, []);
     assert.deepEqual(
       [d.source, d.model, d.response, d.label],
-      [
-        "llm",
-        "m1",
-        "We ask PayPal to review whether the order was fulfilled as placed. On file: the order for 2 × Hardware kit #1234, USD 120.00; Ava Chen's message of Nov 6, 2026. The charge was made through the buyer's PayPal account. We ask PayPal to find in our favour.",
-        "AI draft",
-      ],
+      ["llm", "m1", REPLY, "AI draft"],
     );
   });
 
@@ -391,8 +388,7 @@ describe("draftResponse", () => {
               {
                 message: {
                   content: JSON.stringify({
-                    response:
-                      "The charge was made through the buyer's PayPal account.",
+                    response: `${REPLY} The UPS tracking number is on file.`,
                     checklist: [{ item: "Bogus", status: "present", why: "w" }],
                     explanation: "E",
                   }),
@@ -494,7 +490,7 @@ describe("grounding", () => {
     const d = await draftResponse(
       fake(
         [
-          "Re: Sofia's claim. The charge was made through the buyer's PayPal account.",
+          "Re: Sofia's claim. The charge was made through the buyer's PayPal account. We hold the order as it was placed. We ask PayPal to find in our favour.",
         ],
         seen,
       ),
@@ -509,16 +505,14 @@ describe("grounding", () => {
       [],
     );
     assert.equal(d.source, "llm");
-    assert.ok(
-      d.response.startsWith(
-        "We ask PayPal to review whether the order was fulfilled as placed. On file: the order of Oct 30, 2026 for 1 × Ikigai Gift Card $100, USD 120.00;",
-      ),
-    );
+    assert.doesNotMatch(d.response, /^Re:/);
     const sent = JSON.parse(JSON.parse(seen[0]!).messages.at(-1).content);
-    assert.deepEqual(sent.buyer_messages, ["No code came"]);
+    assert.ok(sent.facts_on_file.some((f: string) => /No code came/.test(f)));
+    assert.ok(
+      !sent.facts_on_file.some((f: string) => /It was emailed/.test(f)),
+    );
     assert.equal(sent.our_earlier_messages, undefined);
     assert.equal(sent.evidence_we_still_lack, undefined);
-    assert.deepEqual(sent.facts_on_file, []);
   });
 });
 
@@ -630,27 +624,13 @@ describe("grounded drafting over the seeded cases", () => {
       ),
     ],
   });
+  const GOOD =
+    "The charge was made through the buyer's PayPal account. We hold the order as it was placed. We ask PayPal to find in our favour.";
   const cases: [string, CaseView, string][] = [
-    [
-      "Marcus Bell sleeping bag",
-      bag,
-      "The charge was made through the buyer's PayPal account. We ask PayPal to find in our favour.",
-    ],
-    [
-      "Marcus Bell tent",
-      tent,
-      "The charge was made through the buyer's PayPal account. We ask PayPal to find in our favour.",
-    ],
-    [
-      "Hana Kobayashi",
-      hana,
-      "The charge was made through the buyer's PayPal account. We ask PayPal to find in our favour.",
-    ],
-    [
-      "Priya Nair",
-      priya,
-      "The charge was made through the buyer's PayPal account. We ask PayPal to find in our favour.",
-    ],
+    ["Marcus Bell sleeping bag", bag, GOOD],
+    ["Marcus Bell tent", tent, GOOD],
+    ["Hana Kobayashi", hana, GOOD],
+    ["Priya Nair", priya, GOOD],
   ];
   const bad = [
     "We are providing the item in evidence we still lack. There is no evidence on file. We have enclosed the available documentation.",
@@ -703,7 +683,11 @@ describe("grounded drafting over the seeded cases", () => {
       assert.doesNotMatch(content, /lack/i);
       for (const i of buildChecklist(c).filter((x) => x.status === "missing"))
         assert.ok(!content.includes(i.item), i.item);
-      assert.deepEqual(JSON.parse(content).facts_on_file, []);
+      assert.ok(
+        !JSON.parse(content).facts_on_file.some((f: string) =>
+          /^Evidence on file/.test(f),
+        ),
+      );
     });
 
     it(`${name}: an offline model gets the grounded template`, async () => {
@@ -749,7 +733,7 @@ describe("grounded drafting over the seeded cases", () => {
     const d = await draftResponse(
       fake(
         [
-          "The charge was made through the buyer's PayPal account. We have enclosed the documentation. We ask PayPal to find in our favour.",
+          "The charge was made through the buyer's PayPal account. We hold the order as it was placed. We have enclosed the documentation. We ask PayPal to find in our favour.",
         ],
         seen,
       ),
@@ -760,10 +744,7 @@ describe("grounded drafting over the seeded cases", () => {
     assert.equal(seen.length, 1);
     assert.equal(d.source, "llm");
     assert.doesNotMatch(d.response, /enclosed/);
-    assert.match(
-      d.response,
-      /through the buyer's PayPal account\. We ask PayPal to find/,
-    );
+    assert.match(d.response, /as it was placed\. We ask PayPal to find/);
   });
 
   it("cites an attached item by name and may then say it is enclosed", async () => {
@@ -787,8 +768,10 @@ describe("grounded drafting over the seeded cases", () => {
     assert.equal(d.source, "llm");
     assert.match(d.response, /prior orders/i);
     assert.match(
-      JSON.parse(JSON.parse(seen[0]!).messages.at(-1).content).facts_on_file[0],
-      /^Prior orders from this buyer:/,
+      JSON.parse(
+        JSON.parse(seen[0]!).messages.at(-1).content,
+      ).facts_on_file.join("\n"),
+      /Evidence on file: Prior orders from this buyer:/,
     );
     const off = await draftResponse(
       createLlm({ env: {} }),
@@ -847,24 +830,18 @@ describe("grounded drafting over the seeded cases", () => {
   ];
   const all: [string, CaseView, string][] = [
     ...cases,
-    [
-      "Sofia Lindqvist",
-      sofia,
-      "The charge was made through the buyer's PayPal account. We ask PayPal to find in our favour.",
-    ],
+    ["Sofia Lindqvist", sofia, GOOD],
   ];
   for (const [name, c, good] of all) {
     it(`${name}: a reply mixing good and bad sentences keeps only the good ones`, async () => {
-      const [g1, g2] = sentencesOf(good);
+      const [g1, ...gs] = sentencesOf(good);
       const seen: string[] = [];
-      const text = [g1, ...mixed, g2].join(" ");
+      const text = [g1, ...mixed, ...gs].join(" ");
       const d = await draftResponse(fake([text], seen), c, decision, []);
       assert.equal(d.source, "llm");
       assert.equal(d.label, "AI draft");
       assert.equal(seen.length, 1);
-      // the code-written position leads; a model sentence that restates it or claims separate orders is dropped
-      assert.ok(d.response.startsWith(`${positionFor(c)} On file: `));
-      assert.ok(d.response.endsWith(" We ask PayPal to find in our favour."));
+      assert.ok(sentencesOf(d.response).length >= 3);
       assert.ok(sentencesOf(d.response).length <= 5);
       assert.deepEqual(
         groundingProblems(d.response, buildChecklist(c), ""),
@@ -878,7 +855,7 @@ describe("grounded drafting over the seeded cases", () => {
 
     it(`${name}: the template draft is grounded too`, async () => {
       const d = await draftResponse(createLlm({ env: {} }), c, decision, []);
-      assert.equal(d.label, "Template draft (AI unavailable)");
+      assert.equal(d.label, "Draft (AI unavailable)");
       assert.deepEqual(
         groundingProblems(d.response, buildChecklist(c), ""),
         [],
@@ -902,26 +879,26 @@ describe("grounded drafting over the seeded cases", () => {
     ) => draftResponse(fake(texts), c, decision, [], undefined, added);
     it("Priya, fight anyway: no admission, shipments or same cardholder", async () => {
       const d = await run(priya, [
-        "Both transactions were authorized by the same cardholder within minutes of each other. The buyer has acknowledged receiving both items in separate shipments. The charge was made through the buyer's PayPal account.",
+        "Both transactions were authorized by the same cardholder within minutes of each other. The buyer has acknowledged receiving both items in separate shipments. The charge was made through the buyer's PayPal account. We hold the order as it was placed. We ask PayPal to find in our favour.",
       ]);
       assert.equal(d.source, "llm");
       assert.doesNotMatch(
         d.response,
         /acknowledged|separate shipments|same cardholder|within minutes|distinct purchases/i,
       );
-      assert.notEqual(d.label, "Template draft (AI unavailable)");
-      assert.ok(d.response.includes(positionFor(priya)));
+      assert.notEqual(d.label, "Draft (AI unavailable)");
+      assert.ok(sentencesOf(d.response).length >= 3);
     });
     it("drops 'our system shows' with nothing on file", async () => {
       const d = await run(bag, [
-        "Our system shows the transaction completed successfully with no reported issues. The charge was made through the buyer's PayPal account.",
+        "Our system shows the transaction completed successfully with no reported issues. The charge was made through the buyer's PayPal account. We hold the order as it was placed. We ask PayPal to find in our favour.",
       ]);
       assert.equal(d.source, "llm");
       assert.doesNotMatch(d.response, /our system|no reported issues/i);
     });
     it("Sofia before attach: 'as recorded in our system' is dropped", async () => {
       const d = await run(sofia, [
-        "The code was sent to the buyer's email address, as recorded in our system. The charge was made through the buyer's PayPal account.",
+        "The code was sent to the buyer's email address, as recorded in our system. The charge was made through the buyer's PayPal account. We hold the order as it was placed. We ask PayPal to find in our favour.",
       ]);
       assert.equal(d.source, "llm");
       assert.doesNotMatch(d.response, /recorded/i);
@@ -936,7 +913,7 @@ describe("grounded drafting over the seeded cases", () => {
       const d = await run(
         sofia,
         [
-          "The gift card code was emailed to the buyer's PayPal email address on Nov 2, 2026, the day of purchase. We enclose the email log.",
+          "The gift card code was emailed to the buyer's PayPal email address on Nov 2, 2026, the day of purchase. We enclose the email log. We ask PayPal to find in our favour.",
         ],
         added,
       );
@@ -946,7 +923,7 @@ describe("grounded drafting over the seeded cases", () => {
     });
     it("tent: a clean reply is an AI draft (position text no longer needs a keyword)", async () => {
       const d = await run(tent, [
-        "The charge was made through the buyer's PayPal account. We ask PayPal to find in our favour.",
+        `${positionFor(tent)} We hold the order as it was placed. We ask PayPal to find in our favour.`,
       ]);
       assert.equal(d.source, "llm");
       assert.equal(d.label, "AI draft");
@@ -976,7 +953,7 @@ describe("grounded drafting over the seeded cases", () => {
         },
       });
       const d = await draftResponse(llm, bag, decision, []);
-      assert.equal(d.label, "Template draft (AI unavailable)");
+      assert.equal(d.label, "Draft (AI unavailable)");
       assert.equal(d.fallback_reason, "ai_down");
     });
     it("no seeded case's draft says lack, enclosed or providing without an item on file", async () => {
@@ -1040,7 +1017,7 @@ describe("grounded, readable draft", () => {
   it("asserts the position only when a backing checklist item is on file", () => {
     assert.equal(
       positionFor(dup),
-      "We ask PayPal to check whether these two charges are for separate orders rather than one charge taken twice.",
+      "We ask PayPal to review the two charges against the one order we have on file.",
     );
     const withOrder = withAdded(dup, [
       { item: "Order record", note: "Order record: two separate orders" },
@@ -1115,7 +1092,7 @@ describe("grounded, readable draft", () => {
     assert.doesNotMatch(at(2), /open disputes/);
   });
 
-  it("keeps one model sentence between the facts and the closing, and strips a Re: header", async () => {
+  it("keeps the model's three sentences and strips a Re: header", async () => {
     const llm = createLlm({
       env: { LLM_BASE_URL: "http://x", LLM_API_KEY: "k", LLM_MODEL: "m1" },
       fetch: async () =>
@@ -1126,7 +1103,7 @@ describe("grounded, readable draft", () => {
                 message: {
                   content: JSON.stringify({
                     response:
-                      "Re: Ava Chen's claim about 2 × Hardware kit #1234 (USD 120.00). The charge was made through the buyer's PayPal account. The payment came from the buyer's PayPal account.",
+                      "Re: Ava Chen's claim about 2 × Hardware kit #1234 (USD 120.00). We ask PayPal to review whether the order was fulfilled as placed. The order was for 2 × Hardware kit #1234. We ask PayPal to find in our favour.",
                   }),
                 },
               },
@@ -1137,7 +1114,174 @@ describe("grounded, readable draft", () => {
     const d = await draftResponse(llm, base, decision, []);
     assert.equal(d.source, "llm");
     assert.doesNotMatch(d.response, /Re:/);
-    assert.equal(d.response.match(/PayPal account/g)?.length, 1);
+    assert.equal(sentencesOf(d.response).length, 3);
     assert.ok(d.response.endsWith("We ask PayPal to find in our favour."));
+  });
+});
+
+describe("model drafting over the seeded cases", () => {
+  const msg = (content: string) => ({
+    posted_by: "BUYER" as const,
+    time_posted: "2026-11-05T00:00:00Z",
+    content,
+  });
+  const seeded = (o: Partial<CaseView>): CaseView => ({
+    ...base,
+    merchant: "Ikigai Outfitters",
+    ...o,
+  });
+  const record = {
+    item: "Proof the two charges are separate orders",
+    note: "Order record: 1 × Alder Waterproof Hiking Boots, USD 164.00, placed Nov 3, 2026.",
+  };
+  const priya = seeded({
+    dispute_id: "PP-D-DUPLICATE-0003",
+    reason: "DUPLICATE_TRANSACTION",
+    buyer: "Priya Nair",
+    amount_cents: 16400,
+    purchased_at: "2026-11-03T21:55:43.450Z",
+    items: [
+      { item_quantity: "1", item_description: "Alder Waterproof Hiking Boots" },
+    ],
+    messages: [
+      msg(
+        "I was charged twice for one pair of Alder boots. I only placed one order.",
+      ),
+    ],
+  });
+  const sofia = seeded({
+    dispute_id: "PP-D-GIFTCARD-0001",
+    buyer: "Sofia Lindqvist",
+    amount_cents: 5000,
+    purchased_at: "2026-11-02T10:00:00.000Z",
+    items: [{ item_quantity: "1", item_description: "Gift card" }],
+    messages: [msg("The gift card code never arrived.")],
+  });
+  const marcus = seeded({
+    dispute_id: "PP-D-3237289029",
+    reason: "OTHER",
+    buyer: "Marcus Bell",
+    amount_cents: 17900,
+    purchased_at: "2026-10-17T05:03:00.282Z",
+    items: [{ item_quantity: "1", item_description: "Ember 20F Sleeping Bag" }],
+    messages: [
+      msg("There is a problem with this payment and I need help resolving it."),
+    ],
+  });
+  const hana = seeded({
+    dispute_id: "PP-D-8916749540",
+    reason: "UNAUTHORISED",
+    buyer: "Hana Kobayashi",
+    amount_cents: 16400,
+    purchased_at: "2026-10-27T23:50:36.515Z",
+    items: [
+      { item_quantity: "1", item_description: "Alder Waterproof Hiking Boots" },
+    ],
+    messages: [msg("I did not authorise Alder Waterproof Hiking Boots.")],
+  });
+  const FORBIDDEN =
+    /separate orders|two orders|buyer authori[sz]ed|order was fulfilled|matched its listing/i;
+  const model = (reply: string) =>
+    createLlm({
+      env: { LLM_BASE_URL: "http://x", LLM_API_KEY: "k", LLM_MODEL: "m1" },
+      fetch: async () =>
+        new Response(
+          JSON.stringify({
+            choices: [
+              { message: { content: JSON.stringify({ response: reply }) } },
+            ],
+          }),
+        ),
+    });
+  const lies =
+    "The two charges are for two separate orders. The buyer authorised this payment. The order was fulfilled.";
+
+  it("for the four seeded cases the draft is 3 to 5 sentences, names every evidence item and states no unbacked position", async () => {
+    const rows: [CaseView, { item: string; note: string }[], string][] = [
+      [priya, [record], "order record"],
+      [
+        sofia,
+        [
+          {
+            item: "Proof the code was sent (email log)",
+            note: "The gift card code was emailed on Nov 2, 2026.",
+          },
+        ],
+        "email log",
+      ],
+      [
+        marcus,
+        [{ item: "Photos of the item", note: "Photos on file" }],
+        "photos",
+      ],
+      [
+        hana,
+        [
+          {
+            item: "Prior orders from this buyer",
+            note: "Hana Kobayashi has 1 other order with us.",
+          },
+        ],
+        "prior orders",
+      ],
+    ];
+    for (const [c, added, noun] of rows) {
+      const reply = `${lies} We have the ${noun} for this order. We hold the order as it was placed. We ask PayPal to review the order on file.`;
+      const d = await draftResponse(
+        model(reply),
+        c,
+        decision,
+        [],
+        undefined,
+        added,
+      );
+      assert.equal(d.source, "llm", `${c.buyer}: ${d.error}`);
+      assert.equal(d.label, "AI draft, updated with your evidence");
+      const n = sentencesOf(d.response).length;
+      assert.ok(n >= 3 && n <= 5, d.response);
+      assert.match(d.response, new RegExp(noun, "i"));
+      const backed = positionFor(withAdded(c, added)) === positionOf(c.reason);
+      if (!backed) assert.doesNotMatch(d.response, FORBIDDEN, c.buyer);
+      assert.doesNotMatch(
+        d.response,
+        /separate orders/i,
+        c.buyer === "Priya Nair" ? "one record" : c.buyer,
+      );
+    }
+  });
+
+  it("falls back to the template when the model leaves out an evidence item", async () => {
+    const reply =
+      "We ask PayPal to review the two charges. We hold the order as it was placed. We ask PayPal to find in our favour.";
+    const d = await draftResponse(
+      model(reply),
+      priya,
+      decision,
+      [],
+      undefined,
+      [record],
+    );
+    assert.equal(d.source, "fallback");
+    assert.equal(d.label, "Drafted from your evidence");
+    assert.match(d.error ?? "", /evidence item/);
+  });
+
+  it("one order record does not unlock 'two separate orders'; two do", () => {
+    const one = withAdded(priya, [record]);
+    assert.equal(buildChecklist(one)[0]!.status, "missing");
+    assert.match(positionFor(one), /^We ask PayPal to review the two charges/);
+    const two = withAdded(priya, [
+      record,
+      {
+        ...record,
+        note: "Order record: 1 × Alder Waterproof Hiking Boots, USD 164.00, placed Nov 3, 2026, second charge.",
+      },
+    ]);
+    assert.equal(buildChecklist(two)[0]!.status, "present");
+    assert.match(positionFor(two), /two separate orders/);
+    const note = withAdded(priya, [
+      { item: record.item, note: "These are two separate orders." },
+    ]);
+    assert.equal(buildChecklist(note)[0]!.status, "present");
   });
 });

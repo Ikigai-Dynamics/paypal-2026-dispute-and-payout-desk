@@ -18,7 +18,12 @@ import {
 } from "./analysis.js";
 import { DEFAULT_HANDLING_CENTS } from "./decide-client.js";
 import { PgStore, type AddedEv } from "./db.js";
-import { gateEvidence, proofText } from "./factcheck.js";
+import {
+  addedSentences,
+  claimsOf,
+  gateEvidence,
+  proofText,
+} from "./factcheck.js";
 import type { Added, CaseRow, Draft } from "./types.js";
 import { LABEL_GROUNDED } from "./draft.js";
 import { init as initActivity, list as listCalls, record } from "./activity.js";
@@ -413,7 +418,7 @@ const labelFor = (source: Stored, added: boolean, edited: boolean) =>
       ? `${LABEL_GROUNDED(added)}${edited ? ", edited by you" : ""}`
       : edited
         ? "Template, edited by you"
-        : "Template draft (AI unavailable)";
+        : "Draft (AI unavailable)";
 
 /** What is saved as a draft's source; "grounded" is a fallback after the model's sentences were all dropped. */
 type Stored = "llm" | "fallback" | "grounded";
@@ -429,6 +434,35 @@ const sourceOf = (s: Stored): "llm" | "fallback" =>
 const UPDATED_LABEL = "AI draft, updated with your evidence";
 const EDITED_LABEL = "AI draft, edited by you";
 
+/** Sentences of the submitted text that are not in the last generated draft: added or changed by the merchant. */
+async function addedByMerchant(
+  id: string,
+  row: CaseRow,
+  text: string,
+): Promise<string[]> {
+  let base = await store.getGenerated(id);
+  if (base === null) {
+    // never shown: what the desk would write now
+    const precedents = await findPrecedents(store, row);
+    const o = {
+      prior: null,
+      handlingCostCents: DEFAULT_HANDLING_CENTS,
+      feeIfLostCents: 0,
+    };
+    const decision = await decideFor({ decideUrl }, row, precedents, o);
+    const work = await store.getWork(id);
+    base = (
+      await drafts.get(
+        await viewOf(store, row),
+        decision,
+        precedents,
+        o,
+        forDraft(work?.added ?? []),
+      )
+    ).response;
+  }
+  return addedSentences(base, text);
+}
 function parseVouched(v: unknown): string[] {
   if (v === undefined) return [];
   if (
@@ -605,6 +639,10 @@ async function route(
         forDraft(work?.added ?? []),
       );
       const hasAdded = (work?.added.length ?? 0) > 0;
+      // the merchant's edits are diffed against the last draft the desk wrote
+      if (!work?.draft_text) await store.setGenerated(id, out.draft.response);
+      else if ((await store.getGenerated(id)) === null)
+        await store.setGenerated(id, work.draft_text);
       if (work?.draft_text) {
         // saved text keeps the source it really came from (older rows: read it off the label)
         const source: Stored =
@@ -701,6 +739,7 @@ async function route(
         forDraft(added),
       );
       const label = labelFor(storedOf(draft), added.length > 0, false);
+      await store.setGenerated(id, draft.response);
       await store.putWork(id, {
         added,
         text: draft.response,
@@ -724,12 +763,18 @@ async function route(
         b["evidence"] === undefined
           ? ((await store.getWork(id))?.added ?? [])
           : parseAdded(b["evidence"]);
+      const vouched = parseVouched(b["vouched"]);
       const { unsupported } = gateEvidence(
         b["text"],
         proofText(toView(row0), ev),
-        parseVouched(b["vouched"]),
+        vouched,
       );
-      return { status: 200, body: { sentences: unsupported } };
+      const sentences = claimsOf(
+        unsupported,
+        await addedByMerchant(id, row0, b["text"]),
+        parseVouched(b["attested"]),
+      );
+      return { status: 200, body: { sentences } };
     }
     if (m === "POST" && (a[2] === "evidence" || a[2] === "accept")) {
       const b = await readJson(
@@ -761,24 +806,30 @@ async function route(
             throw new HttpError(400, "bad_request", e.message);
           throw e;
         }
-        const vouched = parseVouched(b["vouched"]);
+        const attested = parseVouched(b["attested"]);
+        const vouched = [...parseVouched(b["vouched"]), ...attested];
         const { unsupported, held } = gateEvidence(
           text,
           proofText(toView(row0), ev),
           vouched,
         );
-        if (unsupported.length)
+        const sentences = claimsOf(
+          unsupported,
+          await addedByMerchant(id, row0, text),
+          attested,
+        );
+        if (sentences.length)
           throw new HttpError(
             422,
             "unsupported_claim",
-            "Some sentences mention evidence that is not on file.",
-            { sentences: unsupported },
+            "Some sentences are claims with no evidence on file.",
+            { sentences },
           );
         // the text goes out as written; each vouched sentence is its own evidence entry
         const statements: AddedEv[] = held.map((x) => ({
           item: "Your statement",
           evidence_type: "OTHER",
-          notes: `Merchant statement: ${x}`,
+          notes: `${attested.includes(x) ? "Merchant attests" : "Merchant statement"}: ${x}`,
         }));
         const sentEv = [...(extra?.evidence ?? []), ...statements];
         try {
