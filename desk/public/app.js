@@ -538,7 +538,7 @@ function renderAnalysis(a, fresh) {
           : statusWords(c);
   $("panel-sub").textContent =
     (REASON_SHORT[c.reason] ? `${REASONS[c.reason]} · ` : "") + status;
-  $("repeat").hidden = rb < 2;
+  $("repeat").hidden = rb < 2 || !(fightAnyway || !a.decision || a.decision.call === "fight");
   $("repeat").textContent =
     `${c.buyer} has ${rb} open disputes with you. Repeat claims from one buyer are worth noting in your response; PayPal reviewers see the pattern too.`;
   const draftText = (a.draft?.response ?? "").trim();
@@ -594,7 +594,7 @@ function renderAnalysis(a, fresh) {
   const r = d ? rec(d.call, d.marginal) : null;
   const box = $("rec");
   $("math").hidden = done;
-  box.hidden = done && !!$("action-result").textContent;
+  box.hidden = false;
   if (done) {
     const when = dateShort((upd || Date.now()) + 30 * DAY);
     box.className = "rec neutral";
@@ -651,8 +651,9 @@ function setBadge() {
       ? "AI draft, edited by you"
       : "Template, edited by you"
     : (draftLabel ??
-      (draftAi ? "AI draft" : "Template draft (AI unavailable)"));
-  b.className = "pill " + (draftAi ? "green" : "grey");
+      (draftAi ? "AI draft" : "Drafted from the case facts"));
+  b.className =
+    "pill " + (draftAi && !/^Drafted from/.test(b.textContent) ? "green" : "grey");
 }
 function applyWork(a) {
   work = a.work ?? null;
@@ -717,7 +718,27 @@ function renderEvidence() {
       .map((v) => `<div class="msg"><b>Your statement:</b> ${esc(v)}</div>`)
       .join("") +
     [...added.values()].map((e) => row(e, true)).join("");
-  $("evidence").innerHTML = html || '<p class="muted">Nothing yet</p>';
+  const cur = currentAnalysis;
+  const commOk = cur?.draft.checklist.some(
+    (i) => i.item === "Communication with the buyer" && i.status !== "missing",
+  );
+  const mine = !commOk
+    ? ""
+    : cur.case.messages
+        .filter((m) => m.posted_by !== "BUYER" && !m.content.includes(sentText ?? "\0"))
+        .map((m) => {
+          let t = m.content.trim();
+          if (t.length > 140) t = t.slice(0, 140).replace(/\s+\S*$/, "") + "…";
+          const d = m.time_posted ? dateShort(m.time_posted) : "";
+          return `<div class="msg"><b>Your message to the buyer</b>${d ? ` (${esc(d)})` : ""} ${esc(t)}</div>`;
+        })
+        .join("");
+  const all = html + mine;
+  $("evidence-h").textContent =
+    sent || currentAnalysis?.case.status === "UNDER_REVIEW"
+      ? "Evidence sent"
+      : "Evidence on file";
+  $("evidence").innerHTML = all || '<p class="muted">Nothing yet</p>';
 }
 
 const canAct = () =>
@@ -1007,7 +1028,7 @@ function renderClaims() {
       claims
         .map(
           (c, i) =>
-            `<div class="claim"><blockquote>${esc(c.sentence)}</blockquote><div class="muted">${esc(c.reason ?? "")}</div><label><input type="checkbox" data-i="${i}"${c.ok ? " checked" : ""}> I have this evidence</label></div>`,
+            `<div class="claim"><blockquote>${esc(c.sentence)}</blockquote><div class="muted">${String(c.reason ?? "").replace(/^./, (ch) => ch.toUpperCase()).split(/;\s*|\.\s+(?=[A-Za-z])/).filter(Boolean).map((p) => `<div>${esc(p.replace(/\.$/, ""))}</div>`).join("")}</div><label><input type="checkbox" data-i="${i}"${c.ok ? " checked" : ""}> I have this evidence</label></div>`,
         )
         .join("") +
       '<p class="muted">Fix these sentences in your draft, or tick I have this evidence. <button id="recheck" type="button">Check again</button></p>'
@@ -1123,6 +1144,7 @@ async function run(kind) {
   await recompute(true);
   renderChecklist();
   renderActions();
+  $("rec").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 async function search(e) {
@@ -1162,7 +1184,11 @@ const verb = (p) => {
   return seg.at(-1) ?? "";
 };
 const callLabel = (x) =>
-  x.buyer
+  x.method === "GET" && !x.buyer && verb(x.path) === "disputes"
+    ? "GET disputes (list)"
+    : x.method === "GET" && x.buyer
+      ? `GET dispute · ${x.buyer}${x.amount_cents != null ? ` · ${money(x.amount_cents, x.currency || "USD")}` : ""}`
+      : x.buyer
     ? `${x.method} ${verb(x.path)} · ${x.buyer}${x.amount_cents != null ? ` · ${money(x.amount_cents, x.currency || "USD")}` : ""}`
     : `${x.method} ${verb(x.path)}`;
 function renderActivity() {
