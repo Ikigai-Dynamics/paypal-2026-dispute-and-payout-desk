@@ -170,7 +170,7 @@ credentials in the Secret; set it to `false` in `nix/project.nix` to use the san
 | Path | What |
 | --- | --- |
 | `nix/project.nix` | Options only, plus the `e2e` script package. |
-| `desk/` | TypeScript API and static page (`src/`, `public/`, `test/`). |
+| `desk/` | TypeScript API (`src/`), Vite + React page (`web/`), tests (`test/`, `web/**/*.test.tsx`). |
 | `decide/` | Rust core for contract `decide.v1`. |
 | `contracts/` | Contract prose and the canonical golden cases; `decide/fixtures/` and `desk/test/fixtures/` hold copies, enforced identical by a flake check. |
 | `scripts/e2e.sh` | The end-to-end script. |
