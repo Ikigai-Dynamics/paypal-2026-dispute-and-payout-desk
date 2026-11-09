@@ -19,7 +19,8 @@ import {
 import { DEFAULT_HANDLING_CENTS } from "./decide-client.js";
 import { PgStore, type AddedEv } from "./db.js";
 import { gateEvidence, proofText } from "./factcheck.js";
-import type { Added, CaseRow } from "./types.js";
+import type { Added, CaseRow, Draft } from "./types.js";
+import { LABEL_GROUNDED } from "./draft.js";
 import { init as initActivity, list as listCalls, record } from "./activity.js";
 import { DraftCache, pool as runPool } from "./drafts.js";
 import {
@@ -372,20 +373,29 @@ const forDraft = (a: AddedEv[]): Added[] =>
   a.map((x) => ({ item: x.item, note: x.notes }));
 
 /** The label from where the saved text really came from. */
-const labelFor = (
-  source: "llm" | "fallback",
-  added: boolean,
-  edited: boolean,
-) =>
+const labelFor = (source: Stored, added: boolean, edited: boolean) =>
   source === "llm"
     ? edited
       ? EDITED_LABEL
       : added
         ? UPDATED_LABEL
         : "AI draft"
-    : edited
-      ? "Template, edited by you"
-      : "Template draft (AI unavailable)";
+    : source === "grounded"
+      ? `${LABEL_GROUNDED(added)}${edited ? ", edited by you" : ""}`
+      : edited
+        ? "Template, edited by you"
+        : "Template draft (AI unavailable)";
+
+/** What is saved as a draft's source; "grounded" is a fallback after the model's sentences were all dropped. */
+type Stored = "llm" | "fallback" | "grounded";
+const storedOf = (d: Draft): Stored =>
+  d.source === "llm"
+    ? "llm"
+    : d.fallback_reason === "grounding"
+      ? "grounded"
+      : "fallback";
+const sourceOf = (s: Stored): "llm" | "fallback" =>
+  s === "llm" ? "llm" : "fallback";
 
 const UPDATED_LABEL = "AI draft, updated with your evidence";
 const EDITED_LABEL = "AI draft, edited by you";
@@ -534,6 +544,7 @@ async function route(
       );
     await store.resetWork();
     decisionCache.clear();
+    drafts.clear();
     return { status: 200, body: { reset: true } };
   }
   const a =
@@ -567,19 +578,19 @@ async function route(
       const hasAdded = (work?.added.length ?? 0) > 0;
       if (work?.draft_text) {
         // saved text keeps the source it really came from (older rows: read it off the label)
-        const source =
+        const source: Stored =
           work.draft_source ??
           (work.draft_label?.startsWith("AI") ? "llm" : "fallback");
         out.draft = {
           ...out.draft,
           response: work.draft_text,
-          source,
+          source: sourceOf(source),
           label: labelFor(source, hasAdded, work.edited),
         };
       } else {
         out.draft = {
           ...out.draft,
-          label: labelFor(out.draft.source, hasAdded, false),
+          label: labelFor(storedOf(out.draft), hasAdded, false),
         };
       }
       if (
@@ -615,13 +626,14 @@ async function route(
       const old = await store.getWork(id);
       const edited = b["edited"] as boolean | undefined;
       // without a saved source, take the page's word, else what the last real draft was
-      const source: "llm" | "fallback" =
+      const source: Stored =
         old?.draft_source ??
-        (b["source"] === "llm" || b["source"] === "fallback"
+        (b["source"] === "llm" ||
+        b["source"] === "fallback" ||
+        b["source"] === "grounded"
           ? b["source"]
-          : drafts.lastOk === false
-            ? "fallback"
-            : "llm");
+          : (drafts.lastSource.get(id) ??
+            (drafts.lastOk === false ? "fallback" : "llm")));
       // new evidence makes the saved text older than the evidence: its label no longer claims otherwise
       const addedChanged =
         added !== undefined &&
@@ -659,12 +671,12 @@ async function route(
         o,
         forDraft(added),
       );
-      const label = labelFor(draft.source, added.length > 0, false);
+      const label = labelFor(storedOf(draft), added.length > 0, false);
       await store.putWork(id, {
         added,
         text: draft.response,
         label,
-        source: draft.source,
+        source: storedOf(draft),
         edited: false,
       });
       return { status: 200, body: { draft: { ...draft, label } } };

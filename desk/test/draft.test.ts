@@ -10,6 +10,7 @@ import {
   fallbackDraft,
   groundingProblems,
   invalidReason,
+  positionFor,
   isDraftShape,
   withAdded,
 } from "../src/draft.js";
@@ -374,7 +375,7 @@ describe("draftResponse", () => {
       [
         "llm",
         "m1",
-        "Re: Ava Chen's claim about 2 × Hardware kit #1234 (USD 120.00). The order was fulfilled as placed. We ask PayPal to find in our favour.",
+        "Re: Ava Chen's claim about 2 × Hardware kit #1234 (USD 120.00). We dispute this claim and ask PayPal to review the facts below. The order was fulfilled as placed. We ask PayPal to find in our favour.",
         "AI draft",
       ],
     );
@@ -510,7 +511,7 @@ describe("grounding", () => {
     assert.equal(d.source, "llm");
     assert.ok(
       d.response.startsWith(
-        "Re: Sofia Lindqvist's claim about 1 × Ikigai Gift Card $100 (USD 120.00). The order was fulfilled",
+        "Re: Sofia Lindqvist's claim about 1 × Ikigai Gift Card $100 (USD 120.00). We dispute this claim and ask PayPal to review the facts below. The order was fulfilled",
       ),
     );
     const sent = JSON.parse(JSON.parse(seen[0]!).messages.at(-1).content);
@@ -691,7 +692,6 @@ describe("grounded drafting over the seeded cases", () => {
       for (const b of bad) {
         const d = await draftResponse(fake([b, good]), c, decision, []);
         assert.equal(d.source, "llm", b);
-        assert.ok(d.response.includes(good), b);
         assertClean(c, d.response, false);
       }
     });
@@ -862,7 +862,9 @@ describe("grounded drafting over the seeded cases", () => {
       assert.equal(d.source, "llm");
       assert.equal(d.label, "AI draft");
       assert.equal(seen.length, 1);
-      assert.equal(d.response, `${headOf(c)} ${g1} ${g2}`);
+      // the code-written position leads; a model sentence that restates it or claims separate orders is dropped
+      assert.ok(d.response.startsWith(`${headOf(c)} ${positionFor(c)} `));
+      assert.ok(d.response.endsWith(` ${g2}`));
       assert.deepEqual(
         groundingProblems(d.response, buildChecklist(c), ""),
         [],
@@ -890,4 +892,112 @@ describe("grounded drafting over the seeded cases", () => {
         assert.doesNotMatch(d.response, /fulfilled/);
     });
   }
+
+  describe("claims the file does not back", () => {
+    const run = (
+      c: CaseView,
+      texts: string[],
+      added?: { item: string; note: string }[],
+    ) => draftResponse(fake(texts), c, decision, [], undefined, added);
+    it("Priya, fight anyway: no admission, shipments or same cardholder", async () => {
+      const d = await run(priya, [
+        "Both transactions were authorized by the same cardholder within minutes of each other. The buyer has acknowledged receiving both items in separate shipments. The charge was made through the buyer's PayPal account.",
+      ]);
+      assert.equal(d.source, "llm");
+      assert.doesNotMatch(
+        d.response,
+        /acknowledged|separate shipments|same cardholder|within minutes|distinct purchases/i,
+      );
+      assert.notEqual(d.label, "Template draft (AI unavailable)");
+      assert.ok(d.response.includes(positionFor(priya)));
+    });
+    it("drops 'our system shows' with nothing on file", async () => {
+      const d = await run(bag, [
+        "Our system shows the transaction completed successfully with no reported issues. The charge was made through the buyer's PayPal account.",
+      ]);
+      assert.equal(d.source, "llm");
+      assert.doesNotMatch(d.response, /our system|no reported issues/i);
+    });
+    it("Sofia before attach: 'as recorded in our system' is dropped", async () => {
+      const d = await run(sofia, [
+        "The code was sent to the buyer's email address, as recorded in our system. The charge was made through the buyer's PayPal account.",
+      ]);
+      assert.equal(d.source, "llm");
+      assert.doesNotMatch(d.response, /recorded/i);
+    });
+    it("Sofia after attach: updated label, and the text names the email log", async () => {
+      const added = [
+        {
+          item: "Proof the code was sent (email log)",
+          note: "The gift card code was emailed to the buyer's PayPal email address on Nov 2, 2026, the day of purchase.",
+        },
+      ];
+      const d = await run(
+        sofia,
+        [
+          "The gift card code was emailed to the buyer's PayPal email address on Nov 2, 2026, the day of purchase. We enclose the email log.",
+        ],
+        added,
+      );
+      assert.equal(d.source, "llm");
+      assert.equal(d.label, "AI draft, updated with your evidence");
+      assert.match(d.response, /email log/i);
+    });
+    it("tent: a clean reply is an AI draft (position text no longer needs a keyword)", async () => {
+      const d = await run(tent, [
+        "The charge was made through the buyer's PayPal account. We ask PayPal to find in our favour.",
+      ]);
+      assert.equal(d.source, "llm");
+      assert.equal(d.label, "AI draft");
+      assert.ok(d.response.includes("We have no record of another payment"));
+    });
+    it("a reply that fails twice gives the grounded template, not 'unavailable'", async () => {
+      const d = await run(bag, [bad[0]!]);
+      assert.equal(d.source, "fallback");
+      assert.equal(d.fallback_reason, "grounding");
+      assert.equal(d.label, "Drafted from the case facts");
+      const e = await run(
+        bag,
+        [bad[0]!],
+        [{ item: "Photos of the item", note: "Photos on file." }],
+      );
+      assert.equal(e.label, "Drafted from your evidence");
+    });
+    it("a thrown or unreachable model is the unavailable template", async () => {
+      const llm = createLlm({
+        env: { LLM_BASE_URL: "http://x", LLM_API_KEY: "k", LLM_MODEL: "m1" },
+        fetch: async () => {
+          throw new Error("ECONNREFUSED");
+        },
+      });
+      const d = await draftResponse(llm, bag, decision, []);
+      assert.equal(d.label, "Template draft (AI unavailable)");
+      assert.equal(d.fallback_reason, "ai_down");
+    });
+    it("no seeded case's draft says lack, enclosed or providing without an item on file", async () => {
+      for (const [, c] of all) {
+        for (const t of bad) {
+          const d = await draftResponse(fake([t]), c, decision, []);
+          assert.doesNotMatch(d.response, /lack|enclosed|providing/i, t);
+        }
+        const off = await draftResponse(
+          createLlm({ env: {} }),
+          c,
+          decision,
+          [],
+        );
+        assert.doesNotMatch(off.response, /lack|enclosed|providing/i);
+      }
+    });
+    it("unauthorised cases share one checklist policy", () => {
+      for (const c of [hana, { ...hana, buyer_history: undefined }]) {
+        const l = buildChecklist(c);
+        assert.equal(l.find((i) => i.item.startsWith("Prior"))?.required, true);
+        assert.equal(
+          l.find((i) => i.item.startsWith("Shipping"))?.required,
+          false,
+        );
+      }
+    });
+  });
 });
