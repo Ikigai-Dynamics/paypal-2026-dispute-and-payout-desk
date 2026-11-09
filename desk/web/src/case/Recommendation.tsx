@@ -32,7 +32,7 @@ export function Recommendation({
 }) {
   if (done) {
     const upd = Date.parse(c.updated_at);
-    const when = dateShort((upd || Date.now()) + 30 * DAY);
+    const when = dateShort(new Date((upd || Date.now()) + 30 * DAY).toISOString());
     return (
       <div id="rec" className="rec neutral" hidden={hidden}>
         {refunded ? (

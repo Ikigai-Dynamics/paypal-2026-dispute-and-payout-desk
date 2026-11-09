@@ -67,6 +67,12 @@ export interface BuyerOrder {
   items: string;
 }
 
+export interface Evidence {
+  evidence_type?: string;
+  notes?: string;
+  evidence_info?: { tracking_info?: { carrier_name?: string; tracking_number?: string }[] };
+}
+
 export interface CaseView {
   dispute_id: string;
   reason: string;
@@ -81,9 +87,9 @@ export interface CaseView {
   due_at: string | null;
   days_left: number | null;
   evidence_on_file: boolean;
-  messages: { posted_by?: string; time_posted?: string; content?: string }[];
+  messages: { posted_by?: string; time_posted?: string; content: string }[];
   items: { item_description: string; item_quantity: string }[];
-  evidences: any[];
+  evidences: Evidence[];
   purchased_at?: string;
   buyer_history?: BuyerOrder[];
   buyer_open_disputes?: number;
