@@ -360,13 +360,12 @@ const listOf = (xs: string[]) =>
     ? xs.join("")
     : `${xs.slice(0, -1).join(", ")}${xs.length > 2 ? "," : ""} and ${xs.at(-1)}`;
 
-/** Two sentences at most: the order and the buyer's latest message on file, then every evidence item on the case. */
+/** Short sentences: the order, then every evidence item on the case. */
 export function factsSentence(c: CaseView): string {
   const order = c.items
     .map((i) => `${i.item_quantity} × ${i.item_description}`)
     .join(", ");
-  const msg = c.messages.findLast((m) => m.posted_by === "BUYER");
-  const onFile = `On file: the order${c.purchased_at ? ` of ${day(c.purchased_at)}` : ""}${order ? ` for ${order}` : ""}, ${money(c.amount_cents, c.currency)}${msg ? `, and ${c.buyer}'s message of ${day(msg.time_posted)}` : ""}.`;
+  const onFile = `${c.buyer}'s order${c.purchased_at ? ` of ${day(c.purchased_at)}` : ""} was ${order ? `for ${order}, ` : ""}${money(c.amount_cents, c.currency)}.`;
   const evidence = c.evidences.flatMap((e) => [
     ...(e.notes ? [e.notes.trim().replace(/[.\s]+$/, "")] : []),
     ...(e.evidence_info?.tracking_info ?? []).map(
@@ -770,6 +769,12 @@ export async function draftResponse(
   const stripHead = (t: string) =>
     t.trim().replace(/^Re:(?:[^.]*?\([^)]*\)\.?|[^.]*\.)\s*/i, "");
   const factsText = facts.join(" ");
+  // an item the merchant wrote a note for is on file, whatever words the note uses
+  const judged = fb.checklist.map((i) =>
+    added?.some((a) => a.item === i.item)
+      ? { ...i, status: "present" as const }
+      : i,
+  );
   const buyerText = c.messages
     .filter((m) => m.posted_by === "BUYER")
     .map((m) => m.content)
@@ -794,7 +799,7 @@ export async function draftResponse(
         (unsupportedWords(x, user).length >= 3
           ? `it says things the case does not (${unsupportedWords(x, user).slice(0, 3).join(", ")})`
           : undefined) ??
-        groundingFlags(x, fb.checklist, factsText)[0]?.why ??
+        groundingFlags(x, judged, factsText)[0]?.why ??
         // the same test the send gate applies, so a draft never trips it
         unsupportedClaims(x, `${proofText(c, [])}\n${factsText}`)[0]?.reason;
       if (why) dropped.push(`"${x}" (${why})`);
@@ -803,8 +808,18 @@ export async function draftResponse(
     const why = dropped.length
       ? `these sentences were not allowed: ${dropped.join("; ")}`
       : "";
-    if (!/\bask PayPal\b/i.test(kept.at(-1) ?? "") && kept.length < 5)
-      kept.push(CLOSING);
+    // one closing request, last; and no two sentences opening with the same three words
+    const closer = (x: string) =>
+      /^We ask PayPal\b(?! to (review|check|confirm))/i.test(x);
+    const lastCloser = kept.findLast(closer);
+    const seenLead = new Set<string>();
+    const uniq = kept.filter((x) => {
+      if (closer(x)) return false;
+      const lead = x.toLowerCase().replace(/[^a-z0-9 ]/g, "").split(/\s+/).slice(0, 3).join(" ");
+      return !seenLead.has(lead) && !!seenLead.add(lead);
+    });
+    const end = lastCloser ?? (uniq.length < 5 ? CLOSING : undefined);
+    kept.splice(0, kept.length, ...uniq, ...(end ? [end] : []));
     if (kept.length < 3 || kept.length > 5)
       return {
         bad: `${why ? `${why}; ` : ""}it came to ${kept.length} usable sentences, not 3 to 5`,

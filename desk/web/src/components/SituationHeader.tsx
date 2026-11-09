@@ -13,6 +13,7 @@ export function SituationHeader({
   cases,
   summary,
   loadError,
+  onRetry,
   onOpen,
 }: {
   info: Info | null;
@@ -20,6 +21,7 @@ export function SituationHeader({
   cases: CaseSummary[];
   summary: Summary | null;
   loadError: boolean;
+  onRetry?(): void;
   onOpen(id: string): void;
 }) {
   const n = needing(cases);
@@ -32,7 +34,7 @@ export function SituationHeader({
   const a = n.filter((c) => rec(c.call).base === "accept").length;
   const need = summary?.needs_response ?? n.length;
   const situation = loadError
-    ? "Could not load your disputes. Try again."
+    ? "Could not load your disputes."
     : !cases.length && !summary
       ? "Loading your disputes..."
       : `${
@@ -58,10 +60,17 @@ export function SituationHeader({
         PayPal disputes come in; the desk recommends fight or accept for each,
         drafts your response with AI, and sends it to PayPal when you confirm.
       </p>
-      <p className="situation">{situation}</p>
+      <p className="situation">
+        {situation}{" "}
+        {loadError && (
+          <button type="button" onClick={onRetry}>
+            Try again
+          </button>
+        )}
+      </p>
       <button
         className="primary"
-        disabled={!n.length}
+        disabled={!n.length || loadError}
         onClick={() => {
           const c = fightable ?? first;
           if (c) onOpen(c.dispute_id);

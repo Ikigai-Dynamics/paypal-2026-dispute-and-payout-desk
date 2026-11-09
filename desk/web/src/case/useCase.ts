@@ -442,15 +442,13 @@ export function useCase(
   const labelGreen = !!a && s.draftAi && !/^Drafted from/.test(badge);
   const confirmText = c
     ? (() => {
-        const names = [
-          ...[...s.added.values()].map((e) => short(e.item)),
-          ...s.claims.filter((x) => x.ok).map(() => "your statement"),
-        ];
+        const stmts = s.claims.filter((x) => x.ok).map(() => "your statement");
+        const names = [...[...s.added.values()].map((e) => short(e.item)), ...stmts];
         const what =
           names.length === 0
             ? ""
             : names.length === 1
-              ? ` and the ${names[0]}`
+              ? ` and ${stmts.length ? "" : "the "}${names[0]}`
               : ` and ${names.length} items (${names.join(", ")})`;
         return `Send your response${what} to PayPal for the ${money(c.amount_cents, c.currency)} dispute with ${c.buyer}?`;
       })()

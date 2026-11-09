@@ -46,4 +46,16 @@ describe("CaseCards", () => {
     fireEvent.click(screen.getByText(/Late Larry/));
     expect(onOpen).toHaveBeenCalledWith("M");
   });
+
+  it("marks only the open case as selected", () => {
+    const { container } = render(<CaseCards cases={cases} onOpen={vi.fn()} openId="A" />);
+    expect([...container.querySelectorAll(".dcard.sel")].map((e) => e.textContent)).toEqual([
+      expect.stringContaining("Priya Nair"),
+    ]);
+  });
+
+  it("says nothing about 'nothing to respond to' when the load failed", () => {
+    render(<CaseCards cases={[]} onOpen={vi.fn()} loadError />);
+    expect(screen.queryByText(/Nothing needs your response/)).toBeNull();
+  });
 });

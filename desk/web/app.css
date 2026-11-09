@@ -28,7 +28,7 @@ button.danger { color: var(--red); border-color: var(--red); }
 a { color: var(--btn); }
 .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .dcard { border: 1px solid #dde2ea; border-radius: 8px; padding: 10px 12px; cursor: pointer; display: flex; flex-direction: column; gap: 4px; background: #fff; }
-.dcard:hover, .dcard:focus { border-color: var(--btn); box-shadow: 0 1px 6px rgba(0,112,224,.2); outline: none; }
+.dcard:hover, .dcard.sel, .dcard:focus-visible { border-color: var(--btn); box-shadow: 0 1px 6px rgba(0,112,224,.2); outline: none; }
 .dcard .who { font-weight: 700; }
 .dcard .amt { font-size: 18px; font-weight: 700; }
 .dcard .due.soon, .red { color: var(--red); font-weight: 600; }

@@ -1,5 +1,5 @@
 import type { CaseSummary } from "../lib/api";
-import { DAY, dateShort, dueSoon, inDays, money, needsResponse, rec } from "../lib/format";
+import { DAY, dateShort, dayDiff, dueSoon, inDays, money, needsResponse, rec } from "../lib/format";
 
 const TICKS = [0, 1, 2, 3, 4, 5, 6, 7, 14, 21];
 
@@ -35,7 +35,7 @@ export function DeadlinesTimeline({
         ))}
         {open.map((c) => {
           const left =
-            Math.min(1, Math.max(0, (Date.parse(c.due_at) - now) / span)) * 96 + 2;
+            Math.min(1, Math.max(0, (dayDiff(c.due_at) * DAY) / span)) * 96 + 2; // calendar days, as the header counts them
           const bucket = Math.round(left);
           const lane = lanes.get(bucket) ?? 0;
           lanes.set(bucket, lane + 1);

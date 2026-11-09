@@ -76,6 +76,7 @@ export function CasePage({
         : c.due_at
           ? `Response due ${dateShort(c.due_at)} (${inDays(c.due_at)}) · ${statusWords(c)}`
           : statusWords(c);
+  const card = cases.find((x) => x.dispute_id === id);
   const rb = c && needsResponse(c) ? buyerOpen(cases, c.buyer) : 0;
   const showRepeat =
     rb >= 3 && (s.fightAnyway || !d || d.call === "fight");
@@ -109,7 +110,11 @@ export function CasePage({
       <div className="panel-head">
         <div>
           <h2 id="panel-title">
-            {c ? `${c.buyer} · ${reasonShort(c.reason)} · ${amt}` : "Loading..."}
+            {c
+              ? `${c.buyer} · ${reasonShort(c.reason)} · ${amt}`
+              : card
+                ? `${card.buyer} · ${reasonShort(card.reason)} · ${money(card.amount_cents, card.currency)}`
+                : "Loading..."}
           </h2>
           <p id="panel-sub" className="muted">
             {c && REASON_SHORT[c.reason] ? `${REASONS[c.reason]} · ` : ""}
@@ -225,6 +230,7 @@ export function CasePage({
               </div>
             )}
             <div id="actions" className="actions">
+              {s.sent && <p role="status"><b>{s.sent}</b></p>}
               {s.canAct &&
                 (s.isFight ? (
                   <>

@@ -21,7 +21,7 @@ const hashId = () => {
 
 export function App() {
   const info = useInfo();
-  const { cases, summary, error, reload } = useCases();
+  const { cases, summary, error, failure, retry, reload } = useCases();
   const activity = useActivity();
   const [openId, setOpenId] = useState<string | null>(hashId);
   const [reopen, setReopen] = useState(0); // bumps when the open case is opened again
@@ -81,6 +81,7 @@ export function App() {
         cases={cases}
         summary={summary}
         loadError={error}
+        onRetry={retry}
         onOpen={openCase}
       />
       {openId && (
@@ -93,10 +94,10 @@ export function App() {
           onAiDraft={() => setAiDrafted(true)}
         />
       )}
-      <CaseCards cases={cases} onOpen={openCase} />
+      <CaseCards cases={cases} onOpen={openCase} openId={openId} loadError={error} />
       <DeadlinesTimeline cases={cases} onOpen={openCase} />
       <AllCases cases={cases} summary={summary} onOpen={openCase} onReload={reload} />
-      <PayPalFooter calls={activity.calls} />
+      <PayPalFooter calls={activity.calls} failed={failure} />
     </>
   );
 }

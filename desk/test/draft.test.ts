@@ -922,6 +922,44 @@ describe("grounded drafting over the seeded cases", () => {
       assert.equal(d.label, "AI draft, updated with your evidence");
       assert.match(d.response, /email log/i);
     });
+    it("a merchant's own note calls the model and keeps the AI label", async () => {
+      const seen: string[] = [];
+      const added = [
+        {
+          item: "Code redemption record",
+          note: "The buyer opened the gift card page at 10:05 on Nov 2.",
+        },
+      ];
+      const d = await draftResponse(
+        fake(
+          [
+            "The buyer opened the gift card page at 10:05 on Nov 2. The code redemption record shows this. We ask PayPal to find in our favour.",
+          ],
+          seen,
+        ),
+        sofia,
+        decision,
+        [],
+        undefined,
+        added,
+      );
+      assert.match(seen[0]!, /opened the gift card page/);
+      assert.equal(d.source, "llm", d.error);
+      assert.equal(d.label, "AI draft, updated with your evidence");
+    });
+    it("drops repeated openings and keeps one closing request", async () => {
+      const note = "The gift card code was emailed to the buyer's PayPal email address on Nov 2, 2026, the day of purchase.";
+      const d = await run(
+        sofia,
+        [
+          `${note} The gift card code was emailed to the buyer's PayPal email address on Nov 2, 2026. We enclose the email log. We ask PayPal to find in our favour. We ask PayPal to rule in our favour.`,
+        ],
+        [{ item: "Proof the code was sent (email log)", note }],
+      );
+      assert.equal(d.source, "llm", d.error);
+      assert.equal(d.response.match(/We ask PayPal/g)?.length, 1);
+      assert.equal(d.response.match(/The gift card code was/g)?.length, 1);
+    });
     it("tent: a clean reply is an AI draft (position text no longer needs a keyword)", async () => {
       const d = await run(tent, [
         `${positionFor(tent)} We hold the order as it was placed. We ask PayPal to find in our favour.`,
@@ -1059,7 +1097,7 @@ describe("grounded, readable draft", () => {
     );
   });
 
-  it("puts the order and the buyer's message in one 'On file' sentence and the evidence in an 'Our evidence' list", () => {
+  it("states the order in a short sentence and lists the evidence after it", () => {
     const c = withAdded(marcus, [
       { item: "Photos of the item", note: "Photos on file" },
     ]);
@@ -1067,9 +1105,9 @@ describe("grounded, readable draft", () => {
     assert.ok(!/^Re:|facts below/.test(r));
     assert.match(
       r,
-      /On file: the order of Oct 27, 2026 for 2 × Hardware kit #1234, USD 120\.00, and Marcus Bell's message of Nov 6, 2026\. Our evidence: Two tents and a pack shipped by UPS to the billing address, UPS tracking number 1Z999AA10123456784, and Photos of the item: Photos on file\./,
+      /Marcus Bell's order of Oct 27, 2026 was for 2 × Hardware kit #1234, USD 120\.00\. Our evidence: Two tents and a pack shipped by UPS to the billing address, UPS tracking number 1Z999AA10123456784, and Photos of the item: Photos on file\./,
     );
-    assert.doesNotMatch(r, /On file:[^.]*;/);
+    assert.doesNotMatch(r, /;/);
     assert.match(
       fallbackDraft(marcus, decision).response,
       /Our evidence: Two tents and a pack shipped by UPS to the billing address and UPS tracking number 1Z999AA10123456784\./,

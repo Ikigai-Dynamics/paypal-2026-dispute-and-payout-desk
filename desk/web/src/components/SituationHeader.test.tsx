@@ -46,4 +46,15 @@ describe("SituationHeader", () => {
     fireEvent.click(screen.getByRole("button", { name: "Start with the most urgent case" }));
     expect(onOpen).toHaveBeenCalledWith("A");
   });
+
+  it("on a load failure says so, offers a real Try again and disables Fight", () => {
+    const onRetry = vi.fn();
+    render(
+      <SituationHeader info={null} aiOn={false} cases={[mk("F", "Sofia", "fight", 5)]} summary={null} loadError onRetry={onRetry} onOpen={vi.fn()} />,
+    );
+    expect(screen.getByText(/Could not load your disputes\./)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Fight the most urgent dispute" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(onRetry).toHaveBeenCalled();
+  });
 });

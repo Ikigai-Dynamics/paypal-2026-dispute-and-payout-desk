@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, type CaseSummary, type Summary } from "../lib/api";
+import { api, ApiError, type CaseSummary, type Summary } from "../lib/api";
 import { needsResponse, sentence } from "../lib/format";
 
 export const byDue = (a: CaseSummary, b: CaseSummary) =>
@@ -46,7 +46,7 @@ export const bucketLine = (sm: Summary) =>
 export function useCases() {
   const [cases, setCases] = useState<CaseSummary[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
-  const [error, setError] = useState(false);
+  const [failure, setFailure] = useState<{ status: number } | null>(null);
   const retried = useRef(false);
   const reload = useCallback(async () => {
     const r = await api<{ cases: CaseSummary[]; summary?: Summary }>(
@@ -54,15 +54,25 @@ export function useCases() {
     );
     setCases(r.cases);
     setSummary(r.summary ?? null);
-    setError(false);
+    setFailure(null);
     // decide may still be analysing on first load: one retry after 5 s
     if (!retried.current && needing(r.cases).some((c) => !c.call)) {
       retried.current = true;
       setTimeout(() => reload().catch(() => {}), 5000);
     }
   }, []);
-  useEffect(() => {
-    reload().catch(() => setError(true));
+  // two quick retries (0.4 s, 0.8 s) ride out the shared mock restarting
+  const load = useCallback(async () => {
+    for (let i = 0; ; i++) {
+      try {
+        return await reload();
+      } catch (e) {
+        if (i === 2)
+          return setFailure({ status: e instanceof ApiError ? e.status : 0 });
+        await new Promise((r) => setTimeout(r, 400 * 2 ** i));
+      }
+    }
   }, [reload]);
-  return { cases, summary, error, reload };
+  useEffect(() => void load(), [load]);
+  return { cases, summary, error: !!failure, failure, retry: load, reload };
 }

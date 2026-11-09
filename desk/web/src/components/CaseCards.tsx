@@ -15,9 +15,13 @@ import { missedList, needing } from "../hooks/useCases";
 export function CaseCards({
   cases,
   onOpen,
+  openId,
+  loadError,
 }: {
   cases: CaseSummary[];
   onOpen(id: string): void;
+  openId?: string | null;
+  loadError?: boolean;
 }) {
   const [showAll, setShowAll] = useState(false);
   const n = needing(cases);
@@ -37,7 +41,7 @@ export function CaseCards({
             return (
               <div
                 key={c.dispute_id}
-                className="dcard"
+                className={"dcard" + (c.dispute_id === openId ? " sel" : "")}
                 tabIndex={0}
                 role="button"
                 onClick={open}
@@ -64,7 +68,7 @@ export function CaseCards({
               </div>
             );
           })
-        ) : (
+        ) : loadError ? null : (
           <p className="muted">Nothing needs your response right now.</p>
         )}
       </div>

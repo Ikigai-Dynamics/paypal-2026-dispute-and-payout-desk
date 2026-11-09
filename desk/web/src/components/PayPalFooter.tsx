@@ -39,7 +39,13 @@ const Row = ({ x }: { x: ActivityCall }) => (
 );
 
 /** the fixed PayPal call log; hidden while the log is unreachable */
-export function PayPalFooter({ calls }: { calls: ActivityCall[] | null }) {
+export function PayPalFooter({
+  calls,
+  failed,
+}: {
+  calls: ActivityCall[] | null;
+  failed?: { status: number } | null;
+}) {
   const [open, setOpen] = useState(false);
   const [flash, setFlash] = useState(false);
   const [pin, setPin] = useState<{ text: string; until: number } | null>(null);
@@ -89,11 +95,12 @@ export function PayPalFooter({ calls }: { calls: ActivityCall[] | null }) {
     return () => clearTimeout(t);
   }, [pin]);
 
-  if (!calls) return null;
-  const x = calls[0];
-  const posts = calls.filter((x) => x.method === "POST");
+  if (!calls && !failed) return null;
+  const list = calls ?? [];
+  const x = list[0];
+  const posts = list.filter((x) => x.method === "POST");
   const gets = new Map<string, { n: number; x: ActivityCall }>();
-  for (const g of calls.filter((x) => x.method !== "POST")) {
+  for (const g of list.filter((x) => x.method !== "POST")) {
     const k = `${g.method} ${verb(g.path)}`;
     gets.set(k, { n: (gets.get(k)?.n ?? 0) + 1, x: gets.get(k)?.x ?? g });
   }
@@ -118,7 +125,14 @@ export function PayPalFooter({ calls }: { calls: ActivityCall[] | null }) {
         onClick={() => setOpen(!open)}
       >
         <span>
-          {pin && Date.now() < pin.until ? (
+          {failed ? (
+            <>
+              <Dot st={failed.status || 599} />
+              <span className="s-bad">
+                Last call: GET cases (list) · {failed.status || "no response"} · failed
+              </span>
+            </>
+          ) : pin && Date.now() < pin.until ? (
             <>
               <Dot st={200} />
               {pin.text}
