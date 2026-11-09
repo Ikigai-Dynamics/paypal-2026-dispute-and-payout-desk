@@ -1,5 +1,6 @@
 import type { Llm } from "@jeirslab/llm-client";
 import { DEFAULT_HANDLING_CENTS } from "./decide-client.js";
+import { proofText, unsupportedClaims } from "./factcheck.js";
 import type {
   Added,
   BuyerOrder,
@@ -618,7 +619,9 @@ export async function draftResponse(
     const kept = sentencesOf(stripHead(t)).filter((x) => {
       const why =
         invalidReason(x, user, proof) ??
-        groundingFlags(x, fb.checklist, factsText)[0]?.why;
+        groundingFlags(x, fb.checklist, factsText)[0]?.why ??
+        // the same test the send gate applies, so a draft never trips it
+        unsupportedClaims(x, `${proofText(c, [])}\n${factsText}`)[0]?.reason;
       if (why) dropped.push(`"${x}" (${why})`);
       return !why;
     });
