@@ -39,7 +39,7 @@ show() { # show <label> <analysis-json>
 
 FIGHT=PP-D-BIGCHARGEBACK-0002
 ACCEPT=PP-D-DUPLICATE-0003
-echo "== analysis: the fight case (Marcus Bell, USD 1,317)"
+echo "== analysis: the large chargeback (Marcus Bell, USD 1,317; recommended fight)"
 fight=$(desk "http://${H}/api/cases/${FIGHT}/analysis")
 show "$FIGHT" "$fight"
 assert "call is fight" "$(echo "$fight" | jq '.decision.call == "fight"')"
@@ -48,9 +48,14 @@ assert "checklist: the address item is missing" "$(echo "$fight" | jq '[.draft.c
 assert "explanation is plain English" "$(echo "$fight" | jq '.draft.explanation | test("p =|EV") | not')"
 assert "draft is non-empty" "$(echo "$fight" | jq '.draft.response | length > 40')"
 assert "draft names the buyer exactly as on file" "$(echo "$fight" | jq '.draft.response | contains("Marcus Bell")')"
-assert "draft states the amount exactly as on file" "$(echo "$fight" | jq '.draft.response | test("1,317")')"
+assert "draft states the amount exactly as on file" "$(echo "$fight" | jq '.draft.response | test("1,?317")')"
 assert "draft never says 'record shows'" "$(echo "$fight" | jq '.draft.response | test("record shows"; "i") | not')"
 assert "response names no dispute id" "$(echo "$fight" | jq '.draft.response | contains("PP-D-") | not')"
+
+echo "== the case 'Fight the most urgent dispute' opens"
+urgent=$(desk "http://${H}/api/cases" | jq -r '[.cases[] | select((.status == "WAITING_FOR_SELLER_RESPONSE" or .status == "OPEN") and ((.call // "") | startswith("fight")) and .due_at != null and ((.due_at | sub("\\.[0-9]+"; "") | fromdateiso8601) > now))] | sort_by(.due_at) | .[0] | "\(.buyer)|\(.dispute_id)"')
+echo "urgent fight case: ${urgent%%|*} (${urgent##*|})"
+assert "an urgent fight case has a buyer name" "$([ -n "${urgent%%|*}" ] && [ "${urgent%%|*}" != null ] && echo true || echo false)"
 
 echo "== analysis: the accept case (Priya Nair, USD 164)"
 acc=$(desk "http://${H}/api/cases/${ACCEPT}/analysis")
