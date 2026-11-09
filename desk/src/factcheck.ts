@@ -35,6 +35,11 @@ const NOUNS: [RegExp, RegExp, string][] = [
   [/return received/i, /return received/i, "a return"],
 ];
 
+const MON = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split(" ");
+const show = (d: string) => {
+  const [m, n] = d.split(" ");
+  return `${MON[MONTHS.split("|").indexOf(m!)] ?? m} ${n}`;
+};
 const day = (m: RegExpMatchArray) => `${m[1]!.toLowerCase()} ${m[2]}`;
 
 /** Sentences of `text` that mention a carrier, tracking number, ship/delivery date or evidence item that `proofText` does not. */
@@ -57,7 +62,7 @@ export function unsupportedClaims(
     );
     if (carrierBad || number)
       reasons.push(
-        `mentions ${[carrierBad ? carrier : "", number ? "tracking " + number : ""].filter(Boolean).join(" ")}, but no shipment is on file`,
+        `Mentions ${[carrierBad ? carrier : "", number ? "tracking " + number : ""].filter(Boolean).join(" ")}, but no shipment is on file.`,
       );
     if (SHIP_WORD.test(sentence)) {
       const bad =
@@ -67,18 +72,17 @@ export function unsupportedClaims(
         (sentence.match(ISO) ?? []).find((d) => !proof.includes(d));
       if (bad)
         reasons.push(
-          `gives the date ${bad}, but no shipment or delivery on file has it`,
+          `Gives the date ${/^\d/.test(bad) ? bad : show(bad)}, but no shipment or delivery on file has that date.`,
         );
     }
     for (const [said, stem, name] of NOUNS)
       if (said.test(sentence) && !stem.test(proof))
-        reasons.push(`mentions ${name}, but none is on file`);
-    if (reasons.length) out.push({ sentence, reason: reasons.join("; ") });
+        reasons.push(`Mentions ${name}, but none is on file.`);
+    if (reasons.length) out.push({ sentence, reason: reasons.join(" ") });
   }
   return out;
 }
 
-const MON = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split(" ");
 /** Everything a sentence of the response may rest on: what is on file, the seller's own messages, the merchant's added notes, and this send's own evidence. */
 export function proofText(
   view: CaseView,

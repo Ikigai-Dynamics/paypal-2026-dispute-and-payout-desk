@@ -181,7 +181,7 @@ describe("cleanSnippet", () => {
         "unauthorised <mark>charge</mark> on my card",
         "UNAUTHORISED",
       ),
-      "charge on my card",
+      "charge on my card.",
     );
     const long = cleanSnippet(
       `duplicate ${"word ".repeat(60)}`,
@@ -194,7 +194,7 @@ describe("cleanSnippet", () => {
       ),
       "First sentence.",
     );
-    assert.ok(long.length <= 201 && long.endsWith("word…"));
+    assert.ok(long.length <= 201 && long.endsWith("word."));
   });
   it("starts at a sentence start: a mid-sentence fragment is dropped", () => {
     const full =
@@ -206,6 +206,20 @@ describe("cleanSnippet", () => {
     );
     assert.equal(out, "The seller replied on Monday.");
     assert.ok(!/^[a-z]|^Rechargeable/.test(out));
+  });
+  it("ends with its punctuation and extends to the sentence end in the case text", () => {
+    assert.equal(
+      cleanSnippet("We are sorry to hear that", "OTHER"),
+      "We are sorry to hear that.",
+    );
+    assert.equal(
+      cleanSnippet(
+        "We are sorry to hear that",
+        "OTHER",
+        "We are sorry to hear that your parcel was late. Refund sent.",
+      ),
+      "We are sorry to hear that your parcel was late.",
+    );
   });
   it("uses the first whole sentence of the case text when nothing whole remains", () => {
     const out = cleanSnippet(

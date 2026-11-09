@@ -75,12 +75,27 @@ export function cleanSnippet(
       s = firstSentence(body) ?? body.slice(0, 200);
     }
   }
-  const ends = [...s.slice(0, 200).matchAll(/[.!?](?=\s|$)/g)];
-  const last = ends[ends.length - 1];
-  if (last) return s.slice(0, last.index! + 1);
-  if (s.length <= 200) return s;
+  const endsOf = (x: string, max: number) => [
+    ...x.slice(0, max).matchAll(/[.!?](?=\s|$)/g),
+  ];
+  const whole = (x: string, e: RegExpMatchArray) => x.slice(0, e.index! + 1);
+  const within = endsOf(s, 200).pop();
+  if (within) return whole(s, within);
+  if (s.length <= 300) {
+    const next = endsOf(s, 300)[0];
+    if (next) return whole(s, next);
+  }
+  // no end in the fragment: extend to the next sentence end in the case text
+  const text = full ? flat(full) : "";
+  const at = text.indexOf(s);
+  if (at >= 0) {
+    const rest = text.slice(at);
+    const next = endsOf(rest, 300)[0];
+    if (next) return whole(rest, next);
+  }
+  if (s.length <= 200) return `${s.replace(/[\s,;:.]+$/, "")}.`;
   const cut = s.slice(0, 200);
-  return `${cut.slice(0, Math.max(cut.lastIndexOf(" "), 1)).replace(/[\s,;:.]+$/, "")}…`;
+  return `${cut.slice(0, Math.max(cut.lastIndexOf(" "), 1)).replace(/[\s,;:.]+$/, "")}.`;
 }
 
 export const toPrecedent = (
