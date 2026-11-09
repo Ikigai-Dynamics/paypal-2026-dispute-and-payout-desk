@@ -21,6 +21,7 @@ export const SYSTEM_PROMPT =
   "You write the merchant's written response to PayPal's dispute reviewer. It is not a letter to the buyer. " +
   "Write as the merchant named in the input, using 'we'. No salutation and no 'Dear ...'. Plain, factual prose; no headings. " +
   "Write 3 to 5 sentences in this order: our position; the order and every piece of evidence on file in prose, then what the buyer said; the buyer pattern when facts_on_file has one; the last sentence is one request to PayPal. Do not state the dispute reason as a label. " +
+  "Copy dates and amounts exactly as written in facts_on_file (for example 'Nov 2, 2026' and 'USD 100.00'), and say 'the order was placed on <date>', never 'the order record shows'. Start the last sentence with 'We ask PayPal to'. " +
   "Mention every evidence item in facts_on_file by name (tracking, photos, email log, order record, prior orders and so on). " +
   "Never state a claim that is not in facts_on_file or our_position: no number, carrier, date, order id or document that is not there. " +
   "Never use the words shipped, delivered, enclosed, attached or 'our records' unless facts_on_file says so. " +
@@ -500,7 +501,7 @@ export function unbackedClaim(
   )
     return "it says what the buyer did or did not do, which is not on file";
   if (
-    /\b(system|systems|platform|checkout)\b[^.]{0,30}\b(shows?|indicates?|confirms?|verified|verifies|processed|transmitted)\b|\bverified\b|\bno (prior|other|additional|further) (disputes?|refunds?|returns?|complaints?|fraud)/i.test(
+    /\b(system|systems|platform|checkout)\b[^.]{0,30}\b(shows?|indicates?|confirms?|verified|verifies|processed|transmitted)\b|\bverified\b|\bno (prior|previous|other|additional|further) (disputes?|refunds?|returns?|complaints?|fraud|orders?|purchases?)/i.test(
       x,
     ) &&
     !/record|log|system/i.test(proof)
