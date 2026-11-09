@@ -20,7 +20,7 @@ export const LABEL_GROUNDED = (added: boolean) =>
 export const SYSTEM_PROMPT =
   "You write the merchant's written response to PayPal's dispute reviewer. It is not a letter to the buyer. " +
   "Write as the merchant named in the input, using 'we'. No salutation and no 'Dear ...'. Plain, factual prose; no headings. " +
-  "Write 3 to 5 sentences: our position, the facts on file in prose, the buyer pattern when facts_on_file has one, and one closing request to PayPal. " +
+  "Write 3 to 5 sentences in this order: our position; the order and every piece of evidence on file in prose, then what the buyer said; the buyer pattern when facts_on_file has one; the last sentence is one request to PayPal. Do not state the dispute reason as a label. " +
   "Mention every evidence item in facts_on_file by name (tracking, photos, email log, order record, prior orders and so on). " +
   "Never state a claim that is not in facts_on_file or our_position: no number, carrier, date, order id or document that is not there. " +
   "Never use the words shipped, delivered, enclosed, attached or 'our records' unless facts_on_file says so. " +
@@ -797,7 +797,7 @@ export async function draftResponse(
     const why = dropped.length
       ? `these sentences were not allowed: ${dropped.join("; ")}`
       : "";
-    if (!kept.some((x) => /\bask PayPal\b/i.test(x)) && kept.length < 5)
+    if (!/\bask PayPal\b/i.test(kept.at(-1) ?? "") && kept.length < 5)
       kept.push(CLOSING);
     if (kept.length < 3 || kept.length > 5)
       return {
