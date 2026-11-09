@@ -6,7 +6,7 @@ import type { Claim } from "../lib/api";
 
 const noop = () => {};
 
-function Wrapper({ claims: initial }: { claims: Claim[] }) {
+function Wrapper({ claims: initial, onCancel = noop }: { claims: Claim[]; onCancel?: () => void }) {
   const [claims, setClaims] = useState(initial);
   return (
     <ConfirmSendBox
@@ -17,7 +17,7 @@ function Wrapper({ claims: initial }: { claims: Claim[] }) {
       onToggle={(i, ok) => setClaims(claims.map((c, k) => (k === i ? { ...c, ok } : c)))}
       onRecheck={noop}
       onConfirm={noop}
-      onCancel={noop}
+      onCancel={onCancel}
       busy={false}
     />
   );
@@ -56,5 +56,31 @@ describe("ConfirmSendBox", () => {
         onToggle={noop} onRecheck={noop} onConfirm={noop} onCancel={noop} busy />,
     );
     expect(screen.getByRole("button", { name: "Refund" })).toBeDisabled();
+  });
+
+  it("needs both a added and an unsupported claim ticked, and shows reasons without a trailing period", () => {
+    render(
+      <Wrapper
+        claims={[
+          { sentence: "We refunded the shipping.", kind: "added", ok: false },
+          { sentence: "UPS delivered it Oct 30.", kind: "unsupported", reason: "no tracking on file; no delivery record.", ok: false },
+        ]}
+      />,
+    );
+    expect(screen.getByText("No tracking on file")).toBeInTheDocument();
+    expect(screen.getByText("no delivery record")).toBeInTheDocument();
+    const send = screen.getByRole("button", { name: "Send to PayPal" });
+    const boxes = screen.getAllByRole("checkbox");
+    fireEvent.click(boxes[0]!);
+    expect(send).toBeDisabled();
+    fireEvent.click(boxes[1]!);
+    expect(send).toBeEnabled();
+  });
+
+  it("calls onCancel on Escape", () => {
+    let n = 0;
+    render(<Wrapper claims={[]} onCancel={() => n++} />);
+    fireEvent.keyDown(screen.getByRole("alertdialog"), { key: "Escape" });
+    expect(n).toBe(1);
   });
 });

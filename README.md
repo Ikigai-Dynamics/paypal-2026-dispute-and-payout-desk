@@ -46,7 +46,7 @@ Tear down: `nix run .#undeploy -- dispute-and-payout-desk` (this project only) o
 The `desk` (TypeScript, Node 24) syncs every dispute from PayPal into Postgres (CloudNativePG) as an index with a
 `tsvector` column; PayPal stays the source of truth. For a case it loads resolved cases of the same reason ranked by
 full-text similarity (the precedents), calls the Rust `decide` core over the versioned contract `decide.v1`
-(`contracts/decide.v1.md`), asks the LLM client for the draft, and serves a plain page with an AG Grid Community case
+(`contracts/decide.v1.md`), asks the LLM client for the draft, and serves a page (React 18 + TypeScript, built by Vite inside the Nix build and served from the same paths, with AG Grid React for All cases) with a case
 grid, a deadline timeline and a case panel. Writes go to PayPal only behind `confirm: true`, then the case is re-read.
 Everything runs in k3d; the PayPal mock stands in for PayPal and the OpenTelemetry collector receives traces.
 

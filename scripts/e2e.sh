@@ -1,6 +1,15 @@
 # End-to-end run against a deployed cluster: nix run .#e2e
 # Reloads the shared dataset into the mock, syncs the desk, reads the decisions and the
 # drafted responses, then submits evidence on one case and accepts another.
+echo "== the React build is what is served"
+page=$(curl -s --resolve "${HN}:${PORT_HTTP}:127.0.0.1" "http://${H}/")
+assert "GET / has the React root" "$(echo "$page" | grep -q '<div id="root">' && echo true || echo false)"
+assert "no vendor script" "$(echo "$page" | grep -q '/vendor/' && echo false || echo true)"
+ct=$(curl -s --resolve "${HN}:${PORT_HTTP}:127.0.0.1" -o /dev/null -w '%{content_type}' "http://${H}/app.js")
+assert "GET /app.js is JavaScript" "$(echo "$ct" | grep -qi javascript && echo true || echo "$ct")"
+vc=$(curl -s --resolve "${HN}:${PORT_HTTP}:127.0.0.1" -o /dev/null -w '%{http_code}' "http://${H}/vendor/ag-grid-community.min.js")
+assert "the old vendor route is gone without a 500" "$([ "$vc" -lt 500 ] && echo true || echo "$vc")"
+
 echo "== the shared dataset is listed"
 cases=$(desk "http://${H}/api/cases")
 assert "60 cases" "$(echo "$cases" | jq '(.cases | length) == 60')"
@@ -37,6 +46,10 @@ assert "call is fight" "$(echo "$fight" | jq '.decision.call == "fight"')"
 # a billing address is not an address match, so that item stays missing
 assert "checklist: the address item is missing" "$(echo "$fight" | jq '[.draft.checklist[] | select(.status == "missing") | .item] | index("Shipping address matches the buyer") != null')"
 assert "explanation is plain English" "$(echo "$fight" | jq '.draft.explanation | test("p =|EV") | not')"
+assert "draft is non-empty" "$(echo "$fight" | jq '.draft.response | length > 40')"
+assert "draft names the buyer exactly as on file" "$(echo "$fight" | jq '.draft.response | contains("Marcus Bell")')"
+assert "draft states the amount exactly as on file" "$(echo "$fight" | jq '.draft.response | test("1,317")')"
+assert "draft never says 'record shows'" "$(echo "$fight" | jq '.draft.response | test("record shows"; "i") | not')"
 assert "response names no dispute id" "$(echo "$fight" | jq '.draft.response | contains("PP-D-") | not')"
 
 echo "== analysis: the accept case (Priya Nair, USD 164)"
