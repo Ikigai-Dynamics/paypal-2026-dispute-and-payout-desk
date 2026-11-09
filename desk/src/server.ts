@@ -279,6 +279,35 @@ async function boot(): Promise<void> {
       await sleep(2000);
     }
   }
+  if (process.env["DEMO_RESET_ON_BOOT"] === "1" && !draining) {
+    // reseed before the first sync so the activity panel still shows the sync's PayPal calls
+    if (process.env["PAYPAL_ENV"] === "mock") {
+      for (let i = 0; i < 5 && !draining; i++) {
+        try {
+          const r = await fetch(
+            `${process.env["PAYPAL_BASE_URL"]}/mock/reset`,
+            {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: "{}",
+            },
+          );
+          if (!r.ok) throw new Error(`mock reset ${r.status}`);
+          break;
+        } catch (e) {
+          log({ msg: "mock reset failed", error: String(e) });
+          await sleep(2000);
+        }
+      }
+    }
+    try {
+      await store.resetWork();
+      decisionCache.clear();
+      drafts.clear();
+    } catch (e) {
+      log({ msg: "work reset failed", error: String(e) });
+    }
+  }
   // ready after the first successful sync, or after 3 failed attempts (the page then says PayPal is unreachable)
   for (let i = 0; i < 3 && !draining; i++) {
     try {

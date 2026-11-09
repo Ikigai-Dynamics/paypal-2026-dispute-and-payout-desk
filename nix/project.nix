@@ -57,6 +57,8 @@ in
       replicas = 1;
       # LLM_BASE_URL, LLM_MODEL and LLM_API_KEY come from platform.llm
       env.DECIDE_URL = "http://decide";
+      # shortcut: every desk pod start reseeds the demo; drop before any real merchant data
+      env.DEMO_RESET_ON_BOOT = "1";
       ingress.enable = true;
     };
     services.decide = {
