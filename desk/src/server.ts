@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import {
   createServer,
@@ -423,6 +424,8 @@ const storedOf = (d: Draft): Stored =>
 const sourceOf = (s: Stored): "llm" | "fallback" =>
   s === "llm" ? "llm" : "fallback";
 
+// changes on every restart, so an open page can tell that the saved drafts were reset
+const BOOT_ID = randomUUID();
 const UPDATED_LABEL = "AI draft, updated with your evidence";
 const EDITED_LABEL = "AI draft, edited by you";
 
@@ -452,6 +455,8 @@ async function addedByMerchant(
         forDraft(work?.added ?? []),
       )
     ).response;
+    // /check and /evidence must diff against the same base, even if the draft cache lets go of it
+    await store.setGenerated(id, base);
   }
   return addedSentences(base, text);
 }
@@ -493,6 +498,7 @@ async function route(
     return {
       status: 200,
       body: {
+        bootId: BOOT_ID,
         paypalEnv: paypal.target.env,
         llm: await llmStatus(),
         cases: await store.count().catch(() => null),

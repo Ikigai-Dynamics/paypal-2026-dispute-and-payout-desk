@@ -1058,7 +1058,7 @@ describe("grounded, readable draft", () => {
     );
   });
 
-  it("lists every evidence item and the buyer's message in one 'On file' sentence", () => {
+  it("puts the order and the buyer's message in one 'On file' sentence and the evidence in an 'Our evidence' list", () => {
     const c = withAdded(marcus, [
       { item: "Photos of the item", note: "Photos on file" },
     ]);
@@ -1066,7 +1066,12 @@ describe("grounded, readable draft", () => {
     assert.ok(!/^Re:|facts below/.test(r));
     assert.match(
       r,
-      /On file: the order of Oct 27, 2026 for 2 × Hardware kit #1234, USD 120\.00; Two tents and a pack shipped by UPS to the billing address; UPS tracking number 1Z999AA10123456784; Photos of the item: Photos on file; Marcus Bell's message of Nov 6, 2026\./,
+      /On file: the order of Oct 27, 2026 for 2 × Hardware kit #1234, USD 120\.00, and Marcus Bell's message of Nov 6, 2026\. Our evidence: Two tents and a pack shipped by UPS to the billing address, UPS tracking number 1Z999AA10123456784, and Photos of the item: Photos on file\./,
+    );
+    assert.doesNotMatch(r, /On file:[^.]*;/);
+    assert.match(
+      fallbackDraft(marcus, decision).response,
+      /Our evidence: Two tents and a pack shipped by UPS to the billing address and UPS tracking number 1Z999AA10123456784\./,
     );
   });
 

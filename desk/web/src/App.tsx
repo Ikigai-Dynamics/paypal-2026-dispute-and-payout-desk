@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useActivity } from "./hooks/useActivity";
 import { useCases } from "./hooks/useCases";
 import { useInfo } from "./hooks/useInfo";
@@ -27,17 +27,32 @@ export function App() {
   const [reopen, setReopen] = useState(0); // bumps when the open case is opened again
   const [aiDrafted, setAiDrafted] = useState(false);
   const aiOn = aiDrafted || !!info?.llm?.online;
+  const bootId = useRef<string | undefined>(undefined);
+  const [wasReset, setWasReset] = useState(false);
 
+  // a restart resets the saved drafts: reload the open case so Send diffs against the current one
+  useEffect(() => {
+    if (!info?.bootId) return;
+    if (bootId.current && bootId.current !== info.bootId && openId) {
+      setReopen((n) => n + 1);
+      setWasReset(true);
+    }
+    bootId.current = info.bootId;
+  }, [info?.bootId]);
+
+  useEffect(() => setWasReset(false), [openId]);
   useEffect(() => {
     const onHash = () => setOpenId(hashId());
     addEventListener("hashchange", onHash);
     return () => removeEventListener("hashchange", onHash);
   }, []);
   const openCase = useCallback((id: string) => {
+    setWasReset(false);
     if (location.hash === `#case=${encodeURIComponent(id)}`) setReopen((n) => n + 1);
     else location.hash = `case=${encodeURIComponent(id)}`;
   }, []);
   const closeCase = useCallback(() => {
+    setWasReset(false);
     setOpenId(null);
     if (location.hash)
       history.pushState(null, "", location.pathname + location.search);
@@ -52,6 +67,12 @@ export function App() {
       {info?.sync?.error && (
         <div className="banner warn">
           PayPal is unreachable right now: showing the last synced cases.
+        </div>
+      )}
+      {wasReset && (
+        <div className="banner warn">
+          The desk was reset since you opened this page: the case was reloaded
+          with the current draft.
         </div>
       )}
       <SituationHeader
