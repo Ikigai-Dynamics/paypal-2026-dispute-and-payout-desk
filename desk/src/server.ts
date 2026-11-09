@@ -42,14 +42,6 @@ const port = Number(process.env["PORT"] ?? 8080);
 const decideUrl = process.env["DECIDE_URL"] ?? "http://decide";
 const here = dirname(fileURLToPath(import.meta.url));
 const publicDir = join(here, "public");
-const agGrid = join(
-  here,
-  "..",
-  "node_modules",
-  "ag-grid-community",
-  "dist",
-  "ag-grid-community.min.js",
-);
 
 const paypal = createPayPalClient();
 // PayPal activity log for the page; the sync's per-case gets are skipped, its list calls are kept
@@ -893,17 +885,6 @@ const server = createServer((req, res) => {
       ) {
         if (!serveFile(res, join(publicDir, "index.html")))
           send(res, 404, { error: "not_found", detail: "page missing" });
-        return;
-      }
-      if (
-        req.method === "GET" &&
-        url.pathname === "/vendor/ag-grid-community.min.js"
-      ) {
-        if (!serveFile(res, agGrid))
-          send(res, 404, {
-            error: "not_found",
-            detail: "ag-grid-community not installed",
-          });
         return;
       }
       if (

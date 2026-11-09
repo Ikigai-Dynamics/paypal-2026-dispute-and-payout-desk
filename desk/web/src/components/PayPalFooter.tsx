@@ -1,0 +1,142 @@
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { ActivityCall } from "../lib/api";
+import { money } from "../lib/format";
+
+const ago = (iso: string) => {
+  const t = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000));
+  return t < 60
+    ? `${t} s ago`
+    : t < 3600
+      ? `${Math.round(t / 60)} min ago`
+      : `${Math.round(t / 3600)} h ago`;
+};
+// a plain verb: the last path segment that is not an id
+const verb = (p: string) => {
+  const seg = String(p).split("?")[0]!.split("/").filter(Boolean);
+  while (seg.length > 1 && /\d/.test(seg.at(-1)!)) seg.pop();
+  return seg.at(-1) ?? "";
+};
+const amt = (x: ActivityCall) =>
+  x.amount_cents != null ? ` · ${money(x.amount_cents, x.currency || "USD")}` : "";
+export const callLabel = (x: ActivityCall) =>
+  x.method === "GET" && !x.buyer && verb(x.path) === "disputes"
+    ? "GET disputes (list)"
+    : x.method === "GET" && x.buyer
+      ? `GET dispute · ${x.buyer}${amt(x)}`
+      : x.buyer
+        ? `${x.method} ${verb(x.path)} · ${x.buyer}${amt(x)}`
+        : `${x.method} ${verb(x.path)}`;
+
+const Dot = ({ st }: { st: number }) => (
+  <i className={"dot " + (st < 300 ? "ok" : st < 400 ? "" : "bad")}></i>
+);
+const Row = ({ x }: { x: ActivityCall }) => (
+  <li>
+    {callLabel(x)} ·{" "}
+    <span className={x.status < 400 ? "s-ok" : "s-bad"}>{x.status}</span> ·{" "}
+    {x.ms} ms · {ago(x.at)}
+  </li>
+);
+
+/** the fixed PayPal call log; hidden while the log is unreachable */
+export function PayPalFooter({ calls }: { calls: ActivityCall[] | null }) {
+  const [open, setOpen] = useState(false);
+  const [flash, setFlash] = useState(false);
+  const [pin, setPin] = useState<{ text: string; until: number } | null>(null);
+  const lastCall = useRef<string | null>(null);
+  const seenPosts = useRef<Set<string> | null>(null);
+  const bar = useRef<HTMLElement>(null);
+
+  // the page's bottom padding follows the footer's height
+  useLayoutEffect(() => {
+    const pad = () => {
+      document.body.style.paddingBottom = bar.current
+        ? `${bar.current.offsetHeight + 16}px`
+        : "";
+    };
+    pad();
+    addEventListener("resize", pad);
+    return () => removeEventListener("resize", pad);
+  });
+
+  useEffect(() => {
+    if (!calls) return;
+    const newest = calls[0]?.at ?? null;
+    if (lastCall.current !== null && newest && newest !== lastCall.current) {
+      setFlash(true);
+      const t = setTimeout(() => setFlash(false), 2000);
+      return () => clearTimeout(t);
+    }
+    lastCall.current = newest ?? "";
+  }, [calls]);
+  useEffect(() => {
+    if (calls) lastCall.current = calls[0]?.at ?? "";
+  }, [calls]);
+
+  // a write that was not in the log before is pinned for 30 s
+  useEffect(() => {
+    if (!calls) return;
+    const posts = calls.filter((x) => x.method === "POST");
+    if (seenPosts.current) {
+      const w = posts.find((x) => x.status < 300 && !seenPosts.current!.has(x.at));
+      if (w) setPin({ text: `Sent to PayPal: ${callLabel(w)} · ${w.status}`, until: Date.now() + 30000 });
+    }
+    seenPosts.current = new Set(posts.map((x) => x.at));
+  }, [calls]);
+  useEffect(() => {
+    if (!pin) return;
+    const t = setTimeout(() => setPin(null), pin.until - Date.now() + 100);
+    return () => clearTimeout(t);
+  }, [pin]);
+
+  if (!calls) return null;
+  const x = calls[0];
+  const posts = calls.filter((x) => x.method === "POST");
+  const gets = new Map<string, { n: number; x: ActivityCall }>();
+  for (const g of calls.filter((x) => x.method !== "POST")) {
+    const k = `${g.method} ${verb(g.path)}`;
+    gets.set(k, { n: (gets.get(k)?.n ?? 0) + 1, x: gets.get(k)?.x ?? g });
+  }
+  const rows = [
+    ...posts.map((p) => <Row key={p.at + p.path} x={p} />),
+    ...[...gets].map(([k, { n, x }]) =>
+      n > 1 ? (
+        <li key={k}>
+          {k} ×{n} · last {ago(x.at)}
+        </li>
+      ) : (
+        <Row key={k} x={x} />
+      ),
+    ),
+  ].slice(0, 8);
+  return (
+    <footer ref={bar} className={"activity" + (flash ? " flash" : "")}>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls="activity-list"
+        onClick={() => setOpen(!open)}
+      >
+        <span>
+          {pin && Date.now() < pin.until ? (
+            <>
+              <Dot st={200} />
+              {pin.text}
+            </>
+          ) : x ? (
+            <>
+              <Dot st={x.status} />
+              Last PayPal call: {callLabel(x)} · {x.status} · {x.ms} ms · {ago(x.at)}
+            </>
+          ) : (
+            "PayPal calls: none yet"
+          )}
+        </span>
+        <span className="chev" aria-hidden="true">
+          &#9650;
+        </span>
+      </button>
+      {open && <ul id="activity-list">{rows}</ul>}
+    </footer>
+  );
+}
