@@ -10,6 +10,8 @@ export type DraftEditorProps = {
   note: { text: string; error: boolean } | null;
   claimNote: boolean;
   fightNote: boolean;
+  newDraft?: boolean;
+  onUseNewDraft?(): void;
 };
 
 export function DraftEditor(p: DraftEditorProps) {
@@ -25,6 +27,14 @@ export function DraftEditor(p: DraftEditorProps) {
         Response to PayPal{" "}
         <span className={"pill " + (p.labelGreen ? "green" : "grey")}>{p.label}</span>
       </h3>
+      {p.newDraft && (
+        <p className="muted">
+          A new AI draft is ready{" "}
+          <button type="button" onClick={p.onUseNewDraft}>
+            Use it
+          </button>
+        </p>
+      )}
       {p.note && <p className={p.note.error ? "formerr" : "muted"}>{p.note.text}</p>}
       {p.claimNote && (
         <p className="formerr">Fix these sentences in your draft, or tick the box under each one.</p>

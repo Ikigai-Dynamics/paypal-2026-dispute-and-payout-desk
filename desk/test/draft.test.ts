@@ -14,8 +14,9 @@ import {
   isDraftShape,
   withAdded,
 } from "../src/draft.js";
+import { DraftCache, pool, stopAfterDown } from "../src/drafts.js";
 import { proofText, unsupportedClaims } from "../src/factcheck.js";
-import type { CaseView, Decision } from "../src/types.js";
+import type { CaseView, Decision, Draft } from "../src/types.js";
 
 const base: CaseView = {
   dispute_id: "PP-D-1",
@@ -1288,5 +1289,55 @@ describe("model drafting over the seeded cases", () => {
       { item: record.item, note: "These are two separate orders." },
     ]);
     assert.equal(buildChecklist(note)[0]!.status, "present");
+  });
+});
+
+describe("pre-draft pool", () => {
+  const llmFailingFirst = () => {
+    let n = 0;
+    return createLlm({
+      env: { LLM_BASE_URL: "http://x", LLM_API_KEY: "k", LLM_MODEL: "m1" },
+      fetch: async () => {
+        if (n++ === 0) throw new Error("timeout");
+        return new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    response: fallbackDraft(base, decision).response,
+                  }),
+                },
+              },
+            ],
+          }),
+        );
+      },
+    });
+  };
+  const run = async (ids: string[], keepGoing: (d: Draft) => boolean) => {
+    const cache = new DraftCache(llmFailingFirst());
+    const got: Record<string, string> = {};
+    await pool(ids, 2, async (id) => {
+      const d = await cache.get({ ...base, dispute_id: id }, decision, [], {});
+      got[id] = d.source;
+      return keepGoing(d);
+    });
+    return got;
+  };
+
+  it("one slow call does not stop the remaining cases", async () => {
+    const got = await run(["a", "b", "c", "d", "e"], stopAfterDown(2));
+    assert.equal(Object.keys(got).length, 5);
+    assert.equal(Object.values(got).filter((x) => x === "llm").length, 4);
+  });
+
+  it("stops after two drafts in a row found the gateway down", () => {
+    const k = stopAfterDown(2);
+    const down = { fallback_reason: "ai_down" } as Draft;
+    assert.equal(k(down), true);
+    assert.equal(k({ fallback_reason: "grounding" } as Draft), true);
+    assert.equal(k(down), true);
+    assert.equal(k(down), false);
   });
 });

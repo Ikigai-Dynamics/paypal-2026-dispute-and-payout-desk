@@ -213,6 +213,8 @@ export function CasePage({
                   note={s.draftNote}
                   claimNote={s.claims.length > 0}
                   fightNote={s.chose}
+                  newDraft={!!s.newDraft}
+                  onUseNewDraft={s.useNewDraft}
                 />
                 <Checklist
                   items={a.draft.checklist}

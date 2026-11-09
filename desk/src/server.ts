@@ -28,7 +28,7 @@ import {
 import type { Added, CaseRow, Draft } from "./types.js";
 import { LABEL_GROUNDED } from "./draft.js";
 import { init as initActivity, list as listCalls, record } from "./activity.js";
-import { DraftCache, pool as runPool } from "./drafts.js";
+import { DraftCache, pool as runPool, stopAfterDown } from "./drafts.js";
 import {
   acceptClaim,
   parseAdded as parseAddedEv,
@@ -209,11 +209,12 @@ function warmDecisions(): Promise<void> {
 }
 
 // draft the open cases nobody has opened yet, headline cases first, two at a time
-async function preDraft(only?: Set<string>): Promise<void> {
+async function preDraft(only?: Set<string>, attempt = 0): Promise<void> {
   const rows = (await store.list())
     .filter((r) => waiting(r) && (!only || only.has(r.dispute_id)))
     .sort((a, b) => rank(a.dispute_id) - rank(b.dispute_id)); // stable: due-date order within a rank
   const ok = new Set<string>();
+  const keepGoing = stopAfterDown(2);
   await runPool(rows, 2, async (row) => {
     const precedents = await findPrecedents(store, row);
     const o = {
@@ -229,16 +230,16 @@ async function preDraft(only?: Set<string>): Promise<void> {
       o,
     );
     if (d.source === "llm") ok.add(row.dispute_id);
-    return d.source === "llm"; // gateway down: stop instead of waiting out every timeout
+    return keepGoing(d); // gateway down twice in a row: stop instead of waiting out every timeout
   });
   const failed = new Set(
     rows.filter((r) => !ok.has(r.dispute_id)).map((r) => r.dispute_id),
   );
-  // one retry of what fell back
-  if (failed.size && !only)
+  // up to three retries, 30s apart, of what fell back
+  if (failed.size && attempt < 3)
     setTimeout(
       () =>
-        void preDraft(failed).catch((e) =>
+        void preDraft(failed, attempt + 1).catch((e) =>
           log({ msg: "redraft failed", error: String(e) }),
         ),
       30_000,
@@ -669,7 +670,30 @@ async function route(
           margin_cents: out.decision.margin_cents,
           marginal: out.decision.marginal,
         });
-      return { status: 200, body: { ...out, work, sent } };
+      // a slow gateway call must not leave the fallback as final: try the model once more in the background
+      let drafting = false;
+      if (
+        !work?.draft_text &&
+        out.draft.fallback_reason === "ai_down" &&
+        out.decision &&
+        (await llmOnline())
+      ) {
+        drafting = true;
+        void drafts
+          .get(
+            out.case,
+            out.decision,
+            out.precedents,
+            {
+              prior: prior ?? null,
+              handlingCostCents: c ?? DEFAULT_HANDLING_CENTS,
+              feeIfLostCents: fee ?? 0,
+            },
+            forDraft(work?.added ?? []),
+          )
+          .catch(() => undefined);
+      }
+      return { status: 200, body: { ...out, work, sent, drafting } };
     }
     if (m === "PUT" && a[2] === "work") {
       await loadRow(id);

@@ -167,6 +167,8 @@ export type Analysis = {
     edited?: boolean;
   } | null;
   sent: { text?: string; added?: AddedEvidence[]; vouched?: string[] } | null;
+  /** the model is writing a fresh draft; the fallback shown is temporary */
+  drafting?: boolean;
 };
 
 export interface ActivityCall {
