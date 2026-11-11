@@ -324,6 +324,10 @@ async function boot(): Promise<void> {
       .catch((e) => log({ msg: "warm failed", error: String(e) }));
 }
 void boot();
+// no webhooks: without this the index keeps what the mock served at the first sync, even after the mock restarts or re-anchors its dates
+setInterval(() => {
+  if (ready && !syncing && !draining) void runSync().catch(() => undefined);
+}, 60_000).unref();
 
 class HttpError extends Error {
   constructor(
