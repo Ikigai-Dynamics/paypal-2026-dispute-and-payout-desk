@@ -1,7 +1,7 @@
 import type { Llm } from "@jeirslab/llm-client";
 import type { DecideOptions } from "./decide-client.js";
 import { createHash } from "node:crypto";
-import { draftResponse, fallbackDraft, withAdded } from "./draft.js";
+import { draftResponse, fallbackDraft, markAdded, withAdded } from "./draft.js";
 import type { Added, CaseView, Decision, Draft, Precedent } from "./types.js";
 
 /**
@@ -56,10 +56,10 @@ export class DraftCache {
         o.handlingCostCents,
       );
       return hit.knobs === knobs
-        ? { ...hit.draft, checklist: fb.checklist }
+        ? { ...hit.draft, checklist: markAdded(fb.checklist, added) }
         : {
             ...hit.draft,
-            checklist: fb.checklist,
+            checklist: markAdded(fb.checklist, added),
             explanation: fb.explanation,
           };
     }

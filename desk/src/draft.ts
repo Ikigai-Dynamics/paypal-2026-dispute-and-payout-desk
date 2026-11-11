@@ -402,6 +402,20 @@ export function fallbackDraft(
   };
 }
 
+/** An item the merchant wrote a note for is on file, whatever words the note uses. */
+export const markAdded = (checklist: ChecklistItem[], added?: Added[]) =>
+  checklist.map((i) =>
+    added?.some((a) => a.item === i.item)
+      ? { ...i, status: "present" as const }
+      : i,
+  );
+
+/** The evidence the checklist counts: the unsent work, else what was sent (sending deletes the work). */
+export const evidenceOnFile = <T>(
+  work: { added: T[] } | null | undefined,
+  sent: { added: T[] } | null | undefined,
+): T[] => work?.added ?? sent?.added ?? [];
+
 /** The case with evidence the merchant typed in appended, as the drafting sees it. */
 export function withAdded(c: CaseView, added: Added[] = []): CaseView {
   return added.length
@@ -770,11 +784,7 @@ export async function draftResponse(
     t.trim().replace(/^Re:(?:[^.]*?\([^)]*\)\.?|[^.]*\.)\s*/i, "");
   const factsText = facts.join(" ");
   // an item the merchant wrote a note for is on file, whatever words the note uses
-  const judged = fb.checklist.map((i) =>
-    added?.some((a) => a.item === i.item)
-      ? { ...i, status: "present" as const }
-      : i,
-  );
+  const judged = markAdded(fb.checklist, added);
   const buyerText = c.messages
     .filter((m) => m.posted_by === "BUYER")
     .map((m) => m.content)
@@ -844,7 +854,7 @@ export async function draftResponse(
     return {
       response: res.body,
       // the computed checklist and explanation are the truth the page gates on
-      checklist: fb.checklist,
+      checklist: judged,
       explanation: fb.explanation,
       source: "llm",
       label: added?.length ? LABEL_AI_UPDATED : LABEL_AI,
@@ -853,6 +863,7 @@ export async function draftResponse(
   const down = r.source !== "llm";
   return {
     ...fb,
+    checklist: judged,
     source: "fallback",
     fallback_reason: down ? "ai_down" : "grounding",
     label: down ? LABEL_TEMPLATE : LABEL_GROUNDED(!!added?.length),

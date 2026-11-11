@@ -13,6 +13,7 @@ import {
   positionOf,
   isDraftShape,
   withAdded,
+  evidenceOnFile,
 } from "../src/draft.js";
 import { DraftCache, pool, stopAfterDown } from "../src/drafts.js";
 import { proofText, unsupportedClaims } from "../src/factcheck.js";
@@ -1377,5 +1378,23 @@ describe("pre-draft pool", () => {
     assert.equal(k({ fallback_reason: "grounding" } as Draft), true);
     assert.equal(k(down), true);
     assert.equal(k(down), false);
+  });
+});
+
+describe("checklist after the evidence is sent", () => {
+  it("shows an item present once a note was added for it, even after the saved work is gone", async () => {
+    const missing = buildChecklist(base).find((i) => i.status === "missing")!;
+    const sent = { added: [{ item: missing.item, note: "Zzz" }] };
+    assert.deepEqual(evidenceOnFile(null, sent), sent.added);
+    assert.deepEqual(evidenceOnFile({ added: [] }, sent), []);
+    const d = await draftResponse(
+      createLlm({ env: {} }),
+      base,
+      null,
+      [],
+      undefined,
+      evidenceOnFile(null, sent),
+    );
+    assert.equal(d.checklist!.find((i) => i.item === missing.item)!.status, "present");
   });
 });

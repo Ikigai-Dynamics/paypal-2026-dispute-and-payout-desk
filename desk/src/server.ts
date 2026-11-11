@@ -26,7 +26,7 @@ import {
   proofText,
 } from "./factcheck.js";
 import type { Added, CaseRow, Draft } from "./types.js";
-import { LABEL_GROUNDED } from "./draft.js";
+import { evidenceOnFile, LABEL_GROUNDED } from "./draft.js";
 import { init as initActivity, list as listCalls, record } from "./activity.js";
 import { DraftCache, pool as runPool, stopAfterDown } from "./drafts.js";
 import {
@@ -635,7 +635,7 @@ async function route(
           handlingCostCents: c ?? DEFAULT_HANDLING_CENTS,
           feeIfLostCents: fee ?? 0,
         },
-        forDraft(work?.added ?? []),
+        forDraft(evidenceOnFile(work, sent)),
       );
       const hasAdded = (work?.added.length ?? 0) > 0;
       // the merchant's edits are diffed against the last draft the desk wrote
