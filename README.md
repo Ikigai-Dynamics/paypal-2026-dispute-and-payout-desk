@@ -159,6 +159,8 @@ credentials in the Secret; set it to `false` in `nix/project.nix` to use the san
 | `PAYPAL_CLIENT_SECRET`  | no       | PayPal sandbox app secret.                                                       |
 | `PAYPAL_ENV`            | no       | `mock`, `sandbox` or `live` (`live` also needs `PAYPAL_ALLOW_LIVE=1`).           |
 | `PAYPAL_BASE_URL`       | no       | Override the PayPal base URL.                                                    |
+| `PAYPAL_SANDBOX_CLIENT_ID`     | no | Sandbox app for the payout step only (platform secretEnv; unused here). |
+| `PAYPAL_SANDBOX_CLIENT_SECRET` | no | Its secret. |
 | `LLM_BASE_URL`          | no       | OpenAI-compatible endpoint for the response drafter.                             |
 | `LLM_API_KEY`           | no       | API key for that endpoint.                                                       |
 | `LLM_MODEL`             | no       | Model name; with the two above turns the LLM on (otherwise the offline fallback). |
