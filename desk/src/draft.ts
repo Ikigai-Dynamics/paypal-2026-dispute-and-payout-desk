@@ -825,7 +825,12 @@ export async function draftResponse(
     const seenLead = new Set<string>();
     const uniq = kept.filter((x) => {
       if (closer(x)) return false;
-      const lead = x.toLowerCase().replace(/[^a-z0-9 ]/g, "").split(/\s+/).slice(0, 3).join(" ");
+      const lead = x
+        .toLowerCase()
+        .replace(/[^a-z0-9 ]/g, "")
+        .split(/\s+/)
+        .slice(0, 3)
+        .join(" ");
       return !seenLead.has(lead) && !!seenLead.add(lead);
     });
     const end = lastCloser ?? (uniq.length < 5 ? CLOSING : undefined);

@@ -443,7 +443,10 @@ export function useCase(
   const confirmText = c
     ? (() => {
         const stmts = s.claims.filter((x) => x.ok).map(() => "your statement");
-        const names = [...[...s.added.values()].map((e) => short(e.item)), ...stmts];
+        const names = [
+          ...[...s.added.values()].map((e) => short(e.item)),
+          ...stmts,
+        ];
         const what =
           names.length === 0
             ? ""

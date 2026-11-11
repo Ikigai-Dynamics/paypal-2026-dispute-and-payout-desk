@@ -949,7 +949,8 @@ describe("grounded drafting over the seeded cases", () => {
       assert.equal(d.label, "AI draft, updated with your evidence");
     });
     it("drops repeated openings and keeps one closing request", async () => {
-      const note = "The gift card code was emailed to the buyer's PayPal email address on Nov 2, 2026, the day of purchase.";
+      const note =
+        "The gift card code was emailed to the buyer's PayPal email address on Nov 2, 2026, the day of purchase.";
       const d = await run(
         sofia,
         [
@@ -1395,6 +1396,9 @@ describe("checklist after the evidence is sent", () => {
       undefined,
       evidenceOnFile(null, sent),
     );
-    assert.equal(d.checklist!.find((i) => i.item === missing.item)!.status, "present");
+    assert.equal(
+      d.checklist!.find((i) => i.item === missing.item)!.status,
+      "present",
+    );
   });
 });
