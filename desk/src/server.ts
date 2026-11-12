@@ -27,7 +27,12 @@ import {
   proofText,
 } from "./factcheck.js";
 import type { Added, CaseRow, Decision, Draft } from "./types.js";
-import { evidenceOnFile, LABEL_GROUNDED } from "./draft.js";
+import {
+  evidenceOnFile,
+  LABEL_AI,
+  LABEL_GROUNDED,
+  LABEL_TEMPLATE,
+} from "./draft.js";
 import { init as initActivity, list as listCalls, record } from "./activity.js";
 import { paypalRoutes } from "./paypal-routes.js";
 import { DraftCache, pool as runPool, stopAfterDown } from "./drafts.js";
@@ -434,12 +439,12 @@ const labelFor = (source: Stored, added: boolean, edited: boolean) =>
       ? EDITED_LABEL
       : added
         ? UPDATED_LABEL
-        : "AI draft"
+        : LABEL_AI
     : source === "grounded"
       ? `${LABEL_GROUNDED(added)}${edited ? ", edited by you" : ""}`
       : edited
         ? "Template, edited by you"
-        : "Draft (AI unavailable)";
+        : LABEL_TEMPLATE;
 
 /** What is saved as a draft's source; "grounded" is a fallback after the model's sentences were all dropped. */
 type Stored = "llm" | "fallback" | "grounded";
@@ -517,6 +522,7 @@ const chatDeps = {
     (await store.list()).filter(waiting).map((r) => ({
       id: r.dispute_id,
       buyer: r.buyer,
+      item: r.item,
       amount_cents: r.amount_cents,
       call: decisionCache.get(r.dispute_id)?.call ?? null,
     })),
@@ -531,6 +537,7 @@ const chatDeps = {
       amount_cents: row.amount_cents,
       currency: row.currency,
       reason: row.reason,
+      item: row.item,
       call: d?.call ?? null,
       draft_text: work?.draft_text ?? null,
     };
@@ -739,7 +746,7 @@ async function route(
         // saved text keeps the source it really came from (older rows: read it off the label)
         const source: Stored =
           work.draft_source ??
-          (work.draft_label?.startsWith("AI") ? "llm" : "fallback");
+          (work.draft_label?.match(/^(AI|Written by)/) ? "llm" : "fallback");
         out.draft = {
           ...out.draft,
           response: work.draft_text,

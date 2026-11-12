@@ -127,6 +127,7 @@ export function CasePanel({ id, cases, calls, tab, onTab, highlight, onWritten, 
                 onChange={s.setDraft}
                 label={s.badge}
                 labelGreen={s.labelGreen}
+                aiCostCents={s.aiCostCents}
                 dim={s.dim}
                 flagged={s.claims.length > 0}
                 note={s.draftNote}

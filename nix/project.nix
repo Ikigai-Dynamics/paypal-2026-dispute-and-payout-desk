@@ -55,7 +55,7 @@ in
       package = desk;
       # shortcut: drafts and decisions are cached in memory per pod; move them to Postgres before scaling out
       replicas = 1;
-      # LLM_BASE_URL, LLM_MODEL and LLM_API_KEY come from platform.llm
+      # LLM_BASE_URL and LLM_MODEL come from platform.llm below; LLM_API_KEY stays in the Secret
       env.DECIDE_URL = "http://decide";
       # shortcut: every desk pod start reseeds the demo; drop before any real merchant data
       env.DEMO_RESET_ON_BOOT = "1";
@@ -68,6 +68,10 @@ in
     # replicas stays 1: the mock keeps its state in memory
     paypalMock = {
       enable = true;
+    };
+    llm = {
+      baseUrl = "http://10.1.1.71:4000/v1";
+      model = "coder";
     };
     postgres.enable = true;
     otel.enable = true;

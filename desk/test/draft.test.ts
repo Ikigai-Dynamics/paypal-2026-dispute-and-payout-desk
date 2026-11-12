@@ -359,7 +359,7 @@ describe("draftResponse", () => {
   it("uses the fallback offline and labels it", async () => {
     const d = await draftResponse(createLlm({ env: {} }), base, decision, []);
     assert.equal(d.source, "fallback");
-    assert.equal(d.label, "Draft (AI unavailable)");
+    assert.equal(d.label, "Drafted from the case facts (AI unavailable right now)");
     assert.ok(d.error);
   });
 
@@ -386,7 +386,7 @@ describe("draftResponse", () => {
     const d = await draftResponse(llm, base, decision, []);
     assert.deepEqual(
       [d.source, d.model, d.response, d.label],
-      ["llm", "m1", REPLY, "AI draft"],
+      ["llm", "m1", REPLY, "Written by Parley's AI. Check it before sending."],
     );
   });
 
@@ -851,7 +851,7 @@ describe("grounded drafting over the seeded cases", () => {
       const text = [g1, ...mixed, ...gs].join(" ");
       const d = await draftResponse(fake([text], seen), c, decision, []);
       assert.equal(d.source, "llm");
-      assert.equal(d.label, "AI draft");
+      assert.equal(d.label, "Written by Parley's AI. Check it before sending.");
       assert.equal(seen.length, 1);
       assert.ok(sentencesOf(d.response).length >= 3);
       assert.ok(sentencesOf(d.response).length <= 5);
@@ -867,7 +867,7 @@ describe("grounded drafting over the seeded cases", () => {
 
     it(`${name}: the template draft is grounded too`, async () => {
       const d = await draftResponse(createLlm({ env: {} }), c, decision, []);
-      assert.equal(d.label, "Draft (AI unavailable)");
+      assert.equal(d.label, "Drafted from the case facts (AI unavailable right now)");
       assert.deepEqual(
         groundingProblems(d.response, buildChecklist(c), ""),
         [],
@@ -898,7 +898,7 @@ describe("grounded drafting over the seeded cases", () => {
         d.response,
         /acknowledged|separate shipments|same cardholder|within minutes|distinct purchases/i,
       );
-      assert.notEqual(d.label, "Draft (AI unavailable)");
+      assert.notEqual(d.label, "Drafted from the case facts (AI unavailable right now)");
       assert.ok(sentencesOf(d.response).length >= 3);
     });
     it("drops 'our system shows' with nothing on file", async () => {
@@ -977,7 +977,7 @@ describe("grounded drafting over the seeded cases", () => {
         `${positionFor(tent)} We hold the order as it was placed. We ask PayPal to find in our favour.`,
       ]);
       assert.equal(d.source, "llm");
-      assert.equal(d.label, "AI draft");
+      assert.equal(d.label, "Written by Parley's AI. Check it before sending.");
       assert.ok(
         d.response.includes(
           "We ask PayPal to confirm that this order was paid only once",
@@ -1004,7 +1004,7 @@ describe("grounded drafting over the seeded cases", () => {
         },
       });
       const d = await draftResponse(llm, bag, decision, []);
-      assert.equal(d.label, "Draft (AI unavailable)");
+      assert.equal(d.label, "Drafted from the case facts (AI unavailable right now)");
       assert.equal(d.fallback_reason, "ai_down");
     });
     it("no seeded case's draft says lack, enclosed or providing without an item on file", async () => {
