@@ -1,0 +1,21 @@
+/* status bar, exports, decision record and developer page; colours come from app.css */
+.statusbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap }
+.statusbar button { width: auto; flex: 1; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 4px 14px; min-width: 0 }
+.statusbar .seg { white-space: nowrap }
+.statusbar .seg.last { margin-left: auto; white-space: normal }
+.statusbar .chev { margin-left: 4px }
+.statusbar .chip { font-size: .75rem; padding: 4px 10px; text-decoration: none }
+.alld .bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between }
+.alld .bar .btns .chip:disabled { opacity: .6; cursor: default }
+.record { margin-top: 6px }
+.record summary { cursor: pointer; font-weight: 700 }
+.record .btns { align-items: center; margin: 8px 0 }
+.record .json { max-height: 260px; overflow: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font: .75rem/1.4 var(--mono); white-space: pre-wrap; word-break: break-word }
+.dev { display: grid; gap: 10px }
+.dev h2 { margin: 4px 0 0 }
+.dev .chip { justify-self: start; text-decoration: none }
+.dev .endpoints { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px }
+.dev .endpoints li { display: grid; grid-template-columns: minmax(220px, 1fr) 2fr auto; gap: 6px 14px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line) }
+.dev code { font: .85rem var(--mono) }
+.dev .links { display: flex; gap: 12px }
+@media (max-width: 700px) { .dev .endpoints li { grid-template-columns: 1fr } }

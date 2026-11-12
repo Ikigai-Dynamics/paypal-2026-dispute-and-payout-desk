@@ -6,7 +6,8 @@ import {
   type GridApi,
 } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
-import { api, post, type CaseSummary } from "../lib/api";
+import { api, download, post, type CaseSummary } from "../lib/api";
+import "./trust.css";
 import {
   dateShort,
   money,
@@ -151,9 +152,25 @@ export function AllCases({
             }}
           />
         </form>
-        <button type="button" disabled={syncing} onClick={sync}>
-          Refresh from PayPal
-        </button>
+        <div className="btns">
+          <button type="button" className="chip" disabled={syncing} onClick={sync}>
+            {syncing ? "Refreshing…" : "Refresh from PayPal"}
+          </button>
+          <button
+            type="button"
+            className="chip"
+            onClick={() => grid.current?.exportDataAsCsv({ fileName: "parley-disputes.csv" })}
+          >
+            Export CSV
+          </button>
+          <button
+            type="button"
+            className="chip"
+            onClick={() => download("parley-disputes.json", JSON.stringify(cases, null, 2), "application/json")}
+          >
+            Export JSON
+          </button>
+        </div>
       </section>
       {hits && (
         <section id="results">

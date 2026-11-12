@@ -1,0 +1,210 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Parley dispute desk API",
+    "version": "0.1.0",
+    "description": "Read-only endpoints of the desk, plus the PayPal webhook receiver. Money is in whole cents."
+  },
+  "paths": {
+    "/api/cases": {
+      "get": {
+        "summary": "All disputes with Parley's call for each",
+        "parameters": [
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "json",
+                "csv"
+              ]
+            },
+            "description": "csv downloads a spreadsheet"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cases/{id}/decision": {
+      "get": {
+        "summary": "The decision record for one case: the request sent to the decision core, its answer and the core version",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "PayPal dispute id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/activity": {
+      "get": {
+        "summary": "Every PayPal call, Parley decision and human approval, newest first",
+        "parameters": [
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "json",
+                "csv"
+              ]
+            },
+            "description": "csv downloads a spreadsheet"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/assumptions": {
+      "get": {
+        "summary": "The numbers behind Parley's calls, with their sources",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/info": {
+      "get": {
+        "summary": "Desk status: environment, AI, decision core, last sync",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/webhooks/paypal": {
+      "post": {
+        "summary": "PayPal webhook receiver for dispute events",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "event_type": {
+                    "type": "string",
+                    "examples": [
+                      "CUSTOMER.DISPUTE.UPDATED"
+                    ]
+                  },
+                  "resource": {
+                    "type": "object",
+                    "properties": {
+                      "dispute_id": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Event accepted (or ignored if not a dispute event)"
+          },
+          "400": {
+            "description": "Not JSON, or the signature was refused"
+          }
+        }
+      }
+    },
+    "/api/decide": {
+      "post": {
+        "summary": "Ask the decision core directly (decide.v2 request in, decision out)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The decision"
+          },
+          "502": {
+            "description": "The decision core did not answer"
+          }
+        }
+      }
+    }
+  }
+}

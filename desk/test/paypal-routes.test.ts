@@ -10,6 +10,7 @@ import {
   paypalRoutes,
   webhookDispute,
 } from "../src/paypal-routes.js";
+import { init as initActivity } from "../src/activity.js";
 import { syncAll } from "../src/sync.js";
 import type { CaseRow } from "../src/types.js";
 
@@ -139,8 +140,18 @@ describe("routes against the in-process mock", () => {
       call("POST", url, { confirm: true, amount_cents: open.amount_cents }),
       { status: 400 },
     );
+    const inserts: unknown[][] = [];
+    initActivity({
+      query: async (sql: string, args: unknown[]) => {
+        if (/^insert into paypal_calls/.test(sql)) inserts.push(args);
+        return { rows: [] };
+      },
+    } as never);
     const r = await call("POST", url, { confirm: true, amount_cents: 1000 });
     assert.equal(r!.status, 200);
+    await new Promise((res) => setTimeout(res, 20));
+    // the log keeps the offer, not the disputed amount
+    assert.deepEqual(inserts[0]!.slice(5), [1000, open.currency, "offer"]);
     assert.equal(
       rows.get(open.dispute_id)!.status,
       "WAITING_FOR_BUYER_RESPONSE",

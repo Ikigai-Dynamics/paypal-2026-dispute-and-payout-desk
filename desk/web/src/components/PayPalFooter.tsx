@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { ActivityCall } from "../lib/api";
+import type { Info } from "../lib/api";
 import { money } from "../lib/format";
+import "./trust.css";
 
 const ago = (iso: string) => {
   const t = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000));
@@ -18,14 +20,22 @@ const verb = (p: string) => {
 };
 const amt = (x: ActivityCall) =>
   x.amount_cents != null ? ` · ${money(x.amount_cents, x.currency || "USD")}` : "";
-export const callLabel = (x: ActivityCall) =>
-  x.method === "GET" && !x.buyer && verb(x.path) === "disputes"
+export const callLabel = (x: ActivityCall) => {
+  const v = verb(x.path);
+  const via = ` · PayPal ${v}`;
+  if (x.buyer && x.amount_cents != null && v === "make-offer")
+    return `Offered ${money(x.amount_cents, x.currency || "USD")} to ${x.buyer}${via}`;
+  if (x.buyer && x.amount_cents != null && v === "accept-claim")
+    return `Refunded ${money(x.amount_cents, x.currency || "USD")} to ${x.buyer}${via}`;
+  if (x.buyer && v === "provide-evidence") return `Sent evidence for ${x.buyer}${via}`;
+  return x.method === "GET" && !x.buyer && v === "disputes"
     ? "GET disputes (list)"
     : x.method === "GET" && x.buyer
       ? `GET dispute · ${x.buyer}${amt(x)}`
       : x.buyer
-        ? `${x.method} ${verb(x.path)} · ${x.buyer}${amt(x)}`
-        : `${x.method} ${verb(x.path)}`;
+        ? `${x.method} ${v} · ${x.buyer}${amt(x)}`
+        : `${x.method} ${v}`;
+};
 
 const Dot = ({ st }: { st: number }) => (
   <i className={"sdot " + (st < 300 ? "ok" : st < 400 ? "" : "bad")}></i>
@@ -42,9 +52,11 @@ const Row = ({ x }: { x: ActivityCall }) => (
 export function PayPalFooter({
   calls,
   failed,
+  info,
 }: {
   calls: ActivityCall[] | null;
   failed?: { status: number } | null;
+  info?: Info | null;
 }) {
   const [open, setOpen] = useState(false);
   const [flash, setFlash] = useState(false);
@@ -103,40 +115,64 @@ export function PayPalFooter({
       ),
     ),
   ].slice(0, 8);
+  const last = failed ? (
+    <>
+      <Dot st={failed.status || 599} />
+      <span className="s-bad">
+        Last call: GET cases (list) · {failed.status || "no response"} · failed
+      </span>
+    </>
+  ) : pin && Date.now() < pin.until ? (
+    <>
+      <Dot st={200} />
+      {pin.text}
+    </>
+  ) : x ? (
+    <>
+      <Dot st={x.status} />
+      {callLabel(x)} · {x.status} · {ago(x.at)}
+    </>
+  ) : (
+    "PayPal calls: none yet"
+  );
+  const ai = info?.llm;
+  const synced = info?.sync?.lastOk;
   return (
     <footer className={"activity" + (flash ? " flash" : "")}>
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls="activity-list"
-        onClick={() => setOpen(!open)}
-      >
-        <span>
-          {failed ? (
+      <div className="statusbar">
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls="activity-list"
+          onClick={() => setOpen(!open)}
+        >
+          {info && (
             <>
-              <Dot st={failed.status || 599} />
-              <span className="s-bad">
-                Last call: GET cases (list) · {failed.status || "no response"} · failed
+              <span className="seg">
+                {info.paypalEnv === "mock" ? "PayPal sandbox (simulated)" : "PayPal sandbox"}
               </span>
+              <span className="seg">
+                {ai?.online
+                  ? `AI: on · $${(ai.costUsd ?? 0).toFixed(2)} so far`
+                  : "AI: off (using saved wording)"}
+              </span>
+              {info.decide && (
+                <span className="seg">
+                  Decision core: {info.decide.reachable ? "healthy" : "not answering"}
+                </span>
+              )}
+              {synced && <span className="seg">Last sync {ago(synced)}</span>}
             </>
-          ) : pin && Date.now() < pin.until ? (
-            <>
-              <Dot st={200} />
-              {pin.text}
-            </>
-          ) : x ? (
-            <>
-              <Dot st={x.status} />
-              PayPal: {callLabel(x)} · {x.status} · {x.ms} ms · {ago(x.at)}
-            </>
-          ) : (
-            "PayPal calls: none yet"
           )}
-        </span>
-        <span className="chev" aria-hidden="true">
-          &#9650;
-        </span>
-      </button>
+          <span className="seg last">{last}</span>
+          <span className="chev" aria-hidden="true">
+            &#9650;
+          </span>
+        </button>
+        <a className="chip" href="/api/activity?format=csv" download>
+          Download log (CSV)
+        </a>
+      </div>
       {open && <ul id="activity-list">{rows}</ul>}
     </footer>
   );
