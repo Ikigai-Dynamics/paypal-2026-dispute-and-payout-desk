@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, post } from "../lib/api";
+import type { CaseSummary } from "../lib/api";
+import { callKind, needsResponse } from "../lib/format";
 import "./chat.css";
 
 interface Staged {
@@ -13,7 +15,7 @@ interface Msg {
   id: string;
   role: "user" | "parley";
   text: string;
-  actions?: { staged?: Staged[] } | null;
+  actions?: { staged?: Staged[]; list?: { id: string; line: string }[] } | null;
 }
 interface Conv {
   id: string;
@@ -24,11 +26,15 @@ type Outcome = { ok: boolean; text: string } | "declined";
 
 const GREETING =
   "Hi, I'm Parley. I've read your open disputes. Ask me which to fight, refund or offer on, or tell me to make an offer, and I'll get it ready for your OK.";
-const CHIPS = [
-  "Which cases should I just refund?",
-  "Offer on the Ember sleeping bag",
-  "Remember I refund gift cards under $50",
-];
+/** Suggestions that fit the live state: an offer chip only while that offer is still unsent. */
+export function chipsFor(cases: CaseSummary[]): string[] {
+  const c = cases.find((x) => needsResponse(x) && callKind(x.call) === "offer");
+  return [
+    "Which case should I deal with first?",
+    "Which cases should I just refund?",
+    ...(c ? [`Send the offer on the ${c.item ?? c.items?.[0]?.item_description ?? "case"}`] : []),
+  ];
+}
 
 const fire = (name: string, detail?: unknown) =>
   window.dispatchEvent(new CustomEvent(name, { detail }));
@@ -40,6 +46,10 @@ function dispatchUi(actions: any[], reply: string) {
     else if (a.type === "filter") fire("parley:filter", { ids: a.ids });
     else if (a.type === "highlight_evidence") fire("parley:highlight-evidence");
   }
+  // A filter alone should still open a case: the only one, or the first.
+  const f = actions.find((a) => a.type === "filter" && a.ids?.length);
+  if (f && !actions.some((a) => a.type === "select_case"))
+    fire("parley:select-case", { id: f.ids[0] });
   const first = /^.*?[.!?](\s|$)/s.exec(reply)?.[0].trim() ?? reply;
   fire("parley:say", { text: first });
 }
@@ -130,6 +140,8 @@ export function ChatPanel() {
   const [showMem, setShowMem] = useState(false);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [chips, setChips] = useState<string[]>([]);
+  const [picked, setPicked] = useState<string | null>(null);
   const caseId = useRef<string | null>(null);
   const log = useRef<HTMLDivElement>(null);
 
@@ -155,9 +167,22 @@ export function ChatPanel() {
     setMsgs(r.messages);
   }, []);
 
+  const loadChips = useCallback(
+    () =>
+      api("/api/cases")
+        .then((r) => setChips(chipsFor(r.cases ?? [])))
+        .catch(() => undefined),
+    [],
+  );
+  useEffect(() => {
+    window.addEventListener("parley:changed", loadChips);
+    return () => window.removeEventListener("parley:changed", loadChips);
+  }, [loadChips]);
+
   useEffect(() => {
     const onOpen = async () => {
       setOpen(true);
+      loadChips();
       const l = await loadConvs();
       if (!cid && l[0]) await choose(l[0].id);
       loadMem();
@@ -171,7 +196,7 @@ export function ChatPanel() {
       window.removeEventListener("parley:open-chat", onOpen);
       window.removeEventListener("parley:case-changed", onCase);
     };
-  }, [cid, choose, loadConvs, loadMem]);
+  }, [cid, choose, loadConvs, loadMem, loadChips]);
 
   useEffect(() => {
     document.body.classList.toggle("chat-open", open);
@@ -229,6 +254,7 @@ export function ChatPanel() {
     e.preventDefault();
     return submit(text);
   };
+  const lastAsked = [...msgs].reverse().find((m) => m.role === "user")?.text;
   const logLine = () => cid && choose(cid);
 
   return (
@@ -309,7 +335,7 @@ export function ChatPanel() {
           <>
             <div className="pc-msg parley">{GREETING}</div>
             <div className="pc-chips">
-              {CHIPS.map((c) => (
+              {chips.map((c) => (
                 <button
                   key={c}
                   className="pc-chip"
@@ -325,6 +351,18 @@ export function ChatPanel() {
         {msgs.map((m) => (
           <div key={m.id} style={{ display: "contents" }}>
             <div className={`pc-msg ${m.role}`}>{m.text}</div>
+            {m.actions?.list?.map((it) => (
+              <button
+                key={it.id}
+                className={`pc-item${picked === it.id ? " active" : ""}`}
+                onClick={() => {
+                  setPicked(it.id);
+                  fire("parley:select-case", { id: it.id });
+                }}
+              >
+                <span aria-hidden>•</span> {it.line}
+              </button>
+            ))}
             {m.actions?.staged?.map((s) => (
               <StagedCard
                 key={s.id}
@@ -344,6 +382,17 @@ export function ChatPanel() {
         ))}
         {busy && <div className="pc-msg parley muted">Thinking…</div>}
       </div>
+      {msgs.length > 0 && !busy && (
+        <div className="pc-next">
+          {chips
+            .filter((c) => c !== lastAsked)
+            .map((c) => (
+              <button key={c} className="pc-chip" onClick={() => submit(c)}>
+                {c}
+              </button>
+            ))}
+        </div>
+      )}
       <form className="pc-form" onSubmit={sendText}>
         <input
           value={text}
