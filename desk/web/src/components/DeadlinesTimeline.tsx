@@ -1,58 +1,49 @@
 import type { CaseSummary } from "../lib/api";
-import { DAY, dateShort, dayDiff, dueSoon, inDays, money, needsResponse, rec } from "../lib/format";
+import { callKind, dayDiff, dueWords, money, needsResponse } from "../lib/format";
 
-const TICKS = [0, 1, 2, 3, 4, 5, 6, 7, 14, 21];
+const DAYS = 14;
 
+/** Response deadlines for the next 14 days: each open dispute is a dot on its due day */
 export function DeadlinesTimeline({
   cases,
   onOpen,
+  selectedId,
 }: {
   cases: CaseSummary[];
   onOpen(id: string): void;
+  selectedId?: string | null;
 }) {
-  const now = Date.now();
-  const span = 21 * DAY;
-  const lanes = new Map<number, number>();
-  const open = cases
-    .filter(
-      (c): c is CaseSummary & { due_at: string } =>
-        needsResponse(c) && !!c.due_at && Date.parse(c.due_at) - now <= span,
-    )
-    .sort((a, b) => Date.parse(a.due_at) - Date.parse(b.due_at));
+  const open = cases.filter((c) => needsResponse(c) && c.due_at);
+  // an overdue case sits on today
+  const on = (i: number) => open.filter((c) => Math.max(0, dayDiff(c.due_at!)) === i);
   return (
-    <section className="card">
-      <h2>Deadlines, next 21 days</h2>
-      <div className="timeline">
-        <div className="axis"></div>
-        {TICKS.map((d) => (
-          <div
-            key={d}
-            className={"tick" + (d % 7 === 0 ? " week" : "")}
-            style={{ left: `${(d / 21) * 96 + 2}%` }}
-          >
-            {d === 0 ? "now" : `+${d}d`}
-          </div>
-        ))}
-        {open.map((c) => {
-          const left =
-            Math.min(1, Math.max(0, (dayDiff(c.due_at) * DAY) / span)) * 96 + 2; // calendar days, as the header counts them
-          const bucket = Math.round(left);
-          const lane = lanes.get(bucket) ?? 0;
-          lanes.set(bucket, lane + 1);
-          const r = rec(c.call);
+    <section className="strip" aria-label="Deadlines">
+      <h2>Response deadlines · next 14 days</h2>
+      <div className="days">
+        {Array.from({ length: DAYS }, (_, i) => {
+          const hits = on(i);
           return (
             <div
-              key={c.dispute_id}
-              className={`marker ${r.kind}${dueSoon(c) ? " soon" : ""}`}
-              style={{ left: `${left}%`, top: `${40 - (lane % 3) * 14}px` }}
-              title={`${c.buyer} · ${money(c.amount_cents, c.currency)} · due ${dateShort(c.due_at)} (${inDays(c.due_at)}) · ${r.label}`}
-              onClick={() => onOpen(c.dispute_id)}
-            />
+              key={i}
+              className={"day" + (hits.length ? " has" : "") + (hits.length && i <= 3 ? " urgent" : "")}
+            >
+              <span className="lbl">{i === 0 ? "today" : `+${i}`}</span>
+              <span className="chips2">
+                {hits.map((c) => (
+                  <button
+                    key={c.dispute_id}
+                    type="button"
+                    className={`dd ${callKind(c.call) ?? ""}`}
+                    aria-current={c.dispute_id === selectedId}
+                    aria-label={`${c.item ?? c.buyer}, ${money(c.amount_cents, c.currency)}, ${dueWords(dayDiff(c.due_at!))}`}
+                    title={`${c.item ?? c.buyer}: ${dueWords(dayDiff(c.due_at!))}`}
+                    onClick={() => onOpen(c.dispute_id)}
+                  />
+                ))}
+              </span>
+            </div>
           );
         })}
-      </div>
-      <div className="legend muted">
-        Green fight · red accept · amber close call · grey not analysed
       </div>
     </section>
   );

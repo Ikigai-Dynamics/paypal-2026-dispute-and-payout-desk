@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ActivityCall } from "../lib/api";
 import { money } from "../lib/format";
 
@@ -28,7 +28,7 @@ export const callLabel = (x: ActivityCall) =>
         : `${x.method} ${verb(x.path)}`;
 
 const Dot = ({ st }: { st: number }) => (
-  <i className={"dot " + (st < 300 ? "ok" : st < 400 ? "" : "bad")}></i>
+  <i className={"sdot " + (st < 300 ? "ok" : st < 400 ? "" : "bad")}></i>
 );
 const Row = ({ x }: { x: ActivityCall }) => (
   <li>
@@ -51,19 +51,6 @@ export function PayPalFooter({
   const [pin, setPin] = useState<{ text: string; until: number } | null>(null);
   const lastCall = useRef<string | null>(null);
   const seenPosts = useRef<Set<string> | null>(null);
-  const bar = useRef<HTMLElement>(null);
-
-  // the page's bottom padding follows the footer's height
-  useLayoutEffect(() => {
-    const pad = () => {
-      document.body.style.paddingBottom = bar.current
-        ? `${bar.current.offsetHeight + 16}px`
-        : "";
-    };
-    pad();
-    addEventListener("resize", pad);
-    return () => removeEventListener("resize", pad);
-  });
 
   useEffect(() => {
     if (!calls) return;
@@ -117,7 +104,7 @@ export function PayPalFooter({
     ),
   ].slice(0, 8);
   return (
-    <footer ref={bar} className={"activity" + (flash ? " flash" : "")}>
+    <footer className={"activity" + (flash ? " flash" : "")}>
       <button
         type="button"
         aria-expanded={open}
@@ -140,7 +127,7 @@ export function PayPalFooter({
           ) : x ? (
             <>
               <Dot st={x.status} />
-              Last PayPal call: {callLabel(x)} · {x.status} · {x.ms} ms · {ago(x.at)}
+              PayPal: {callLabel(x)} · {x.status} · {x.ms} ms · {ago(x.at)}
             </>
           ) : (
             "PayPal calls: none yet"

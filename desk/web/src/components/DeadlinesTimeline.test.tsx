@@ -22,15 +22,16 @@ const mk = (id: string, days: number): CaseSummary => ({
 });
 
 describe("DeadlinesTimeline", () => {
-  it("places today at now and in 2 days at +2d, and opens a case on click", () => {
+  it("puts a dot on each due day and opens that case on click", () => {
     const onOpen = vi.fn();
     const { container } = render(
       <DeadlinesTimeline cases={[mk("T", 0), mk("D", 2)]} onOpen={onOpen} />,
     );
-    const left = (i: number) => (container.querySelectorAll<HTMLElement>(".marker")[i]!).style.left;
-    expect(left(0)).toBe("2%");
-    expect(parseFloat(left(1))).toBeCloseTo((2 / 21) * 96 + 2, 5);
-    fireEvent.click(container.querySelectorAll(".marker")[1]!);
+    const days = [...container.querySelectorAll(".day")];
+    expect(days).toHaveLength(14);
+    expect(days[0]!.querySelectorAll(".dd")).toHaveLength(1);
+    expect(days[2]!.querySelectorAll(".dd")).toHaveLength(1);
+    fireEvent.click(days[2]!.querySelector(".dd")!);
     expect(onOpen).toHaveBeenCalledWith("D");
   });
 });

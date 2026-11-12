@@ -927,7 +927,9 @@ const server = createServer((req, res) => {
       }
       if (
         req.method === "GET" &&
-        (url.pathname === "/app.js" || url.pathname === "/app.css")
+        (url.pathname === "/app.js" ||
+          url.pathname === "/app.css" ||
+          url.pathname === "/owl.js")
       ) {
         if (
           !serveFile(

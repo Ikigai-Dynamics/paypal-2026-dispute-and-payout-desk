@@ -64,32 +64,54 @@ export const statusWords = (c: StatusLike) => {
   return sentence(c.status);
 };
 
-export type Rec = {
-  kind: "fight" | "accept" | "marginal" | "unknown";
-  base: "fight" | "accept" | null;
-  label: string;
-  color: string;
+export type CallKind = "fight" | "accept" | "offer";
+// the core's call may read "accept (marginal)"
+export const callKind = (call: string | null | undefined): CallKind | null =>
+  !call
+    ? null
+    : call.startsWith("fight")
+      ? "fight"
+      : call.startsWith("offer")
+        ? "offer"
+        : "accept";
+/** Parley's call as a chip: Fight / Refund / Offer $X */
+export const callWords = (c: {
+  call?: string | null;
+  offer_cents?: number | null;
+  currency?: string;
+}) => {
+  const k = callKind(c.call);
+  return k === "fight"
+    ? "Fight"
+    : k === "offer" && c.offer_cents
+      ? `Offer ${money(c.offer_cents, c.currency)}`
+      : k
+        ? "Refund"
+        : "Analysing…";
 };
-// call may be "accept (marginal)"; marginal is also a flag on the decision
-export function rec(call: string | null | undefined, marginal?: boolean): Rec {
-  if (!call)
-    return { kind: "unknown", base: null, label: "Analysing…", color: "grey" };
-  const base = call.startsWith("fight") ? "fight" : "accept";
-  const m = marginal ?? call.includes("marginal");
-  if (m)
-    return {
-      kind: "marginal",
-      base,
-      label: `Close call: ${base}`,
-      color: "amber",
-    };
-  return {
-    kind: base,
-    base,
-    label: base === "fight" ? "Fight" : "Accept",
-    color: base === "fight" ? "green" : "red",
-  };
-}
+export const reasonIcon = (r: string) =>
+  r.includes("NOT_RECEIVED")
+    ? "📦"
+    : r.includes("NOT_AS_DESCRIBED")
+      ? "🔍"
+      : r.startsWith("UNAUTH")
+        ? "🔒"
+        : r.startsWith("DUPLICATE")
+          ? "🧾"
+          : "💬";
+/** "due in 6 days" for the list, "Respond in 6 days" for the case */
+export const daysLeft = (iso: string | null) => {
+  if (!iso) return null;
+  return dayDiff(iso);
+};
+export const dueWords = (n: number, lead = "due") =>
+  n < 0
+    ? "overdue"
+    : n === 0
+      ? `${lead} today`
+      : n === 1
+        ? `${lead} tomorrow`
+        : `${lead} in ${n} days`;
 
 export const dateShort = (iso: string) =>
   new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });

@@ -1,44 +1,48 @@
-import type { Analysis } from "../lib/api";
+import { useEffect, useState } from "react";
+import { api, type Analysis, type Assumption } from "../lib/api";
 import { money, pct, reasonWords, signed, unbracket } from "../lib/format";
 
-type Inputs = { prior: string; c: string; fee: string };
+const words = (id: string) => id.replaceAll("_", " ").replace(/^./, (c) => c.toUpperCase());
 
-export function ShowTheMath({
-  analysis: a,
-  cost,
-  inputs,
-  onInput,
-  onRecalc,
-  hidden,
-}: {
-  analysis: Analysis;
-  cost: number;
-  inputs: Inputs;
-  onInput(k: keyof Inputs, v: string): void;
-  onRecalc(): void;
-  hidden: boolean;
-}) {
+/** "How Parley decided": the only place with the math, in plain terms */
+export function ShowTheMath({ analysis: a, cost }: { analysis: Analysis; cost: number }) {
   const c = a.case;
   const d = a.decision;
   const cur = c.currency;
-  const rows = d
-    ? [
-        ["Win chance", `${pct(d.p)}%`],
-        ["Amount at stake", money(c.amount_cents, cur)],
-        ["Cost to fight", money(cost * 100, cur)],
-        ["Expected value of fighting", signed(d.ev_fight_cents, cur)],
-        ["Expected value of refunding", signed(d.ev_accept_cents, cur)],
-      ]
-    : [];
+  const [fetched, setFetched] = useState<Assumption[] | null>(null);
+  const given = d?.assumptions;
+  useEffect(() => {
+    if (given?.length) return;
+    let live = true;
+    api<{ assumptions: Assumption[] } | Assumption[]>("/api/assumptions").then(
+      (r) => live && setFetched(Array.isArray(r) ? r : (r.assumptions ?? [])),
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [given?.length]);
+  const assumptions = given?.length ? given : fetched;
+  if (!d) return <p className="muted">There is no calculation for this dispute right now.</p>;
+  const interval = d.p_lo != null && d.p_hi != null ? ` (likely ${pct(d.p_lo)}–${pct(d.p_hi)}%)` : "";
+  const fightCost = cost * 100 + (d.ai_cost_cents ?? 0);
+  const rows = [
+    ["Win chance", `${pct(d.p)}%${interval}, estimated`],
+    ["Amount at stake", money(c.amount_cents, cur)],
+    ["Cost to fight", money(Math.round(fightCost), cur)],
+    ["Fighting, on average", signed(d.ev_fight_cents, cur)],
+    ["Refunding in full", signed(d.ev_accept_cents, cur)],
+    ...(d.offer
+      ? [["Best offer", `${money(d.offer.amount_cents, cur)}, taken ${pct(d.offer.q)}% of the time: ${signed(d.offer.ev_cents, cur)}`]]
+      : []),
+  ];
   const kind =
     c.reason === "OTHER"
       ? "disputes where the buyer gave no reason"
       : `${reasonWords(c.reason).toLowerCase()} disputes`;
-  const won = d && Number.isFinite(d.wins) ? ` (${d.wins} won)` : "";
-  const p0line = !d
-    ? ""
-    : d.n > 0
-      ? `Sellers win about ${pct(d.p0)}% of ${kind} on average. Your ${d.n} similar past case${d.n === 1 ? "" : "s"}${won} ${pct(d.p) < pct(d.p0) ? "lower" : "raise"} your chance to ${pct(d.p)}%.`
+  const p0line =
+    d.n > 0
+      ? `Sellers win about ${pct(d.p0)}% of ${kind} on average. Your ${d.n} similar past case${d.n === 1 ? "" : "s"}${Number.isFinite(d.wins) ? ` (${d.wins} won)` : ""} move your chance to ${pct(d.p)}%.`
       : `About ${pct(d.p0)}% of ${kind} are won by sellers; with no similar past cases, your chance stays at ${pct(d.p)}%.`;
   const precs = new Map<string, { p: Analysis["precedents"][number]; n: number }>();
   for (const p of a.precedents.filter((p) => p.outcome != null)) {
@@ -46,83 +50,72 @@ export function ShowTheMath({
     precs.set(k, { p, n: (precs.get(k)?.n ?? 0) + 1 });
   }
   return (
-    <details id="math" hidden={hidden}>
-      <summary>Show the math</summary>
-      <p id="explanation">{a.draft.explanation ?? ""}</p>
-      <dl id="terms-list" className="terms">
+    <div className="tabpanel mathtab">
+      <p className="muted">For the curious. Same numbers every time; the AI only writes the reply.</p>
+      <p>{a.draft.explanation ?? ""}</p>
+      <dl className="terms">
         {rows.map(([k, v]) => (
           <Row key={k} k={k!} v={v!} />
         ))}
       </dl>
-      <p id="p0line" className="muted">
-        {p0line}
-      </p>
-      <details className="formula">
-        <summary>Formula</summary>
-        <pre id="terms">{d ? d.terms.join("\n") : ""}</pre>
+      <p className="muted">{p0line}</p>
+      {d.offer && (
+        <p className="muted">Every offer from $0.50 up to the full amount was checked in 50¢ steps; this one pays best.</p>
+      )}
+      {d.ai_cost_cents != null && (
+        <p className="muted">AI cost on this case so far: {money(d.ai_cost_cents, cur)}, counted in the cost to fight.</p>
+      )}
+      <details>
+        <summary>The working</summary>
+        <pre>{d.terms.join("\n")}</pre>
       </details>
-      <h4>Similar past cases</h4>
-      <div id="precedents">
-        {precs.size ? (
+      <h3>Similar past cases</h3>
+      {precs.size ? (
+        <table className="prec">
+          <tbody>
+            <tr>
+              <th>Outcome</th>
+              <th>What happened</th>
+            </tr>
+            {[...precs.entries()].map(([k, { p, n }]) => (
+              <tr key={k}>
+                <td>
+                  {p.won ? "You won" : "Buyer won"}
+                  {n > 1 ? ` · ${n} cases` : ""}
+                </td>
+                <td>{unbracket(p.snippet)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <p className="muted">No similar resolved cases yet.</p>
+      )}
+      {!!assumptions?.length && (
+        <>
+          <h3>Assumptions Parley makes</h3>
           <table className="prec">
             <tbody>
               <tr>
-                <th>Outcome</th>
-                <th>Snippet</th>
+                <th>Assumption</th>
+                <th>Value</th>
+                <th>Source</th>
               </tr>
-              {[...precs.entries()].map(([k, { p, n }]) => (
-                <tr key={k}>
+              {assumptions.map((x) => (
+                <tr key={x.id}>
+                  <td>{words(x.id)}</td>
                   <td>
-                    {p.won ? "You won" : "Buyer won"}
-                    {n > 1 ? ` · ${n} cases` : ""}
+                    {x.value}
+                    {x.unit ? ` ${x.unit}` : ""}
                   </td>
-                  <td>{unbracket(p.snippet)}</td>
+                  <td>{x.source ?? ""}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-        ) : (
-          <p className="muted">No similar resolved cases yet.</p>
-        )}
-      </div>
-      <div className="inputs">
-        <label>
-          Win chance override (%){" "}
-          <input
-            id="in-prior"
-            inputMode="decimal"
-            placeholder="use the estimate"
-            size={8}
-            value={inputs.prior}
-            onChange={(e) => onInput("prior", e.target.value)}
-          />
-        </label>
-        <label>
-          Cost to fight{" "}
-          <input
-            id="in-c"
-            inputMode="decimal"
-            size={6}
-            value={inputs.c}
-            onChange={(e) => onInput("c", e.target.value)}
-          />
-          <span className="hint">your time and handling</span>
-        </label>
-        <label>
-          Extra fee if you lose{" "}
-          <input
-            id="in-fee"
-            inputMode="decimal"
-            size={6}
-            value={inputs.fee}
-            onChange={(e) => onInput("fee", e.target.value)}
-          />
-        </label>
-        <button id="recompute" type="button" onClick={onRecalc}>
-          Recalculate
-        </button>
-      </div>
-    </details>
+        </>
+      )}
+    </div>
   );
 }
 // a dl row; dt and dd keep the two-column grid in app.css
