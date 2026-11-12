@@ -65,7 +65,7 @@
   .ctas { display: flex; flex-wrap: wrap; gap: 12px }
   .hero .note { color: var(--muted); font-size: 14px; margin: 16px 0 0 }
   .stage { position: relative; display: grid; justify-items: center }
-  #owl { width: 100%; max-width: 340px; height: auto }
+  #owl { width: 100%; max-width: 300px; height: auto }
   /* a small copy of the console's verdict card: the product is the picture */
   .mock { width: min(100%, 360px); margin-top: -18px; position: relative; background: linear-gradient(180deg, color-mix(in srgb, var(--gold) 9%, var(--surface-2)), var(--surface-2)); border: 1px solid color-mix(in srgb, var(--gold) 38%, var(--line-strong)); border-radius: var(--r-lg); padding: 14px 16px; display: grid; gap: 10px; box-shadow: 0 24px 60px rgba(3, 8, 20, .55) }
   .mock .k { font: 500 11px var(--body); letter-spacing: .05em; text-transform: uppercase; color: var(--muted) }
@@ -96,8 +96,8 @@
   @media (max-width: 860px) { section { padding: 64px 0 } .use { grid-template-columns: minmax(0, 1fr); gap: 20px; padding: 32px 0 } .use:nth-of-type(even) .art { order: 0 } .use h3 { font-size: 24px } }
 
   .art { display: grid; place-items: center }
-  .art img { width: 100%; max-width: 440px; height: auto }
-  @media (max-width: 860px) { .art img { max-width: 300px } }
+  .art img { width: auto; max-width: 100%; height: auto; max-height: 380px }
+  @media (max-width: 860px) { .art img { max-height: 260px } }
 
   .steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px }
   .step { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 24px }
