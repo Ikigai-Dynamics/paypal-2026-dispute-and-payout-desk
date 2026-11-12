@@ -75,7 +75,13 @@ export function ActivityTab({
   decision: Decision | null;
   currency: string;
 }) {
-  const mine = (calls ?? []).filter((x) => x.dispute_id === id) as Entry[];
+  // older data repeated the same AI row on every page load: show consecutive twins once with a count
+  const mine: (Entry & { n?: number })[] = [];
+  for (const x of (calls ?? []).filter((x) => x.dispute_id === id) as Entry[]) {
+    const prev = mine.at(-1);
+    if (prev && x.kind === "ai" && prev.kind === "ai" && prev.note === x.note) prev.n = (prev.n ?? 1) + 1;
+    else mine.push({ ...x });
+  }
   return (
     <ul className="tl">
       {mine.map((x) =>
@@ -83,6 +89,7 @@ export function ActivityTab({
           <li key={x.at + x.path}>
             <span aria-hidden="true">{ownIcon(x) ?? "•"} </span>
             {x.note || x.path}
+            {x.n && x.n > 1 ? ` ×${x.n}` : ""}
             <br />
             <small>{when(x.at)} · Parley</small>
           </li>

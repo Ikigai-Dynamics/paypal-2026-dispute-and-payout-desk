@@ -1,7 +1,7 @@
 import type { Llm } from "@jeirslab/llm-client";
 import type { DecideOptions } from "./decide-client.js";
 import { createHash } from "node:crypto";
-import { draftResponse, fallbackDraft, markAdded, withAdded } from "./draft.js";
+import { LABEL_TEMPLATE, draftResponse, fallbackDraft, markAdded, withAdded } from "./draft.js";
 import type { Added, CaseView, Decision, Draft, Precedent } from "./types.js";
 
 /**
@@ -50,6 +50,11 @@ export class DraftCache {
       : "";
     const key = `v7|${c.dispute_id}|${c.updated_at}|${decision?.call ?? "none"}|${extra}`;
     const knobs = `${o.prior ?? ""}|${o.handlingCostCents ?? ""}|${o.feeIfLostCents ?? ""}`;
+    // Parley would not fight it, so there is nothing for the model to draft
+    if (decision && decision.call !== "fight") {
+      const fb = fallbackDraft(withAdded(c, added), decision, o.handlingCostCents);
+      return { ...fb, checklist: markAdded(fb.checklist, added), source: "fallback", label: LABEL_TEMPLATE };
+    }
     const hit = this.done.get(key);
     if (hit) {
       const fb = fallbackDraft(
@@ -87,7 +92,7 @@ export class DraftCache {
       );
       this.onResult?.(this.lastOk);
       if (d.cost_usd) this.onCost?.(c.dispute_id, d.cost_usd);
-      if (d.source === "llm") {
+      if (d.fallback_reason !== "ai_down") {
         if (this.done.size >= MAX) this.done.clear();
         this.done.set(key, { draft: d, knobs });
       }

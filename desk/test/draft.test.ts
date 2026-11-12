@@ -1386,6 +1386,46 @@ describe("model drafting over the seeded cases", () => {
   });
 });
 
+describe("draft cache", () => {
+  const counting = () => {
+    let calls = 0;
+    const llm = createLlm({
+      env: { LLM_BASE_URL: "http://x", LLM_API_KEY: "k", LLM_MODEL: "m1" },
+      fetch: async () => {
+        calls++;
+        return new Response(
+          JSON.stringify({
+            choices: [{ message: { content: JSON.stringify({ response: fallbackDraft(base, decision).response }) } }],
+            usage: { prompt_tokens: 1000, completion_tokens: 500 },
+          }),
+        );
+      },
+    });
+    return { llm, n: () => calls };
+  };
+  it("two gets with the same key make one LLM call and at most one cost callback", async () => {
+    const { llm, n } = counting();
+    const cache = new DraftCache(llm);
+    let costs = 0;
+    cache.onCost = () => costs++;
+    const fight = { ...decision, call: "fight" } as Decision;
+    await cache.get(base, fight, [], {});
+    await cache.get(base, fight, [], {});
+    assert.equal(n(), 1);
+    assert.ok(costs <= 1);
+  });
+  it("a decision that is not fight makes no LLM call", async () => {
+    const { llm, n } = counting();
+    const cache = new DraftCache(llm);
+    let costs = 0;
+    cache.onCost = () => costs++;
+    const d = await cache.get(base, { ...decision, call: "accept" } as Decision, [], {});
+    assert.equal(n(), 0);
+    assert.equal(costs, 0);
+    assert.notEqual(d.source, "llm");
+  });
+});
+
 describe("pre-draft pool", () => {
   const llmFailingFirst = () => {
     let n = 0;
