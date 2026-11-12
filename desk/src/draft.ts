@@ -184,14 +184,6 @@ export function buildChecklist(c: CaseView): ChecklistItem[] {
     c.messages.some(
       (m) => m.posted_by === "SELLER" && /e-?mail/i.test(m.content),
     );
-  const sellerMsg = c.messages.findLast((m) => m.posted_by === "SELLER");
-  const sellerDay = sellerMsg
-    ? new Date(sellerMsg.time_posted).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        timeZone: "UTC",
-      })
-    : "";
   switch (c.reason) {
     case "MERCHANDISE_OR_SERVICE_NOT_RECEIVED":
       if (digital)
@@ -324,7 +316,7 @@ export function buildChecklist(c: CaseView): ChecklistItem[] {
           "Communication with the buyer",
           true,
           c.messages.some((m) => m.posted_by === "SELLER"),
-          `Your message to the buyer on ${sellerDay} is on the thread and is sent with your response.`,
+          `Your message to the buyer is on the thread and is sent with your response.`,
           "There is no seller message on the thread yet.",
         ),
       ];

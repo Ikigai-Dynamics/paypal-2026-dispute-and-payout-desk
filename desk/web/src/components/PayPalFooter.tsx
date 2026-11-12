@@ -22,6 +22,10 @@ const amt = (x: ActivityCall) =>
   x.amount_cents != null ? ` · ${money(x.amount_cents, x.currency || "USD")}` : "";
 export const callLabel = (x: ActivityCall) => {
   const v = verb(x.path);
+  if (x.method === "AI")
+    return x.buyer && x.amount_cents != null
+      ? `AI wrote a draft for ${x.buyer}'s ${money(x.amount_cents, x.currency || "USD")} case`
+      : "AI wrote a draft reply";
   const via = ` · PayPal ${v}`;
   if (x.buyer && x.amount_cents != null && v === "make-offer")
     return `Offered ${money(x.amount_cents, x.currency || "USD")} to ${x.buyer}${via}`;
@@ -29,9 +33,9 @@ export const callLabel = (x: ActivityCall) => {
     return `Refunded ${money(x.amount_cents, x.currency || "USD")} to ${x.buyer}${via}`;
   if (x.buyer && v === "provide-evidence") return `Sent evidence for ${x.buyer}${via}`;
   return x.method === "GET" && !x.buyer && v === "disputes"
-    ? "GET disputes (list)"
+    ? "Read disputes from PayPal"
     : x.method === "GET" && x.buyer
-      ? `GET dispute · ${x.buyer}${amt(x)}`
+      ? `Read ${x.buyer}'s dispute from PayPal`
       : x.buyer
         ? `${x.method} ${v} · ${x.buyer}${amt(x)}`
         : `${x.method} ${v}`;
@@ -43,7 +47,7 @@ const Dot = ({ st }: { st: number }) => (
 const Row = ({ x }: { x: ActivityCall }) => (
   <li>
     {callLabel(x)} ·{" "}
-    <span className={x.status < 400 ? "s-ok" : "s-bad"}>{x.status}</span> ·{" "}
+    <span className={x.status < 400 ? "s-ok" : "s-bad"}>{x.status < 400 ? "ok" : "failed"}</span> ·{" "}
     {x.ms} ms · {ago(x.at)}
   </li>
 );
@@ -84,7 +88,7 @@ export function PayPalFooter({
     const posts = calls.filter((x) => x.method === "POST");
     if (seenPosts.current) {
       const w = posts.find((x) => x.status < 300 && !seenPosts.current!.has(x.at));
-      if (w) setPin({ text: `Sent to PayPal: ${callLabel(w)} · ${w.status}`, until: Date.now() + 30000 });
+      if (w) setPin({ text: `Sent to PayPal: ${callLabel(w)}`, until: Date.now() + 30000 });
     }
     seenPosts.current = new Set(posts.map((x) => x.at));
   }, [calls]);
@@ -100,7 +104,7 @@ export function PayPalFooter({
   const posts = list.filter((x) => x.method === "POST");
   const gets = new Map<string, { n: number; x: ActivityCall }>();
   for (const g of list.filter((x) => x.method !== "POST")) {
-    const k = `${g.method} ${verb(g.path)}`;
+    const k = g.method === "AI" ? "AI drafts" : g.method === "GET" && verb(g.path) === "disputes" ? "Read disputes from PayPal" : `${g.method} ${verb(g.path)}`;
     gets.set(k, { n: (gets.get(k)?.n ?? 0) + 1, x: gets.get(k)?.x ?? g });
   }
   const rows = [
@@ -130,7 +134,7 @@ export function PayPalFooter({
   ) : x ? (
     <>
       <Dot st={x.status} />
-      {callLabel(x)} · {x.status} · {ago(x.at)}
+      {callLabel(x)} · {x.status < 400 ? ago(x.at) : "failed"}
     </>
   ) : (
     "PayPal calls: none yet"
@@ -149,7 +153,7 @@ export function PayPalFooter({
           {info && (
             <>
               <span className="seg">
-                {info.paypalEnv === "mock" ? "PayPal sandbox (simulated)" : "PayPal sandbox"}
+                {info.paypalEnv === "mock" ? "Demo merchant · simulated PayPal Disputes API" : "PayPal sandbox"}
               </span>
               <span className="seg">
                 {ai?.online

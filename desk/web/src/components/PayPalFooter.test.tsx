@@ -18,4 +18,11 @@ describe("callLabel", () => {
     expect(callLabel(call("accept-claim", 10000))).toBe("Refunded $100.00 to Sofia Lindqvist · PayPal accept-claim");
     expect(callLabel(call("provide-evidence", 10000))).toBe("Sent evidence for Sofia Lindqvist · PayPal provide-evidence");
   });
+  it("labels AI and PayPal reads in plain words", () => {
+    const ai = { ...call("x", 4700), method: "AI", path: "/v1/customer/disputes/PP-D-1#ai-draft" };
+    expect(callLabel(ai)).toBe("AI wrote a draft for Sofia Lindqvist's $47.00 case");
+    expect(callLabel({ ...ai, buyer: undefined })).toBe("AI wrote a draft reply");
+    const get = { ...call("x", 0), method: "GET", path: "/v1/customer/disputes/PP-D-1", amount_cents: undefined };
+    expect(callLabel(get)).toBe("Read Sofia Lindqvist's dispute from PayPal");
+  });
 });
