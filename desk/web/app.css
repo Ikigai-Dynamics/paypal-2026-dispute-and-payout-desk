@@ -305,6 +305,8 @@ table.prec td, table.prec th { border-bottom: 1px solid var(--line); padding: 6p
 .caret { display: inline-block; width: .45em; height: 1em; background: var(--ink); vertical-align: -0.12em; margin-left: 2px; animation: caret 1s steps(1) infinite }
 @keyframes caret { 50% { opacity: 0 } }
 .owlbox { display: flex; flex-direction: column; align-items: center; gap: 6px; align-self: flex-end }
+.owlbox > button { position: relative; z-index: 1 } /* the label stays above the owl art */
+#owl .owl-img { position: relative; z-index: 0 }
 .talk-pill { font: 600 12.5px var(--body); border: 0; border-radius: var(--r-pill); background: var(--gold); color: var(--gold-ink); padding: 5px 12px; white-space: nowrap }
 .talk-pill:hover { background: var(--gold-hover) }
 #owl { width: 150px; height: 194px; cursor: pointer; flex: none; display: grid; place-items: end center }
