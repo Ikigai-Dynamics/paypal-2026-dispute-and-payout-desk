@@ -1,5 +1,5 @@
-# Runs Parley without Nix. The platform repo (shared packages) must sit next to this one,
-# or set PLATFORM_DIR to its path. Optional LLM_* values come from your shell or a .env file.
+# Runs Parley without Nix. The shared packages (PayPal client, LLM client, PayPal mock) are vendored in
+# ./platform (Apache-2.0, see platform/LICENSE); set PLATFORM_DIR to use another checkout. Optional LLM_* values come from your shell or a .env file.
 services:
   postgres:
     image: postgres:16
@@ -17,7 +17,7 @@ services:
       context: .
       dockerfile: mock/Dockerfile
       additional_contexts:
-        platform: ${PLATFORM_DIR:-../paypal-hackathon-2026}
+        platform: ${PLATFORM_DIR:-./platform}
 
   decide:
     build:
@@ -28,7 +28,7 @@ services:
       context: .
       dockerfile: desk/Dockerfile
       additional_contexts:
-        platform: ${PLATFORM_DIR:-../paypal-hackathon-2026}
+        platform: ${PLATFORM_DIR:-./platform}
     depends_on:
       postgres:
         condition: service_healthy

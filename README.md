@@ -21,7 +21,7 @@ Art in `assets/owl/` (landing poses, console moods, favicons, and the Rive file 
 
 ## Try it in 60 seconds
 
-**With Docker (no Nix).** The shared packages (PayPal client, LLM client, PayPal mock) live in the platform repo, so a checkout of [paypal-hackathon-2026](https://github.com/Ikigai-Dynamics/paypal-hackathon-2026) must sit next to this repo (or set `PLATFORM_DIR` to it).
+**With Docker (no Nix).** Everything needed is in this repo: the shared packages (PayPal client, LLM client, PayPal mock) are vendored in `platform/` (Apache-2.0).
 
 ```sh
 docker compose up --build
