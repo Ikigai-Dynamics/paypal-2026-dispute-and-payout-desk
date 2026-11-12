@@ -1,0 +1,7 @@
+.git
+**/node_modules
+**/target
+**/dist
+**/dist-test
+result
+result-*

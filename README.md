@@ -1,21 +1,29 @@
-# Dispute and Payout Desk
+# Parley: a dispute desk for PayPal sellers
 
-A seller's desk for PayPal disputes, built for the [PayPal AI Hackathon 2026](https://developer.paypal.com/community/blog/PayPal_AI_Hackathon/)
-("Build What's Next with PayPal and AI"). It reads a merchant's disputes through PayPal's Disputes v1 API, finds
-similar resolved cases, computes whether to **fight or accept** each one as an expected-value decision with every term
-shown, drafts the seller response with an evidence checklist, and writes the merchant's choice back to PayPal after an
-explicit confirmation.
+Parley reads your PayPal disputes and tells you, case by case, whether to fight, refund or offer $X, with an estimated chance of winning.
+It drafts the reply and the evidence list for you, and sends nothing to PayPal without your OK.
 
-- Proposal: `projects/dispute-and-payout-desk/proposal.md` in the platform repo's docs vault
-  ([Ikigai-Dynamics/paypal-hackathon-2026](https://github.com/Ikigai-Dynamics/paypal-hackathon-2026)).
-- Platform: the shared flake, Nix modules, PayPal mock, clients and k3d cluster scripts all come from the platform repo.
-  This repo only sets `platform.*` options in `nix/project.nix` and holds the application code.
+PayPal APIs used: Disputes v1 (list, get, provide-evidence, accept-claim, make-offer), Webhooks (`CUSTOMER.DISPUTE.CREATED`, `UPDATED`, `RESOLVED`, checked with verify-webhook-signature) and Transaction Search (the buyer's order history). Built for the [PayPal AI Hackathon 2026](https://developer.paypal.com/community/blog/PayPal_AI_Hackathon/).
 
-PayPal use: Disputes v1 read (list, get) and write (`provide-evidence`, `accept-claim`) through the shared
-`@jeirslab/paypal-client`. AI use: the response drafter (`@jeirslab/llm-client`, OpenAI-compatible) with a deterministic
-offline fallback. The money decision is arithmetic in a Rust core, not a model.
+## Try it in 60 seconds
 
-## Run from a clone
+**With Docker (no Nix).** The shared packages (PayPal client, LLM client, PayPal mock) live in the platform repo, so a checkout of [paypal-hackathon-2026](https://github.com/Ikigai-Dynamics/paypal-hackathon-2026) must sit next to this repo (or set `PLATFORM_DIR` to it).
+
+```sh
+docker compose up --build
+```
+
+Then open <http://localhost:8080>. It starts Postgres, the PayPal mock, the decision core and the desk. Optional: set `LLM_BASE_URL`, `LLM_MODEL` and `LLM_API_KEY` in your shell first to turn the AI on; without them Parley uses template drafts and says so.
+
+**Walkthrough (about a minute):**
+
+1. Open the top case in the list.
+2. Read Parley's call (fight, refund or offer) and the win chance next to it.
+3. Attach the evidence the checklist asks for.
+4. Click **Review my reply**, then **Send reply to PayPal** and confirm.
+5. Click the owl and ask: *Which cases should I just refund?*
+
+### Run on the dev cluster
 
 Needs Nix with flakes, Docker (for k3d) and SSH access to GitHub (the platform input is a private repo). k3d, kubectl and
 helm come from nixpkgs through the flake; nothing is installed system-wide and `~/.kube/config` is never touched.
@@ -24,31 +32,66 @@ helm come from nixpkgs through the flake; nothing is installed system-wide and `
 git clone git@github.com:Ikigai-Dynamics/paypal-2026-dispute-and-payout-desk.git && cd paypal-2026-dispute-and-payout-desk
 nix run .#cluster-up       # k3d: 1 server + 3 agents, Traefik on host port 18080
 nix run .#deploy           # builds the images, installs CNPG, applies manifests, waits for rollouts
-nix run .#e2e              # scripted fight on Marcus Bell's case + accept on Priya Nair's; prints the decision terms and the draft; ends with E2E OK
+nix run .#e2e              # scripted fight on one case and accept on another; ends with E2E OK
 ```
 
 Then open <http://desk.dispute-and-payout-desk.localhost:18080> (`*.localhost` resolves to 127.0.0.1 in most browsers;
 otherwise use `curl --resolve desk.dispute-and-payout-desk.localhost:18080:127.0.0.1 ...`). The mock is at
-`paypal-mock.dispute-and-payout-desk.localhost:18080`.
+`paypal-mock.dispute-and-payout-desk.localhost:18080`. A deploy reseeds the demo; `nix run .#demo-reset` resets between takes.
 
-Developing against an uncommitted platform checkout:
+Against an uncommitted platform checkout add `--override-input platform path:/path/to/paypal-hackathon-2026` to `nix flake check`, `nix run .#deploy` and `nix run .#e2e`.
+Tear down: `nix run .#undeploy -- dispute-and-payout-desk` or `nix run .#cluster-down`.
 
-```sh
-nix flake check --override-input platform path:/path/to/paypal-hackathon-2026
-nix run .#deploy --override-input platform path:/path/to/paypal-hackathon-2026
-nix run .#e2e --override-input platform path:/path/to/paypal-hackathon-2026
-```
+## What is real and what is simulated
 
-Tear down: `nix run .#undeploy -- dispute-and-payout-desk` (this project only) or `nix run .#cluster-down`.
+- **PayPal is the bundled PayPal mock**, which implements the Disputes v1 shapes (and Transaction Search, webhooks). Runs against the bundled PayPal mock; a live sandbox run was not done for this submission (no sandbox credentials in the build environment). The client and the desk have a sandbox path (`PAYPAL_ENV=sandbox` with a client id and secret) that has not been exercised.
+- **The AI is a real LLM** reached through an OpenAI-compatible endpoint (`@jeirslab/llm-client`). It drafts replies and answers in the chat. Without a key the desk falls back to template drafts and labels them as such.
+- **The money decision is integer-cent arithmetic in the Rust core**, not a model.
+- **Win chances are estimated**: a beta posterior from similar past cases, pulled toward an assumed starting guess. They are not calibrated against PayPal outcomes.
+
+## Chat tools
+
+The owl chat can call tools named after PayPal's Agent Toolkit where one exists:
+
+- From the Agent Toolkit: `list_disputes`, `get_dispute`, `accept_dispute_claim`.
+- Added by Parley in the same style: `make_dispute_offer`, `provide_dispute_evidence`.
+
+Every tool that writes to PayPal shows what it will send and waits for your confirmation (`confirm: true` in the API).
+
+## How Parley decides
+
+For each case the desk finds resolved cases of the same reason (full-text similarity) and calls the Rust `decide` core over the versioned contract `decide.v2` ([`contracts/decide.v2.md`](contracts/decide.v2.md)). It compares three outcomes in expected value, in plain words:
+
+- **Refund** (accept the claim) costs the whole amount.
+- **Fight** costs the handling effort (and the AI cost of the draft) plus, if you lose, the amount; it pays off when the win chance is high enough.
+- **Offer $X** (a partial refund) is the best amount found on a 50-cent scan, assuming buyers accept bigger offers more often. It is the call only when it beats both others by at least $5.
+
+With `A` the amount, `F` the extra fee if the seller loses, `c` the handling cost plus AI cost, and `p` the win chance:
+
+- `p = (wins + K*p0) / (n + K)`, `K = 4`: the win rate of `n` similar cases pulled toward a prior `p0` per reason. A repeat disputer moves `p0` up by 10 points.
+- `EV accept = -A`, `EV fight = -(1-p)*(A+F) - c`; fight when `EV fight > EV accept`. Under $5 of difference is labelled marginal.
+- `EV offer(x) = q(x)*(-x) + (1-q(x))*EV fight` with `q(x) = 1/(1+exp(-s*(x/A - m)))`, `m = 0.5`, `s = 8`.
+
+Every default (priors, K, acceptance curve, minimum gain, handling cost) is an assumption, not PayPal data, and is served at `GET /api/assumptions`. All arithmetic is integer cents, rounded half away from zero. Worked example: a $120 item-not-received case at `p0 = 0.55` with no precedents: `EV accept = -$120.00`, `EV fight = -0.45*120.00 - 15.00 = -$69.00`, so fighting gains `$51.00`.
+
+## Data, assumptions and limits
+
+- All disputes are synthetic: the mock serves a seeded demo merchant (60 disputes), with dates shifted so deadlines are in the future. No real merchant data is used. The page says so whenever `PAYPAL_ENV` is `mock`.
+- One desk replica; drafts and decisions are cached in memory per pod, and every desk start reseeds the demo.
+- Evidence is text and tracking details only: no file upload. No sign-in on the desk.
+- Win chances and the priors are assumptions. Mock fidelity is unverified for write error codes and state transitions.
+- Search is Postgres full-text (`tsvector`); Elastic is not used.
+- Webhooks are accepted at the desk; signature verification runs only against a sandbox or live target, and is skipped under the mock.
+- The Postgres queries are covered only by the cluster e2e, not by unit tests.
 
 ## Architecture
 
-The `desk` (TypeScript, Node 24) syncs every dispute from PayPal into Postgres (CloudNativePG) as an index with a
+The `desk` (TypeScript, Node 24) syncs every dispute from PayPal into Postgres (CloudNativePG; plain Postgres under Compose) as an index with a
 `tsvector` column; PayPal stays the source of truth. For a case it loads resolved cases of the same reason ranked by
-full-text similarity (the precedents), calls the Rust `decide` core over the versioned contract `decide.v1`
-(`contracts/decide.v1.md`), asks the LLM client for the draft, and serves a page (React 18 + TypeScript, built by Vite inside the Nix build and served from the same paths, with AG Grid React for All cases) with a case
-grid, a deadline timeline and a case panel. Writes go to PayPal only behind `confirm: true`, then the case is re-read.
-Everything runs in k3d; the PayPal mock stands in for PayPal and the OpenTelemetry collector receives traces.
+full-text similarity (the precedents), calls the Rust `decide` core over the versioned contract `decide.v2`
+(`contracts/decide.v2.md`), asks the LLM client for the draft, and serves a page (React 18 + TypeScript, built by Vite inside the Nix build and served from the same paths, with AG Grid React for All cases) with a case
+grid, a deadline timeline and a case panel. The desk also accepts PayPal dispute webhooks to refresh a case. Writes go to PayPal only behind `confirm: true`, then the case is re-read.
+Everything runs in k3d (or in Docker Compose); the PayPal mock stands in for PayPal and the OpenTelemetry collector receives traces.
 
 ```mermaid
 flowchart LR
@@ -59,9 +102,10 @@ flowchart LR
   end
   subgraph NS["k3d namespace dispute-and-payout-desk (platform modules, options only)"]
     DESK["desk: TypeScript API<br/>+ static page"]
-    DEC["decide: Rust core<br/>contract decide.v1"]
+    DEC["decide: Rust core<br/>contract decide.v2"]
     PG[("CNPG Postgres<br/>cases + tsvector")]
     MOCK["paypal-mock<br/>seeded synthetic disputes"]
+    CHAT["Owl chat<br/>tools: list, get, offer, evidence, accept"]
     OTEL["OTel collector"]
   end
   subgraph Shared["platform shared/ libraries"]
@@ -74,6 +118,8 @@ flowchart LR
   TL --> DESK
   CASE --> DESK
   DESK --> DEC
+  CHAT --> DESK
+  MOCK -. "CUSTOMER.DISPUTE.* webhooks" .-> DESK
   DESK --> PG
   DESK --- PPC
   DESK --- LLMC
@@ -96,62 +142,12 @@ flowchart TD
   H --> I
 ```
 
-## The decision: expected value
-
-With `A` the disputed amount, `F` the extra fee if the seller loses (default $0), `c` the handling cost of fighting
-(default $15.00) and `p` the probability of winning:
-
-- `p = (wins + k*p0) / (n + k)` with `k = 4`: the win rate of `n` similar resolved cases, pulled toward a prior `p0`.
-- `EV accept = -A`
-- `EV fight = -(1-p)*(A+F) - c`
-- fight when `EV fight > EV accept`, that is when `p*A - (1-p)*F - c > 0`. A margin under $5 is labelled marginal.
-
-The priors `p0` per reason are **an assumption, not PayPal data** (`decide/src/priors.rs`): not received 0.45 (0.60 with
-evidence), not as described 0.35 (0.45 with evidence), unauthorised 0.25, duplicate and credit not processed 0.30,
-cancelled recurring billing 0.40, anything else 0.35. The page lets the merchant override p0, c and F. All arithmetic is
-integer cents, rounded half away from zero.
-
-Worked example, $120 item-not-received with p0 0.55 and no precedents: `EV accept = -$120.00`,
-`EV fight = -(0.45)*120.00 - 15.00 = -$69.00`, so fight beats accept by `0.55*120 - 15 = +$51.00`. A $9 case at p0 0.35:
-`0.35*9 - 15 = -$11.85`, so accept. Lower c to $2 and `3.15 - 2 = +$1.15` flips it to fight (marginal).
-
-## Search
-
-Search is **Postgres full-text** (`tsvector`, `websearch_to_tsquery`, `ts_rank`, `ts_headline`) over the reason, buyer and
-seller messages, item descriptions and evidence notes. **Elastic is not used.** The same index ranks the precedents.
-
-## Synthetic data and guardrails
-
-- All disputes come from the shared PayPal mock, which serves the platform's shared dataset (merchant Ikigai Outfitters,
-  60 disputes, dates shifted so open deadlines are in the future). They are synthetic. Mock fidelity is marked unverified in places (error codes on writes, state transitions).
-- The page shows a "Synthetic disputes from the PayPal mock" banner whenever `PAYPAL_ENV` is `mock`.
-- Writes (`Submit evidence`, `Accept claim`) need a confirmation dialog in the page and `confirm: true` in the API.
-- The drafter is told to cite only evidence present in the case; the offline fallback never writes a tracking number the
-  case does not hold; the explanation restates the decision terms and does not invent numbers.
-- The page labels the draft source ("AI: llm <model>" or "AI: offline fallback").
-
-## Demo script (2-3 minutes)
-
-A deploy resets the demo: every desk pod start reseeds the mock from the shared dataset and clears saved drafts, evidence and sent responses. `nix run .#demo-reset` is still available to reset between takes (there is no reset button in the page); it reloads the shared dataset into the mock and syncs the desk. The three
-narrated cases are Sofia Lindqvist (gift card not received, USD 100), Marcus Bell (unauthorised big chargeback, USD 1,317)
-and Priya Nair (duplicate charge, USD 164). `nix run .#e2e` submits evidence on Marcus Bell's case and accepts Priya
-Nair's, so run `demo-reset` again after it.
-
-| Time | Do | Say |
-| --- | --- | --- |
-| 0:00-0:20 | Open the page and read the situation line. | A dispute is a deadline, an amount and no clear answer. |
-| 0:20-0:50 | Click Start with the most urgent case. | It lands on Sofia Lindqvist's gift card ($100, not received, due in about 2 days). |
-| 0:50-1:20 | Read the recommendation, then Show the math. | We recommend fighting, with the win chance from similar past cases; the math is behind the disclosure. The draft is written by the AI and cites only what is on the case. |
-| 1:20-1:50 | Open Marcus Bell's $1,317 chargeback, add the missing prior-orders proof, then Submit response to PayPal and confirm. | The checklist had one gap; once filled the response goes to PayPal and the PayPal API strip shows the call. |
-| 1:50-2:10 | Open Priya Nair's $164 duplicate charge. | Read the call, then change Cost to fight and watch the recommendation move. |
-| 2:10-2:40 | Show `nix run .#cluster-up`, `deploy`, `e2e` and this README. | Runs from a clone with Nix; k3d with CNPG Postgres; data is synthetic and writes need confirmation. |
-
-## Secrets
+## Environment and secrets
 
 None is required under the mock. At deploy time each name below is read from the caller's environment into the Kubernetes
 Secret `platform-env` (`injectEnv`: only names that are set; the deploy prints the names, never the values). Nothing is
 written to a file in this repository. Because `platform.paypalMock.injectEnv` is on, the mock wins over real PayPal
-credentials in the Secret; set it to `false` in `nix/project.nix` to use the sandbox.
+credentials in the Secret; set it to `false` in `nix/project.nix` to use the sandbox. The compose file sets the same names for the desk (`DATABASE_URL`, `DECIDE_URL`, `PAYPAL_*`, optional `LLM_*`).
 
 | Name                    | Required | What it enables                                                                  |
 | ----------------------- | -------- | -------------------------------------------------------------------------------- |
@@ -173,19 +169,12 @@ credentials in the Secret; set it to `false` in `nix/project.nix` to use the san
 | --- | --- |
 | `nix/project.nix` | Options only, plus the `e2e` script package. |
 | `desk/` | TypeScript API (`src/`), Vite + React page (`web/`), tests (`test/`, `web/**/*.test.tsx`). |
-| `decide/` | Rust core for contract `decide.v1`. |
+| `decide/` | Rust core for contract `decide.v2`. |
 | `contracts/` | Contract prose and the canonical golden cases; `decide/fixtures/` and `desk/test/fixtures/` hold copies, enforced identical by a flake check. |
+| `docker-compose.yml`, `desk/Dockerfile`, `decide/Dockerfile`, `mock/Dockerfile` | Run without Nix. |
+| `render.yaml` | Render Blueprint (free tier); not deployed from here. Needs the platform `shared/` vendored as `./platform/shared`. |
 | `scripts/e2e.sh` | The end-to-end script. |
-
-## Known gaps
-
-- Bryntum is not evaluated: the timeline is a plain HTML/CSS strip.
-- The sandbox path (real PayPal credentials) has not been run; there are no credentials yet.
-- No webhooks: the desk syncs on start and on `POST /api/sync` (button on the page).
-- Mock fidelity is unverified for write error codes and state transitions.
-- Evidence is text only (no file uploads); no auth on the desk; the priors are assumptions.
-- Not covered by tests: the Postgres queries (SQL) run only in the cluster e2e.
 
 ## Licence
 
-Apache-2.0, see `LICENSE`.
+MIT, see `LICENSE`. Copyright 2026 Ikigai Dynamics.
