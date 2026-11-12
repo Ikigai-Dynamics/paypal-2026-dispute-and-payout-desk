@@ -5,6 +5,7 @@ import {
   busyReply,
   chatRoutes,
   labelIds,
+  money,
   parseReply,
   validateActions,
   type CaseCtx,
@@ -221,5 +222,89 @@ describe("staged offer note", () => {
       (await offer({ ...ctx, call: "fight" }, 3000)).staged[0]!.note,
       "Parley's call on this case is Fight it.",
     );
+  });
+});
+
+describe("grounded chat", () => {
+  const mk = (id: string, buyer: string, item: string, cents: number, call: string, due: number, reason: string, offer?: number) => ({
+    id, buyer, item, amount_cents: cents, currency: "USD", call, due_in_days: due, reason,
+    status_group: "needs_you" as const, offer_cents: offer ?? null,
+  });
+  const list = [
+    mk("I", "Pat Lee", "Ikigai Gift Card", 10000, "fight", 3, "MERCHANDISE_OR_SERVICE_NOT_RECEIVED"),
+    mk("A", "Sam Alder", "Alder Boots", 16400, "accept", 1, "CREDIT_NOT_PROCESSED"),
+    mk("E", "Marcus Bell", "Ember Sleeping Bag", 17900, "offer", 5, "DUPLICATE_TRANSACTION", 9750),
+    mk("S1", "Ann Hill", "Summit Tent", 131700, "fight", 6, "UNAUTHORISED"),
+    mk("S2", "Bo Park", "Summit Tent", 60800, "fight", 7, "PAYMENT_BY_OTHER_MEANS"),
+  ];
+  const run = async (text: string, cases = list) => {
+    let llmCalls = 0;
+    const saved: { actions: string }[] = [];
+    const pool = {
+      async query(sql: string, params: unknown[] = []) {
+        if (sql.includes("from conversations where id"))
+          return { rows: [{ id: "1", title: "x", case_id: null }] };
+        if (sql.includes("select fact")) return { rows: [{ fact: "I always refund gift cards under $50" }] };
+        if (sql.includes("select role, text")) return { rows: [] };
+        if (sql.includes("insert into messages") && sql.includes("returning")) {
+          saved.push({ actions: params[2] as string });
+          return { rows: [{ id: "2", role: "parley", text: params[1], actions: JSON.parse(params[2] as string) }] };
+        }
+        return { rows: [] };
+      },
+    };
+    const llm = {
+      complete: async () => {
+        llmCalls++;
+        return { source: "llm", value: JSON.stringify({ reply: "Ok.", actions: [{ type: "make_dispute_offer", case_id: "S1", amount_cents: 25000 }] }) };
+      },
+    } as unknown as ChatDeps["llm"];
+    const req = Object.assign((async function* () { yield Buffer.from(JSON.stringify({ text })); })(), { method: "POST" });
+    const r = await chatRoutes(req, new URL("http://x/api/chat/conversations/1/messages"), {
+      pool, llm, loadCase: async (id) => { const c = cases.find((x) => x.id === id); return c ? { ...c, offer_cents: c.offer_cents ?? undefined } : null; },
+      listCases: async () => cases,
+    });
+    return { body: r!.body as any, llmCalls }; // eslint-disable-line @typescript-eslint/no-explicit-any
+  };
+
+  it("formats money with thousands separators", () => {
+    assert.equal(money(131700), "$1,317.00");
+  });
+  it("answers 'first' from the desk's call without the model", async () => {
+    const { body, llmCalls } = await run("Which case should I deal with first, and why?");
+    assert.equal(llmCalls, 0);
+    assert.match(body.message.text, /^Start with Alder Boots · Sam Alder · \$164\.00\. It's due tomorrow, and the desk's call is Refund in full\./);
+    assert.doesNotMatch(body.message.text, /Ikigai.*refund/i);
+    assert.deepEqual(body.ui_actions, [{ type: "select_case", id: "A" }]);
+  });
+  it("lists the refund cases outside the text", async () => {
+    const { body, llmCalls } = await run("Which cases should I just refund?");
+    assert.equal(llmCalls, 0);
+    assert.equal(body.message.text, "Refund these 1 in full:");
+    assert.deepEqual(body.list, [{ id: "A", line: "Alder Boots · Sam Alder · $164.00 · due tomorrow" }]);
+    assert.deepEqual(body.ui_actions[0], { type: "filter", ids: ["A"] });
+  });
+  it("says so when no case has that call", async () => {
+    const { body } = await run("Which should I offer on?", list.filter((c) => c.call !== "offer"));
+    assert.match(body.message.text, /^None of your open cases/);
+  });
+  it("stages on the case the text names, over the model's id", async () => {
+    const { body } = await run("Offer $250 on the Summit tent where they paid another way");
+    assert.equal(body.staged.length, 1);
+    assert.match(body.staged[0].desk.path, /\/S2\/offer$/);
+  });
+  it("asks which one when two cases tie", async () => {
+    const { body } = await run("Offer $250 on the Summit tent");
+    assert.equal(body.staged.length, 0);
+    assert.equal(body.message.text, "Which one do you mean?");
+    assert.deepEqual(body.list.map((l: { line: string }) => l.line), [
+      "Summit Tent · Unauthorised · $1,317.00",
+      "Summit Tent · Paid another way · $608.00",
+    ]);
+  });
+  it("collapses duplicated labels and bare ids", () => {
+    const cs = [{ id: "PP-D-1", buyer: "Ava Chen", item: "Boots", amount_cents: 5000 }];
+    assert.equal(labelIds("Refund Boots · Ava Chen · $50.00 (PP-D-1) now (PP-D-9).", cs), "Refund Boots · Ava Chen · $50.00 now.");
+    assert.equal(labelIds("Refund PP-D-1 (PP-D-1).", cs), "Refund Boots · Ava Chen · $50.00.");
   });
 });

@@ -177,7 +177,7 @@ drafts.onCost = (id, usd) => {
         status: 200,
         ms: 0,
         kind: "ai",
-        note: `AI drafted reply ($${usd.toFixed(2)})`,
+        note: `AI wrote a draft reply (${usd < 0.01 ? "under 1¢" : "$" + usd.toFixed(2)})`,
       });
     })
     .catch((e) => log({ msg: "ai cost not stored", error: String(e) }));
@@ -660,6 +660,8 @@ const chatDeps = {
       p: decisionCache.get(r.dispute_id)?.p ?? null,
       reason: r.reason,
       due_in_days: toView(r).days_left,
+      // past the deadline the desk lists it apart from the ones that need you
+      status_group: ((toView(r).days_left ?? 0) < 0 ? "waiting" : "needs_you") as "waiting" | "needs_you",
     })),
   loadCase: async (id: string) => {
     const row = await store.get(id);

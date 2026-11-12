@@ -38,6 +38,11 @@ export interface ChatDeps {
       call: string | null;
       offer_cents?: number | null;
       currency?: string;
+      p?: number | null;
+      reason?: string;
+      due_in_days?: number | null;
+      /** 'needs_you' for the desk's "Disputes that need you" list, else 'waiting' */
+      status_group?: "needs_you" | "waiting";
     }[]
   >;
 }
@@ -65,8 +70,25 @@ const OFFER_TYPES = [
   "REFUND_WITH_REPLACEMENT",
   "REPLACEMENT_WITHOUT_REFUND",
 ];
-const money = (c: number, cur = "USD") =>
-  `${cur === "USD" ? "$" : cur + " "}${(c / 100).toFixed(2)}`;
+export const money = (c: number, cur = "USD") =>
+  `${cur === "USD" ? "$" : cur + " "}${(c / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+// wording copied from the web app's format.ts (REASON_SHORT, REASONS); no web imports on the server
+const REASON_WORDS: Record<string, string> = {
+  MERCHANDISE_OR_SERVICE_NOT_RECEIVED: "Item not received",
+  MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED: "Not as described",
+  UNAUTHORISED: "Unauthorised",
+  DUPLICATE_TRANSACTION: "Duplicate charge",
+  CREDIT_NOT_PROCESSED: "Refund not processed",
+  OTHER: "Other",
+  PROBLEM_WITH_REMITTANCE: "Payment problem",
+  PAYMENT_BY_OTHER_MEANS: "Paid another way",
+  CANCELED_RECURRING_BILLING: "Cancelled subscription",
+};
+export const reasonWords = (r = "") =>
+  REASON_WORDS[r] ??
+  (r.replaceAll("_", " ").toLowerCase().replace(/^./, (m) => m.toUpperCase()) ||
+    "Unknown");
 /** "Ember 20F Sleeping Bag · Marcus Bell · $179.00": how replies name a case. */
 export const caseLabel = (c: {
   buyer: string;
@@ -86,7 +108,11 @@ export function labelIds(
   let out = text;
   for (const c of [...cases].sort((a, b) => b.id.length - a.id.length))
     out = out.split(c.id).join(caseLabel(c));
-  return out;
+  for (const c of cases) {
+    const l = caseLabel(c);
+    out = out.split(`${l} (${l})`).join(l);
+  }
+  return out.replace(/ \(PP-D-[A-Za-z0-9-]+\)/g, "");
 }
 
 /** The desk's call in words a seller uses. */
@@ -129,6 +155,40 @@ const ALIAS: Record<string, string> = {
   get_dispute: "select_case",
 };
 
+type ListedCase = Awaited<ReturnType<ChatDeps["listCases"]>>[number];
+const STOP = new Set(["the", "and", "for", "with", "offer", "refund", "send", "where", "they", "this", "that", "dispute", "case"]);
+const REASON_PHRASES: Record<string, string[]> = {
+  UNAUTHORISED: ["unauthorised", "unauthorized"],
+  MERCHANDISE_OR_SERVICE_NOT_RECEIVED: ["not received", "never arrived", "didn't arrive"],
+  MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED: ["not as described"],
+  DUPLICATE_TRANSACTION: ["duplicate"],
+  CREDIT_NOT_PROCESSED: ["refund not processed", "credit not processed"],
+  PAYMENT_BY_OTHER_MEANS: ["paid another way", "paid another", "other means"],
+  CANCELED_RECURRING_BILLING: ["cancelled", "canceled"],
+};
+
+/** Cases the text names best: item words, buyer name, reason words, amount. Empty when nothing matches. */
+export function resolveCase(userText: string, cases: ListedCase[]): string[] {
+  const t = userText.toLowerCase();
+  const words = new Set(t.match(/[a-z0-9']+/g) ?? []);
+  const nums = new Set(
+    (t.replaceAll(",", "").match(/\d+(?:\.\d+)?/g) ?? []).map(Number),
+  );
+  const score = (c: ListedCase) => {
+    let n = 0;
+    for (const w of (c.item ?? "").toLowerCase().match(/[a-z]{3,}/g) ?? [])
+      if (!STOP.has(w) && words.has(w)) n += 1;
+    for (const w of c.buyer.toLowerCase().match(/[a-z]{2,}/g) ?? [])
+      if (words.has(w)) n += 2;
+    if ((REASON_PHRASES[c.reason ?? ""] ?? []).some((p) => t.includes(p))) n += 3;
+    if (nums.has(c.amount_cents / 100)) n += 4;
+    return n;
+  };
+  const scored = cases.map((c) => [c, score(c)] as const);
+  const top = Math.max(0, ...scored.map(([, n]) => n));
+  return top ? scored.filter(([, n]) => n === top).map(([c]) => c.id) : [];
+}
+
 const TABS = ["overview", "evidence", "buyer", "timeline", "draft", "math"];
 
 /** Turns raw model actions into allowed ones; staged actions are described, never run. */
@@ -136,7 +196,15 @@ export async function validateActions(
   raw: unknown[],
   deps: Pick<ChatDeps, "loadCase" | "listCases">,
   openCase?: string,
-): Promise<{ ui: UiAction[]; staged: Staged[]; remember: string[] }> {
+  userText?: string,
+): Promise<{
+  ui: UiAction[];
+  staged: Staged[];
+  remember: string[];
+  /** ids the text matched equally; nothing was staged for them */
+  ambiguous?: string[];
+}> {
+  let ambiguous: string[] | undefined;
   const ui: UiAction[] = [];
   const staged: Staged[] = [];
   const remember: string[] = [];
@@ -183,7 +251,15 @@ export async function validateActions(
       case "make_dispute_offer":
       case "provide_dispute_evidence":
       case "accept_dispute_claim": {
-        const id = str("case_id") || openCase || "";
+        let id = str("case_id") || openCase || "";
+        if (userText) {
+          const hit = resolveCase(userText, await deps.listCases());
+          if (hit.length > 1) {
+            ambiguous = hit;
+            break;
+          }
+          if (hit.length === 1) id = hit[0]!;
+        }
         const c = id ? await deps.loadCase(id) : null;
         if (!c) break;
         const on = c.item ? `the ${c.item} dispute` : "this dispute";
@@ -274,14 +350,64 @@ export async function validateActions(
       }
     }
   }
-  return { ui, staged, remember };
+  return { ui, staged, remember, ...(ambiguous ? { ambiguous } : {}) };
+}
+
+const dueWords = (d: number | null | undefined) =>
+  d == null ? "soon" : d <= 0 ? "today" : d === 1 ? "tomorrow" : `in ${d} days`;
+const listLine = (c: ListedCase) =>
+  `${[c.item, c.buyer].filter(Boolean).join(" · ")} · ${money(c.amount_cents, c.currency)} · due ${dueWords(c.due_in_days)}`;
+const sortCases = (cases: ListedCase[]) =>
+  [...cases].sort(
+    (a, b) =>
+      Number(a.status_group === "waiting") - Number(b.status_group === "waiting") ||
+      (a.due_in_days ?? Infinity) - (b.due_in_days ?? Infinity),
+  );
+
+/** Answers that need no model: the desk already decided. */
+function deterministic(
+  text: string,
+  all: ListedCase[],
+): { reply: string; raw: unknown[]; list?: { id: string; line: string }[] } | null {
+  const t = text.toLowerCase();
+  const open = sortCases(all).filter((c) => c.status_group !== "waiting");
+  const words = (c: ListedCase) => callWords(c.call, c.offer_cents ?? undefined, c.currency);
+  if (/first|most urgent|priorit|start with/.test(t) && open[0]) {
+    const [a, b] = open;
+    return {
+      reply:
+        `Start with ${caseLabel(a!)}. It's due ${dueWords(a!.due_in_days)}, and the desk's call is ${words(a!)}.` +
+        (b ? ` Next up is ${caseLabel(b)}, due ${dueWords(b.due_in_days)}.` : ""),
+      raw: [{ type: "select_case", id: a!.id }],
+    };
+  }
+  const kind = /which\b[^.?]*\brefund|just refund/.test(t)
+    ? (["accept", "Refund these", "in full"] as const)
+    : /which\b[^.?]*\boffer/.test(t)
+      ? (["offer", "Make an offer on these", ""] as const)
+      : /which\b[^.?]*\bfight/.test(t)
+        ? (["fight", "Fight these", ""] as const)
+        : null;
+  if (!kind) return null;
+  const hit = open.filter((c) => c.call === kind[0]);
+  if (!hit.length)
+    return { reply: "None of your open cases has that call right now.", raw: [] };
+  return {
+    reply: `${kind[1]} ${hit.length}${kind[2] ? " " + kind[2] : ""}:`,
+    raw: [
+      { type: "filter", ids: hit.map((c) => c.id) },
+      { type: "select_case", id: hit[0]!.id },
+    ],
+    list: hit.map((c) => ({ id: c.id, line: listLine(c) })),
+  };
 }
 
 const SYSTEM = `You are Parley, a calm, dry snowy-owl dispute advisor for a PayPal seller. Keep answers to one to three short sentences. Name a case by item, buyer and amount, like \"Ember 20F Sleeping Bag · Marcus Bell · $179.00\", and never write its PP-D id in the reply (ids belong only in actions). Never invent money: every number comes from the case facts below. A "call" of accept means refund or accept the claim; fight means send evidence.
 Reply ONLY with JSON: {"reply": "...", "actions": [...]}. Allowed actions:
 {"type":"select_case","id":"<case id>"}, {"type":"open_tab","tab":"overview|evidence|buyer|timeline|draft|math"}, {"type":"filter","ids":["<case id>"]} (ids null clears), {"type":"highlight_evidence"}, {"type":"remember","fact":"..."},
 {"type":"make_dispute_offer","case_id":"..","amount_cents":<int>,"offer_type":"REFUND"}, {"type":"provide_dispute_evidence","case_id":".."}, {"type":"accept_dispute_claim","case_id":".."}, {"type":"get_dispute","case_id":".."}, {"type":"list_disputes"}.
-The make_dispute_offer, provide_dispute_evidence and accept_dispute_claim actions only propose a card; the seller must approve it. get_dispute and list_disputes just read. Use no action when none is needed. When asked which disputes to refund or offer on, answer in the reply and send a filter action with those case ids. When asked to send an offer, send make_dispute_offer for that case (find it by item or buyer in the case list).`;
+The make_dispute_offer, provide_dispute_evidence and accept_dispute_claim actions only propose a card; the seller must approve it. get_dispute and list_disputes just read. Use no action when none is needed. When asked which disputes to refund or offer on, answer in the reply and send a filter action with those case ids. When asked to send an offer, send make_dispute_offer for that case (find it by item or buyer in the case list).
+The call on each case is the desk's decision: quote it, never contradict it. A remembered seller rule applies only when every condition in it matches the case ("under $50" does not match $100). If a rule conflicts with the desk's call, give the desk's call and mention the rule.`;
 
 /** What Parley says when the AI call fails. */
 export const busyReply = (ctx: CaseCtx | null): string =>
@@ -444,10 +570,14 @@ async function postMessage(
 
   let reply = "";
   let raw: unknown[] = [];
+  let list: { id: string; line: string }[] | undefined;
+  let det: ReturnType<typeof deterministic>;
   const rem = /^\s*remember\b[\s,:]*(?:that\s+)?(.+)$/is.exec(text);
   if (rem) {
     raw = [{ type: "remember", fact: rem[1] }];
     reply = "Noted. I will keep that in mind.";
+  } else if ((det = deterministic(text, await deps.listCases()))) {
+    ({ reply, raw, list } = det);
   } else {
     const hist = (
       await db.query(
@@ -463,7 +593,7 @@ async function postMessage(
       facts.length
         ? `What you know about the seller:\n- ${facts.join("\n- ")}`
         : "",
-      `Cases: ${cases.map((x) => `id=${x.id} label=\"${caseLabel(x)}\" call=${callWords(x.call, x.offer_cents ?? undefined, x.currency)}`).join("; ") || "none"}`,
+      `Cases:\n${sortCases(cases).map((x) => `id=${x.id} label="${caseLabel(x)}" reason="${reasonWords(x.reason)}" due_in_days=${x.due_in_days ?? "unknown"} group=${x.status_group ?? "needs_you"} call="${callWords(x.call, x.offer_cents ?? undefined, x.currency)}"${typeof x.p === "number" ? ` win=${Math.round(x.p * 100)}%` : ""}`).join("\n") || "none"}`,
       ctx
         ? `Open case ${ctx.id}: ${ctx.buyer}${ctx.item ? ` (${ctx.item})` : ""}, ${money(ctx.amount_cents, ctx.currency)}, reason ${ctx.reason}, call ${ctx.call ?? "unknown"}` +
           (ctx.p !== undefined
@@ -509,13 +639,29 @@ async function postMessage(
       reply = busyReply(ctx);
     }
   }
-  const { ui, staged, remember } = await validateActions(raw, deps, caseId);
+  const { ui, staged, remember, ambiguous } = await validateActions(
+    raw,
+    deps,
+    caseId,
+    text,
+  );
+  if (ambiguous) {
+    const all = await deps.listCases();
+    reply = "Which one do you mean?";
+    list = ambiguous.map((id) => {
+      const c = all.find((x) => x.id === id)!;
+      return {
+        id,
+        line: `${c.item ?? c.buyer} · ${reasonWords(c.reason)} · ${money(c.amount_cents, c.currency)}`,
+      };
+    });
+  }
   for (const f of remember)
     await db.query(`insert into memory(fact) values ($1)`, [f]);
   const saved = (
     await db.query(
       `insert into messages(conversation_id, role, text, actions) values ($1,'parley',$2,$3) returning id::text, role, text, actions, at`,
-      [cid, reply || "Done.", JSON.stringify({ ui, staged })],
+      [cid, reply || "Done.", JSON.stringify({ ui, staged, ...(list ? { list } : {}) })],
     )
   ).rows[0];
   await db.query(`update conversations set updated_at = now() where id = $1`, [
@@ -523,6 +669,12 @@ async function postMessage(
   ]);
   return {
     status: 200,
-    body: { message: saved, ui_actions: ui, staged, remembered: remember },
+    body: {
+      message: saved,
+      ui_actions: ui,
+      staged,
+      remembered: remember,
+      ...(list ? { list } : {}),
+    },
   };
 }
