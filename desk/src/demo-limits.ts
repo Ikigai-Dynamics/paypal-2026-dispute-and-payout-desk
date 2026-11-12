@@ -9,7 +9,7 @@ const COOKIE = "parley_demo";
 const LIMITS = {
   api: { max: 240, windowMs: 60_000 }, // every /api request
   ai: { max: 30, windowMs: SESSION_MS }, // chat messages, drafts, checks
-  start: { max: 3, windowMs: 60 * 60_000 }, // new sessions
+  start: { max: 10, windowMs: 60 * 60_000 }, // new sessions (several judges may share one office address)
 };
 const RESET_COOLDOWN_MS = 2 * 60_000; // one shared demo: one reset every 2 minutes for everybody
 // what works without a session: the page's own status calls, the docs, and PayPal's webhooks

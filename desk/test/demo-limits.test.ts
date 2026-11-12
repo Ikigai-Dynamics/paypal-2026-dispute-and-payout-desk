@@ -29,7 +29,7 @@ describe("demo limits", () => {
     let t = 0;
     const g = createDemoLimits(() => t);
     let c = "";
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 10; i++) {
       t += SESSION_MS + 1;
       c = cookieOf(g.check(req("POST"), "/api/demo/start", "a"));
     }
