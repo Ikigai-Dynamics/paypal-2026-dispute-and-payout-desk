@@ -205,15 +205,18 @@ export async function findPrecedents(
 }
 
 export async function decideFor(
-  deps: Pick<AnalysisDeps, "decideUrl">,
+  deps: Pick<AnalysisDeps, "decideUrl"> & { store?: PgStore },
   row: CaseRow,
   precedents: Precedent[],
   o: DecideOptions,
 ): Promise<Decision | null> {
   try {
+    // the AI cost already spent on this case goes into the fight cost
+    const aiCostCents =
+      o.aiCostCents ?? (await deps.store?.aiCostCents(row.dispute_id)) ?? 0;
     return await callDecide(
       deps.decideUrl,
-      buildDecideRequest(row, precedents, o),
+      buildDecideRequest(row, precedents, { ...o, aiCostCents }),
     );
   } catch {
     return null;

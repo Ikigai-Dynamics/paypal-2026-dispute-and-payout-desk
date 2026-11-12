@@ -19,3 +19,13 @@ pub fn prior_bp(reason: &str, evidence_on_file: bool) -> u32 {
         _ => 3500,
     }
 }
+
+/// Reasons with their own entry in the table (anything else uses the default entry).
+pub const REASONS: [&str; 6] = [
+    "MERCHANDISE_OR_SERVICE_NOT_RECEIVED",
+    "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED",
+    "UNAUTHORISED",
+    "DUPLICATE_TRANSACTION",
+    "CREDIT_NOT_PROCESSED",
+    "CANCELED_RECURRING_BILLING",
+];

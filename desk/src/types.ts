@@ -41,6 +41,13 @@ export interface CaseView {
   buyer_history?: BuyerOrder[];
   /** disputes of this buyer waiting for a response, this case included */
   buyer_open_disputes?: number;
+  /** Parley's call on the list rows: "fight", "accept" or "offer", null while undecided */
+  call?: string | null;
+  offer_cents?: number | null;
+  p?: number | null;
+  p_lo?: number | null;
+  p_hi?: number | null;
+  keep_cents?: number | null;
 }
 
 export interface BuyerOrder {
@@ -58,24 +65,51 @@ export interface Precedent {
   snippet: string;
 }
 
+export interface Assumption {
+  id: string;
+  value: number;
+  unit: string;
+  source: string;
+}
+
+export interface Offer {
+  amount_cents: number;
+  /** estimated chance the buyer takes it */
+  q: number;
+  ev_cents: number;
+}
+
 export interface Decision {
-  contract: "decide.v1";
+  contract: "decide.v2";
+  core_version: string;
+  assumptions_version: string;
   p0: number;
   p0_source: string;
   k: number;
   wins: number;
   n: number;
+  /** estimated chance of winning, with an 80% range */
   p: number;
+  p_lo: number;
+  p_hi: number;
+  ai_cost_cents: number;
+  fight_cost_cents: number;
   ev_accept_cents: number;
   ev_fight_cents: number;
+  ev_offer_cents: number | null;
+  /** the best partial refund found; it is the call only when call is "offer" */
+  offer: Offer | null;
   margin_cents: number;
   marginal: boolean;
-  call: "fight" | "accept";
+  call: "fight" | "accept" | "offer";
+  /** the money the seller likely keeps: amount plus the EV of the call */
+  keep_cents: number;
+  assumptions: Assumption[];
   terms: string[];
 }
 
 export interface DecideRequest {
-  contract: "decide.v1";
+  contract: "decide.v2";
   amount_cents: number;
   currency: string;
   reason: string;
@@ -83,6 +117,7 @@ export interface DecideRequest {
   evidence_on_file: boolean;
   prior: number | null;
   handling_cost_cents: number;
+  ai_cost_cents: number;
   fee_if_lost_cents: number;
   precedents: { dispute_id: string; won: boolean }[];
 }
@@ -111,6 +146,8 @@ export interface Draft {
   /** "AI draft", "AI draft, updated with your evidence", "Drafted from the case facts" / "Drafted from your evidence" or "Template draft (AI unavailable)", shown verbatim next to the text */
   label: string;
   model?: string;
+  /** USD this draft cost to write (all model calls, retries included); 0 for a fallback */
+  cost_usd?: number;
   error?: string;
   /** set on a fallback: the model call failed, or nothing it wrote was grounded */
   fallback_reason?: "ai_down" | "grounding";

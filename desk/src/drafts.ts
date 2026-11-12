@@ -21,6 +21,8 @@ export class DraftCache {
   lastOk: boolean | null = null;
   /** called after every real completion, so the page can re-probe at once on a failure */
   onResult?: (ok: boolean) => void;
+  /** called with the USD a real draft cost, so the caller can add it to the case's total */
+  onCost?: (disputeId: string, usd: number) => void;
 
   /** the stored source of each case's latest draft, so a first edit is labelled by what it edits */
   readonly lastSource = new Map<string, "llm" | "fallback" | "grounded">();
@@ -84,6 +86,7 @@ export class DraftCache {
             : "fallback",
       );
       this.onResult?.(this.lastOk);
+      if (d.cost_usd) this.onCost?.(c.dispute_id, d.cost_usd);
       if (d.source === "llm") {
         if (this.done.size >= MAX) this.done.clear();
         this.done.set(key, { draft: d, knobs });
