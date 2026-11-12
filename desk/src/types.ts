@@ -127,7 +127,7 @@ export interface DecideRequest {
   fee_if_lost_cents: number;
   precedents: { dispute_id: string; won: boolean }[];
   /** orders and disputes with this seller, counted as the Buyer tab counts them */
-  buyer_orders: number;
+  buyer_orders?: number;
   buyer_disputes: number;
 }
 

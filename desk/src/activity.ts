@@ -10,8 +10,8 @@ export interface Call {
   buyer: string | null;
   amount_cents: number | null;
   currency: string | null;
-  /** 'paypal' for a call to PayPal, 'webhook' for an event PayPal sent us. */
-  kind: "paypal" | "webhook";
+  /** 'paypal' for a call to PayPal, 'webhook' for an event PayPal sent us, 'ai' for a kept draft, 'approval' for a confirmed write. */
+  kind: "paypal" | "webhook" | "ai" | "approval";
   /** what the call was for, e.g. "offer" */
   note: string | null;
 }
@@ -124,7 +124,10 @@ export async function list(limit = 20): Promise<Call[]> {
             ? Number(c.amount_cents)
             : null,
       currency: x.own_cur ?? c?.currency ?? null,
-      kind: x.kind === "webhook" ? "webhook" : "paypal",
+      kind:
+        x.kind === "webhook" || x.kind === "ai" || x.kind === "approval"
+          ? x.kind
+          : "paypal",
       note: x.note ?? null,
     };
   });

@@ -1,4 +1,5 @@
 import type { Llm } from "@jeirslab/llm-client";
+import type { PayPalClient } from "@jeirslab/paypal-client";
 import {
   buildDecideRequest,
   callDecide,
@@ -173,6 +174,10 @@ export interface AnalysisDeps {
   store: PgStore;
   llm: Llm;
   decideUrl: string;
+  /** buyer order count, see DecideDeps */
+  orders?: (row: CaseRow, others: CaseRow[]) => Promise<number | null>;
+  /** the case's cached default decision; used instead of a fresh call when the options are the defaults */
+  decide?: (row: CaseRow) => Promise<Decision | null>;
   /** replaces the plain LLM draft, e.g. with a cached one */
   draft?: (
     view: CaseView,
@@ -204,29 +209,99 @@ export async function findPrecedents(
   return rows.map((r) => toPrecedent(r, row.reason));
 }
 
+type DecideDeps = Pick<AnalysisDeps, "decideUrl"> & {
+  store?: PgStore;
+  /** the buyer's real order count with this seller, or null when unknown */
+  orders?: (row: CaseRow, others: CaseRow[]) => Promise<number | null>;
+};
+
+/** The buyer's two numbers: disputes in the index (this case included) and orders (null when unknown). One place, so the decision, the case view and the Buyer tab agree. */
+export async function buyerCounts(
+  deps: { store?: Pick<PgStore, "byBuyer"> } & Pick<DecideDeps, "orders">,
+  row: CaseRow,
+): Promise<{ orders: number | null; disputes: number }> {
+  const others = (await deps.store?.byBuyer(row.buyer, row.dispute_id)) ?? [];
+  const disputes = 1 + others.length;
+  const orders = (await deps.orders?.(row, others)) ?? null;
+  return {
+    orders: orders != null && orders >= disputes ? orders : null,
+    disputes,
+  };
+}
+
+/** The decide.v2 request for a case, with the stored AI cost and the buyer's counts filled in. */
+export async function requestFor(
+  deps: DecideDeps,
+  row: CaseRow,
+  precedents: Precedent[],
+  o: DecideOptions,
+) {
+  // the AI cost already spent on this case goes into the fight cost
+  const aiCostCents =
+    o.aiCostCents ?? (await deps.store?.aiCostCents(row.dispute_id)) ?? 0;
+  const b = await buyerCounts(deps, row);
+  return buildDecideRequest(row, precedents, {
+    ...o,
+    aiCostCents,
+    buyerOrders: b.orders,
+    buyerDisputes: b.disputes,
+  });
+}
+
 export async function decideFor(
-  deps: Pick<AnalysisDeps, "decideUrl"> & { store?: PgStore },
+  deps: DecideDeps,
   row: CaseRow,
   precedents: Precedent[],
   o: DecideOptions,
 ): Promise<Decision | null> {
   try {
-    // the AI cost already spent on this case goes into the fight cost
-    const aiCostCents =
-      o.aiCostCents ?? (await deps.store?.aiCostCents(row.dispute_id)) ?? 0;
-    // orders and disputes are the same count here, as on the Buyer tab: this case and the buyer's others
-    const others = (await deps.store?.byBuyer(row.buyer, row.dispute_id)) ?? [];
     return await callDecide(
       deps.decideUrl,
-      buildDecideRequest(row, precedents, {
-        ...o,
-        aiCostCents,
-        buyerCases: 1 + others.length,
-      }),
+      await requestFor(deps, row, precedents, o),
     );
   } catch {
     return null;
   }
+}
+
+/** Counts a buyer's payments to this seller in the 31 days up to their latest disputed one; cached per buyer. */
+export function orderCounter(paypal: PayPalClient, ttlMs = 600_000) {
+  const cache = new Map<string, { at: number; n: number | null }>();
+  const count = async (row: CaseRow, others: CaseRow[]) => {
+    const times = [row, ...others]
+      .map((r) =>
+        Date.parse(r.raw.disputed_transactions?.[0]?.create_time ?? ""),
+      )
+      .filter(Number.isFinite);
+    if (!times.length) return null;
+    const end = Math.max(...times) + 86_400_000;
+    try {
+      const r = await paypal.transactions.search({
+        start_date: new Date(end - 31 * 86_400_000).toISOString(),
+        end_date: new Date(end).toISOString(),
+        page_size: 500,
+      });
+      return r.transaction_details.filter(
+        (t) =>
+          t.transaction_info.transaction_event_code === "T0006" &&
+          (t.shipping_info?.name === row.buyer ||
+            `${t.payer_info?.payer_name?.given_name} ${t.payer_info?.payer_name?.surname}` ===
+              row.buyer),
+      ).length;
+    } catch {
+      return null;
+    }
+  };
+  return Object.assign(
+    async (row: CaseRow, others: CaseRow[]) => {
+      const hit = cache.get(row.buyer);
+      if (hit && Date.now() - hit.at < ttlMs) return hit.n;
+      const n = await count(row, others);
+      if (n !== null) cache.set(row.buyer, { at: Date.now(), n });
+      return n;
+    },
+    { clear: () => cache.clear() },
+  );
 }
 
 /** The case view plus the buyer's earlier orders the desk knows of. */
@@ -250,7 +325,9 @@ export async function analyse(
   added: Added[] = [],
 ): Promise<Analysis> {
   const precedents = await findPrecedents(deps.store, row);
-  const decision = await decideFor(deps, row, precedents, o);
+  const decision = deps.decide
+    ? await deps.decide(row)
+    : await decideFor(deps, row, precedents, o);
   const view = await viewOf(deps.store, row);
   const draft = deps.draft
     ? await deps.draft(view, decision, precedents, o, added)

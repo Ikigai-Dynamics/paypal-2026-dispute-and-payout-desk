@@ -55,7 +55,7 @@ describe("decide.v2 client", () => {
     const req = buildDecideRequest(
       toRow(dispute),
       [{ dispute_id: "a", won: true }],
-      { prior: 0.5 },
+      { prior: 0.5, buyerOrders: 3, buyerDisputes: 1 },
     );
     const keys = Object.keys(req).sort();
     for (const g of golden)
