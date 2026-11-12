@@ -2,7 +2,9 @@ import React, { useEffect, useRef } from "react";
 import type { Claim } from "../lib/api";
 
 export type ConfirmSendBoxProps = {
-  kind: "evidence" | "accept";
+  kind: "evidence" | "accept" | "offer";
+  /** the exact PayPal call this click sends */
+  call?: string;
   text: string;
   okLabel: string;
   claims: Claim[];
@@ -55,6 +57,7 @@ export function ConfirmSendBox(p: ConfirmSendBoxProps) {
       onKeyDown={(e) => e.key === "Escape" && p.onCancel()}
     >
       <p id="confirm-text">{p.text}</p>
+      {p.call && <code>{p.call}</code>}
       {p.claims.length > 0 && (
         <div>
           {block(

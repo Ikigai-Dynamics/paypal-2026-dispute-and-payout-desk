@@ -10,7 +10,7 @@ import {
 } from "../lib/api";
 import { money, needsResponse } from "../lib/format";
 
-export type Pending = "evidence" | "accept" | null;
+export type Pending = "evidence" | "accept" | "offer" | null;
 
 /** Everything the open case keeps between renders; a fresh object per case id. */
 interface State {
@@ -23,7 +23,7 @@ interface State {
   fightAnyway: boolean;
   sent: string | null;
   sentText: string | null;
-  sentKind: "evidence" | "accept" | null;
+  sentKind: "evidence" | "accept" | "offer" | null;
   sentEvidence: AddedEvidence[];
   work: Analysis["work"];
   editedLocal: boolean;
@@ -34,6 +34,8 @@ interface State {
   vouched: string[];
   claims: Claim[];
   pending: Pending;
+  /** the amount of the offer waiting for the seller's click */
+  offerCents: number;
   loading: boolean;
   drafting: boolean;
   busy: boolean;
@@ -71,6 +73,7 @@ const fresh = (id: string): State => ({
   vouched: [],
   claims: [],
   pending: null,
+  offerCents: 0,
   loading: true,
   drafting: false,
   busy: false,
@@ -320,8 +323,8 @@ export function useCase(
   }
 
   // checks first, then asks inside the page; run() sends once the person agrees
-  async function act(kind: "evidence" | "accept") {
-    set({ claims: [] });
+  async function act(kind: "evidence" | "accept" | "offer", offerCents = 0) {
+    set({ claims: [], offerCents });
     if (kind === "evidence") {
       set({ busy: true });
       await checkDraft();
@@ -357,6 +360,8 @@ export function useCase(
       if (files.length) body.files = files;
       if (vouchedNow.length) body.vouched = vouchedNow;
       if (attestedNow.length) body.attested = attestedNow;
+    } else if (kind === "offer") {
+      body = { confirm: true, amount_cents: s.offerCents };
     } else {
       body = { note: "Accepted by the seller from the desk", confirm: true };
     }
@@ -379,7 +384,7 @@ export function useCase(
         busy: false,
         pending: null,
         claims: [],
-        actionError: `PayPal did not accept the ${kind === "evidence" ? "response" : "refund"}${why}`,
+        actionError: `PayPal did not accept the ${kind === "evidence" ? "response" : kind === "offer" ? "offer" : "refund"}${why}`,
       });
       return;
     }
@@ -392,7 +397,9 @@ export function useCase(
       sent:
         kind === "evidence"
           ? "Sent to PayPal. The case is now under review; PayPal decides within about 30 days."
-          : "Refund sent. The case is closed.",
+          : kind === "offer"
+            ? "Offer sent through PayPal"
+            : "Refund sent. The case is closed.",
       added: new Map(),
     };
     if (kind === "evidence") {
@@ -475,6 +482,7 @@ export function useCase(
     draftNote: s.draftNote,
     claims: s.claims,
     pending: s.pending,
+    offerCents: s.offerCents,
     drafting: s.drafting,
     busy: s.busy,
     dim: s.loading || s.drafting,

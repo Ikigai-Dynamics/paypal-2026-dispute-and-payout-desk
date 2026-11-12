@@ -6,16 +6,16 @@ import {
   type GridApi,
 } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
-import { api, post, type CaseSummary, type Summary } from "../lib/api";
+import { api, post, type CaseSummary } from "../lib/api";
 import {
   dateShort,
   money,
   needsResponse,
   reasonWords,
-  rec,
+  callKind,
+  callWords,
   statusWords,
 } from "../lib/format";
-import { bucketLine } from "../hooks/useCases";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
@@ -62,11 +62,11 @@ const columns: ColDef<CaseSummary>[] = [
     valueFormatter: (p) => (p.value ? dateShort(p.value) : ""),
   },
   {
-    headerName: "Recommendation",
+    headerName: "Parley's call",
     width: 170,
     valueGetter: (p) =>
-      p.data!.call || needsResponse(p.data!) ? rec(p.data!.call).label : "—",
-    cellClass: (p) => "cell-" + rec(p.data!.call).kind,
+      p.data!.call || needsResponse(p.data!) ? callWords(p.data!) : "—",
+    cellClass: (p) => "cell-" + (callKind(p.data!.call) ?? "none"),
   },
   {
     headerName: "Status",
@@ -88,12 +88,10 @@ const Snippet = ({ text }: { text: string }) => (
 
 export function AllCases({
   cases,
-  summary,
   onOpen,
   onReload,
 }: {
   cases: CaseSummary[];
-  summary: Summary | null;
   onOpen(id: string): void;
   onReload(): Promise<void>;
 }) {
@@ -131,14 +129,12 @@ export function AllCases({
   const rows = Math.min(15, Math.max(1, shown));
   return (
     <details
-      className="card"
+      className="card alld"
       open={open}
       onToggle={(e) => setOpen(e.currentTarget.open)}
     >
       <summary>
-        {summary
-          ? `All cases (${summary.total}): ${bucketLine(summary)}`
-          : `All cases (${cases.length})`}
+        All disputes ({cases.length})
       </summary>
       <section className="bar">
         <form onSubmit={search}>

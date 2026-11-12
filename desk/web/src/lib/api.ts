@@ -45,6 +45,12 @@ export interface CaseSummary {
   evidence_on_file: boolean;
   call?: string | null;
   margin_cents?: number | null;
+  /** Parley's call in the list (decide.v2): the offer, the win chance with its interval, what is likely kept */
+  offer_cents?: number | null;
+  p?: number | null;
+  p_lo?: number | null;
+  p_hi?: number | null;
+  keep_cents?: number | null;
 }
 
 export interface Summary {
@@ -117,8 +123,36 @@ export interface Decision {
   ev_fight_cents: number;
   margin_cents: number;
   marginal: boolean;
-  call: "fight" | "accept";
+  call: "fight" | "accept" | "offer";
   terms: string[];
+  // decide.v2; every field may be missing on an older core
+  p_lo?: number;
+  p_hi?: number;
+  offer?: { amount_cents: number; q: number; ev_cents: number } | null;
+  keep_cents?: number;
+  ai_cost_cents?: number;
+  assumptions?: Assumption[];
+}
+
+export interface Assumption {
+  id: string;
+  value: string | number;
+  unit?: string;
+  source?: string;
+}
+
+/** GET /api/cases/:id/buyer: what PayPal lets a seller see about the buyer */
+export interface BuyerInfo {
+  name?: string;
+  account_status?: string;
+  payer_id?: string;
+  email?: string;
+  country?: string;
+  ship_to?: string;
+  orders?: number;
+  disputes?: number;
+  first_order?: string;
+  address_matches?: boolean | null;
 }
 
 export interface ChecklistItem {

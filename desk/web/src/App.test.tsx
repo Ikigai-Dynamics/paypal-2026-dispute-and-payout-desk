@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, render, screen } from "@testing-library/react";
 import { App } from "./App";
 
-// the grid and the case page have their own tests; here only the banners matter
+// the grid and the case panel have their own tests; here only the banners matter
 vi.mock("./components/AllCases", () => ({ AllCases: () => null }));
-vi.mock("./case/CasePage", () => ({ CasePage: () => <div>case page</div> }));
+vi.mock("./case/CasePanel", () => ({ CasePanel: () => <div>case page</div> }));
 
 const UNREACHABLE = /PayPal is unreachable right now/;
 const RESET = /The desk was reset since you opened this page/;
