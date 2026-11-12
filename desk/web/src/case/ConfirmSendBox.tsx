@@ -23,6 +23,17 @@ const reasonLines = (reason: string) =>
     .filter(Boolean)
     .map((p) => p.replace(/\.$/, ""));
 
+// "POST /path {json}" -> method and path, then the JSON indented
+const prettyCall = (call: string) => {
+  const i = call.indexOf("{");
+  if (i < 0) return call;
+  try {
+    return `${call.slice(0, i).trim()}\n${JSON.stringify(JSON.parse(call.slice(i)), null, 2)}`;
+  } catch {
+    return call;
+  }
+};
+
 export function ConfirmSendBox(p: ConfirmSendBoxProps) {
   const okRef = useRef<HTMLButtonElement>(null);
   useEffect(() => okRef.current?.focus(), []);
@@ -57,7 +68,12 @@ export function ConfirmSendBox(p: ConfirmSendBoxProps) {
       onKeyDown={(e) => e.key === "Escape" && p.onCancel()}
     >
       <p id="confirm-text">{p.text}</p>
-      {p.call && <code>{p.call}</code>}
+      {p.call && (
+        <details>
+          <summary>Show the PayPal call</summary>
+          <pre>{prettyCall(p.call)}</pre>
+        </details>
+      )}
       {p.claims.length > 0 && (
         <div>
           {block(
@@ -72,7 +88,7 @@ export function ConfirmSendBox(p: ConfirmSendBoxProps) {
           )}
           <p className="muted">
             Fix these sentences in your draft, or tick the box under each.{" "}
-            <button type="button" onClick={p.onRecheck}>
+            <button type="button" className="btn" onClick={p.onRecheck}>
               Check again
             </button>
           </p>
@@ -81,14 +97,14 @@ export function ConfirmSendBox(p: ConfirmSendBoxProps) {
       <div className="actions">
         <button
           ref={okRef}
-          className="primary"
+          className="btn primary"
           type="button"
           disabled={p.busy || p.claims.some((c) => !c.ok)}
           onClick={p.onConfirm}
         >
           {p.okLabel}
         </button>
-        <button type="button" onClick={p.onCancel}>
+        <button type="button" className="btn" onClick={p.onCancel}>
           Cancel
         </button>
       </div>

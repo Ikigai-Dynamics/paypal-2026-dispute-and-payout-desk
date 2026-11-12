@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, type CaseSummary, type Summary } from "../lib/api";
-import { needsResponse, sentence } from "../lib/format";
+import { isWaiting, needsResponse, sentence } from "../lib/format";
 
 export const byDue = (a: CaseSummary, b: CaseSummary) =>
   (Date.parse(a.due_at ?? "") || Infinity) -
@@ -9,6 +9,8 @@ export const missedDeadline = (c: CaseSummary) =>
   needsResponse(c) && !!c.due_at && Date.parse(c.due_at) < Date.now();
 export const needing = (cases: CaseSummary[]) =>
   cases.filter((c) => needsResponse(c) && !missedDeadline(c)).sort(byDue);
+export const waitingList = (cases: CaseSummary[]) =>
+  cases.filter(isWaiting).sort(byDue);
 export const missedList = (cases: CaseSummary[]) =>
   cases.filter(missedDeadline).sort(byDue);
 // the soonest-due case recommended for a fight, else the first card shown

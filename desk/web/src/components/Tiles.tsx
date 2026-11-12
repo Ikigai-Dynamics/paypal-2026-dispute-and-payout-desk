@@ -29,7 +29,9 @@ export function Tiles({ cases }: { cases: CaseSummary[] }) {
         <span className="v">
           {kept.length ? money(kept.reduce((t, c) => t + (c.keep_cents ?? 0), 0), cur, true) : "—"}
         </span>
-        <span className="s">if you take every call</span>
+        <span className="s">
+          of {money(sum((c) => c.amount_cents), cur, true)} at stake, if you follow every call
+        </span>
       </div>
       <div className="tile">
         <span className="k">Won</span>

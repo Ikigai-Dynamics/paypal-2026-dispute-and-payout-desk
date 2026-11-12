@@ -83,4 +83,16 @@ describe("ConfirmSendBox", () => {
     fireEvent.keyDown(screen.getByRole("alertdialog"), { key: "Escape" });
     expect(n).toBe(1);
   });
+
+  it("reads as a sentence first and keeps the PayPal call behind a disclosure", () => {
+    render(
+      <ConfirmSendBox kind="offer" text="Offer $47.00 back to Sofia Lindqvist through PayPal?" okLabel="Send offer"
+        call={'POST /v1/customer/disputes/PP-D-1/make-offer {"offer_amount": {"currency_code": "USD", "value": "47.00"}, "offer_type": "REFUND"}'}
+        claims={[]} onToggle={noop} onRecheck={noop} onConfirm={noop} onCancel={noop} busy={false} />,
+    );
+    expect(screen.getByText("Offer $47.00 back to Sofia Lindqvist through PayPal?")).toBeInTheDocument();
+    const d = screen.getByText("Show the PayPal call").closest("details")!;
+    expect(d).not.toHaveAttribute("open");
+    expect(d.querySelector("pre")!.textContent).toContain('POST /v1/customer/disputes/PP-D-1/make-offer\n{\n  "offer_amount"');
+  });
 });
