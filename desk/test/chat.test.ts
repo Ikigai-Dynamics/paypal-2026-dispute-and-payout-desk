@@ -16,6 +16,7 @@ const ctx: CaseCtx = {
   currency: "USD",
   reason: "MERCHANDISE_OR_SERVICE_NOT_RECEIVED",
   call: "accept",
+  item: "Ember Sleeping Bag",
   offer_cents: 1250,
   draft_text: "We shipped it.",
 };
@@ -51,7 +52,7 @@ describe("validateActions", () => {
   it("rejects an offer at or above the case amount, or not an integer", async () => {
     for (const amount_cents of [5000, 6000, 0, -5, 12.5, "9"]) {
       const r = await validateActions(
-        [{ type: "make_offer", case_id: "PP-1", amount_cents }],
+        [{ type: "make_dispute_offer", case_id: "PP-1", amount_cents }],
         deps,
       );
       assert.equal(r.staged.length, 0, String(amount_cents));
@@ -59,11 +60,14 @@ describe("validateActions", () => {
   });
   it("stages an offer with the PayPal call and defaults to the decision's offer", async () => {
     const r = await validateActions(
-      [{ type: "make_offer", case_id: "PP-1" }],
+      [{ type: "make_dispute_offer", case_id: "PP-1" }],
       deps,
     );
     const s = r.staged[0]!;
-    assert.equal(s.title, "Offer $12.50 to Dana R.");
+    assert.equal(
+      s.title,
+      "Offer $12.50 back to Dana Rivera on the Ember Sleeping Bag dispute",
+    );
     assert.equal(s.paypal.path, "/v1/customer/disputes/PP-1/make-offer");
     assert.deepEqual(s.desk.body, {
       confirm: true,
@@ -71,9 +75,34 @@ describe("validateActions", () => {
       offer_type: "REFUND",
     });
   });
+  it("maps the old action names and a JSON reply only stages a card", async () => {
+    const p = parseReply(
+      '```json\n{"reply":"Offering.","actions":[{"type":"make_dispute_offer","case_id":"PP-1","amount_cents":2000}]}\n```',
+    );
+    const r = await validateActions(p.actions, deps);
+    assert.equal(r.staged.length, 1);
+    assert.equal(r.staged[0]!.kind, "make_dispute_offer");
+    assert.equal(r.ui.length, 0);
+    const old = await validateActions(
+      [
+        { type: "make_offer", case_id: "PP-1" },
+        { type: "accept_claim", case_id: "PP-1" },
+      ],
+      deps,
+    );
+    assert.deepEqual(
+      old.staged.map((s) => s.kind),
+      ["make_dispute_offer", "accept_dispute_claim"],
+    );
+    const g = await validateActions(
+      [{ type: "get_dispute", case_id: "PP-1" }],
+      deps,
+    );
+    assert.deepEqual(g.ui, [{ type: "select_case", id: "PP-1" }]);
+  });
   it("stages evidence with the saved draft and opens the draft tab", async () => {
     const r = await validateActions(
-      [{ type: "provide_evidence", case_id: "PP-1" }],
+      [{ type: "provide_dispute_evidence", case_id: "PP-1" }],
       deps,
     );
     assert.deepEqual(r.ui, [{ type: "open_tab", tab: "draft" }]);

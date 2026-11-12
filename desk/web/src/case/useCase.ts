@@ -214,7 +214,8 @@ export function useCase(
       patch.serverText = patch.draftText ?? dr.response;
     patch.aiPending = !!a.drafting && dr.source !== "llm";
     const label = fresh ? patch.draftLabel : s.draftLabel;
-    patch.draftAi = dr.source === "llm" || /^AI draft/.test(label ?? "");
+    patch.draftAi =
+      dr.source === "llm" || /^(AI draft|Written by Parley)/.test(label ?? "");
     if (fresh) patch.loading = false;
     set(patch);
     if (patch.draftAi) opts.onAiDraft();
@@ -445,7 +446,9 @@ export function useCase(
           ? "AI draft, edited by you"
           : "Template, edited by you"
         : (s.draftLabel ??
-          (s.draftAi ? "AI draft" : "Drafted from the case facts"));
+          (s.draftAi
+            ? "Written by Parley's AI. Check it before sending."
+            : "Drafted from the case facts (AI unavailable right now)"));
   const labelGreen = !!a && s.draftAi && !/^Drafted from/.test(badge);
   const confirmText = c
     ? (() => {
@@ -508,6 +511,7 @@ export function useCase(
     confirmText,
     badge,
     labelGreen,
+    aiCostCents: d?.ai_cost_cents,
     newDraft: s.newDraft,
     useNewDraft,
     cost: Number(s.inputs.c) || 15,

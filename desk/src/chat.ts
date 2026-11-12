@@ -13,6 +13,7 @@ export interface CaseCtx {
   amount_cents: number;
   currency: string;
   reason: string;
+  item?: string;
   call: string | null;
   p?: number;
   interval?: [number, number];
@@ -29,13 +30,20 @@ export interface ChatDeps {
   loadCase: (id: string) => Promise<CaseCtx | null>;
   /** the cases the seller can see, for filters and context */
   listCases: () => Promise<
-    { id: string; buyer: string; amount_cents: number; call: string | null }[]
+    {
+      id: string;
+      buyer: string;
+      item?: string;
+      amount_cents: number;
+      call: string | null;
+    }[]
   >;
 }
 
 export interface Staged {
   id: string;
-  kind: "make_offer" | "provide_evidence" | "accept_claim";
+  kind:
+    "make_dispute_offer" | "provide_dispute_evidence" | "accept_dispute_claim";
   title: string;
   paypal: { method: "POST"; path: string; body: Record<string, unknown> };
   desk: { method: "POST"; path: string; body: Record<string, unknown> };
@@ -78,6 +86,14 @@ export function parseReply(content: string): {
   return { reply: content.trim(), actions: [] };
 }
 
+/** PayPal Agent Toolkit names; the first names are what conversations stored before the rename hold */
+const ALIAS: Record<string, string> = {
+  make_offer: "make_dispute_offer",
+  provide_evidence: "provide_dispute_evidence",
+  accept_claim: "accept_dispute_claim",
+  get_dispute: "select_case",
+};
+
 const TABS = ["overview", "evidence", "buyer", "timeline", "draft", "math"];
 
 /** Turns raw model actions into allowed ones; staged actions are described, never run. */
@@ -91,7 +107,10 @@ export async function validateActions(
   const remember: string[] = [];
   for (const a of raw.slice(0, 6)) {
     if (!a || typeof a !== "object") continue;
-    const x = a as Record<string, unknown>;
+    const x = { ...(a as Record<string, unknown>) };
+    const t = typeof x["type"] === "string" ? x["type"] : "";
+    x["type"] = ALIAS[t] ?? t;
+    if (t === "get_dispute" && x["id"] === undefined) x["id"] = x["case_id"];
     const str = (k: string) =>
       typeof x[k] === "string" ? (x[k] as string) : "";
     switch (x["type"]) {
@@ -124,16 +143,18 @@ export async function validateActions(
         if (f) remember.push(f);
         break;
       }
-      case "make_offer":
-      case "provide_evidence":
-      case "accept_claim": {
+      case "list_disputes":
+        break; // read tool: the case list is already in the model's context
+      case "make_dispute_offer":
+      case "provide_dispute_evidence":
+      case "accept_dispute_claim": {
         const id = str("case_id") || openCase || "";
         const c = id ? await deps.loadCase(id) : null;
         if (!c) break;
-        const who = shortName(c.buyer);
+        const on = c.item ? `the ${c.item} dispute` : "this dispute";
         const base = `${D}/${encodeURIComponent(c.id)}`;
         const cp = `/api/cases/${encodeURIComponent(c.id)}`;
-        if (x["type"] === "make_offer") {
+        if (x["type"] === "make_dispute_offer") {
           const cents =
             x["amount_cents"] === undefined ? c.offer_cents : x["amount_cents"];
           if (
@@ -147,8 +168,8 @@ export async function validateActions(
             : "REFUND";
           staged.push({
             id: randomUUID(),
-            kind: "make_offer",
-            title: `Offer ${money(cents as number, c.currency)} to ${who}`,
+            kind: "make_dispute_offer",
+            title: `Offer ${money(cents as number, c.currency)} back to ${c.buyer} on ${on}`,
             paypal: {
               method: "POST",
               path: `${base}/make-offer`,
@@ -171,11 +192,11 @@ export async function validateActions(
               },
             },
           });
-        } else if (x["type"] === "accept_claim") {
+        } else if (x["type"] === "accept_dispute_claim") {
           staged.push({
             id: randomUUID(),
-            kind: "accept_claim",
-            title: `Accept ${who}'s claim of ${money(c.amount_cents, c.currency)}`,
+            kind: "accept_dispute_claim",
+            title: `Accept ${c.buyer}'s claim of ${money(c.amount_cents, c.currency)} on ${on}`,
             paypal: {
               method: "POST",
               path: `${base}/accept-claim`,
@@ -193,8 +214,8 @@ export async function validateActions(
           if (!text) break;
           staged.push({
             id: randomUUID(),
-            kind: "provide_evidence",
-            title: `Send the saved reply to ${who}'s dispute`,
+            kind: "provide_dispute_evidence",
+            title: `Send the saved reply to PayPal for ${c.buyer} on ${on}`,
             paypal: {
               method: "POST",
               path: `${base}/provide-evidence`,
@@ -217,8 +238,8 @@ export async function validateActions(
 const SYSTEM = `You are Parley, a calm, dry snowy-owl dispute advisor for a PayPal seller. Keep answers to one to three short sentences. Never invent money: every number comes from the case facts below. A "call" of accept means refund or accept the claim; fight means send evidence.
 Reply ONLY with JSON: {"reply": "...", "actions": [...]}. Allowed actions:
 {"type":"select_case","id":"<case id>"}, {"type":"open_tab","tab":"overview|evidence|buyer|timeline|draft|math"}, {"type":"filter","ids":["<case id>"]} (ids null clears), {"type":"highlight_evidence"}, {"type":"remember","fact":"..."},
-{"type":"make_offer","case_id":"..","amount_cents":<int>,"offer_type":"REFUND"}, {"type":"provide_evidence","case_id":".."}, {"type":"accept_claim","case_id":".."}.
-The make_offer, provide_evidence and accept_claim actions only propose a card; the seller must approve it. Use no action when none is needed.`;
+{"type":"make_dispute_offer","case_id":"..","amount_cents":<int>,"offer_type":"REFUND"}, {"type":"provide_dispute_evidence","case_id":".."}, {"type":"accept_dispute_claim","case_id":".."}, {"type":"get_dispute","case_id":".."}, {"type":"list_disputes"}.
+The make_dispute_offer, provide_dispute_evidence and accept_dispute_claim actions only propose a card; the seller must approve it. get_dispute and list_disputes just read. Use no action when none is needed. When asked which disputes to refund or offer on, answer in the reply and send a filter action with those case ids. When asked to send an offer, send make_dispute_offer for that case (find it by item or buyer in the case list).`;
 
 const ensure = new WeakSet<object>();
 async function init(db: Db): Promise<void> {
@@ -394,9 +415,9 @@ async function postMessage(
       facts.length
         ? `What you know about the seller:\n- ${facts.join("\n- ")}`
         : "",
-      `Cases: ${cases.map((x) => `${x.id} ${shortName(x.buyer)} ${money(x.amount_cents)} call=${x.call ?? "?"}`).join("; ") || "none"}`,
+      `Cases: ${cases.map((x) => `${x.id} ${shortName(x.buyer)}${x.item ? ` (${x.item})` : ""} ${money(x.amount_cents)} call=${x.call ?? "?"}`).join("; ") || "none"}`,
       ctx
-        ? `Open case ${ctx.id}: ${ctx.buyer}, ${money(ctx.amount_cents, ctx.currency)}, reason ${ctx.reason}, call ${ctx.call ?? "unknown"}` +
+        ? `Open case ${ctx.id}: ${ctx.buyer}${ctx.item ? ` (${ctx.item})` : ""}, ${money(ctx.amount_cents, ctx.currency)}, reason ${ctx.reason}, call ${ctx.call ?? "unknown"}` +
           (ctx.p !== undefined
             ? `, win chance ${Math.round(ctx.p * 100)}%`
             : "") +
@@ -438,12 +459,12 @@ async function postMessage(
       raw = parsed.actions;
     } else {
       reply = ctx
-        ? `Parley is offline right now; here is the call for this case: ${ctx.call ?? "no call yet"}` +
+        ? `Parley couldn't reach the AI just now. Here is the call for this case: ${ctx.call ?? "no call yet"}` +
           (ctx.p !== undefined
             ? ` (about ${Math.round(ctx.p * 100)}% to win)`
             : "") +
           "."
-        : "Parley is offline right now. Open a case and I can give you the call.";
+        : "Parley couldn't reach the AI just now. Open a case and I can give you the call.";
     }
   }
   const { ui, staged, remember } = await validateActions(raw, deps, caseId);

@@ -5,6 +5,8 @@ export type DraftEditorProps = {
   onChange(v: string): void;
   label: string;
   labelGreen: boolean;
+  /** what the AI draft cost, in cents */
+  aiCostCents?: number;
   dim: boolean;
   flagged: boolean;
   note: { text: string; error: boolean } | null;
@@ -26,6 +28,9 @@ export function DraftEditor(p: DraftEditorProps) {
       <h3>
         Response to PayPal{" "}
         <span className={"pill " + (p.labelGreen ? "green" : "grey")}>{p.label}</span>
+        {p.labelGreen && p.aiCostCents ? (
+          <span className="muted"> AI cost ${(p.aiCostCents / 100).toFixed(2)}</span>
+        ) : null}
       </h3>
       {p.newDraft && (
         <p className="muted">

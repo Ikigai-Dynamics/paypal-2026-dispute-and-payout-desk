@@ -11,8 +11,9 @@ import type {
   Precedent,
 } from "./types.js";
 
-export const LABEL_AI = "AI draft";
-export const LABEL_TEMPLATE = "Draft (AI unavailable)";
+export const LABEL_AI = "Written by Parley's AI. Check it before sending.";
+export const LABEL_TEMPLATE =
+  "Drafted from the case facts (AI unavailable right now)";
 export const LABEL_AI_UPDATED = "AI draft, updated with your evidence";
 export const LABEL_GROUNDED = (added: boolean) =>
   added ? "Drafted from your evidence" : "Drafted from the case facts";

@@ -36,7 +36,7 @@ function dispatchUi(actions: any[], reply: string) {
 }
 
 function StagedCard({ s, settledBefore, onDone }: { s: Staged; settledBefore?: string; onDone: (ok: boolean, text: string) => void }) {
-  const [state, setState] = useState<Outcome | "busy" | null>(settledBefore ? (settledBefore.startsWith("Sent") ? { ok: true, text: "PayPal answered 200" } : "declined") : null);
+  const [state, setState] = useState<Outcome | "busy" | null>(settledBefore ? (settledBefore.startsWith("Sent") ? { ok: true, text: "Sent through PayPal" } : "declined") : null);
   const settle = async (ok: boolean, text: string) => {
     setState(ok ? { ok, text } : "declined");
     await post(`/api/chat/staged/${s.id}/approved`, { ok, result: text }).catch(() => undefined);
@@ -51,9 +51,9 @@ function StagedCard({ s, settledBefore, onDone }: { s: Staged; settledBefore?: s
         body: JSON.stringify(s.desk.body),
       });
       fire("parley:select-case", { id: s.desk.path.split("/")[3] });
-      await settle(true, "PayPal answered 200");
+      await settle(true, "Sent through PayPal");
     } catch (e) {
-      const detail = e instanceof ApiError ? (e.body?.detail ?? `error ${e.status}`) : "the request failed";
+      const detail = e instanceof ApiError ? (e.body?.detail ?? "PayPal did not accept it") : "The request did not go through. Try again.";
       setState({ ok: false, text: String(detail) });
     }
   };
@@ -66,14 +66,14 @@ function StagedCard({ s, settledBefore, onDone }: { s: Staged; settledBefore?: s
       <pre>{`${s.paypal.method} ${s.paypal.path}\n${JSON.stringify(s.paypal.body, null, 2)}`}</pre>
       {state === "declined" && <div className="muted">Not sent.</div>}
       {typeof state === "object" && state && (
-        <div className={state.ok ? "ok" : "err"}>{state.ok ? `Sent. ${state.text}` : state.text}</div>
+        <div className={state.ok ? "ok" : "err"}>{state.text}</div>
       )}
       {(!done || (typeof state === "object" && state && !state.ok)) && (
         <div className="row">
           <button className="primary" disabled={state === "busy"} onClick={send}>
             Send to PayPal
           </button>
-          <button disabled={state === "busy"} onClick={() => settle(false, "")}>
+          <button className="pc-chip" disabled={state === "busy"} onClick={() => settle(false, "")}>
             Not now
           </button>
         </div>
@@ -166,16 +166,19 @@ export function ChatPanel() {
   return (
     <aside className="parley-chat" hidden={!open} aria-label="Chat with Parley">
       <div className="pc-head">
-        <select value={cid ?? ""} onChange={(e) => choose(e.target.value)} aria-label="Conversation">
-          {!cid && <option value="">New chat</option>}
+        <select className="pc-select" value={cid ?? ""} onChange={(e) => choose(e.target.value)} aria-label="Conversation">
+          <option value="" disabled>
+            Earlier chats
+          </option>
           {convs.map((c) => (
             <option key={c.id} value={c.id}>
               {(c.title ?? "Chat") + " · " + new Date(c.updated_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
             </option>
           ))}
         </select>
-        <button onClick={newChat}>New chat</button>
+        <button className="pc-chip" onClick={newChat}>New chat</button>
         <button
+          className="pc-chip"
           onClick={() => {
             setShowMem((v) => !v);
             loadMem();
@@ -184,7 +187,7 @@ export function ChatPanel() {
         >
           Memory
         </button>
-        <button className="pc-x" onClick={() => setOpen(false)} aria-label="Close">
+        <button className="pc-x" type="button" onClick={() => setOpen(false)} aria-label="Close">
           ×
         </button>
       </div>
@@ -198,6 +201,7 @@ export function ChatPanel() {
                 <li key={m.id}>
                   <span>{m.fact}</span>
                   <button
+                    className="pc-chip small"
                     onClick={async () => {
                       await api(`/api/chat/memory/${m.id}`, { method: "DELETE" });
                       loadMem();

@@ -74,9 +74,9 @@ export function App() {
   useEffect(() => {
     if (!openId) return;
     const c = cases.find((x) => x.dispute_id === openId);
-    if (c) setSpeech((s) => ({ text: line(c), seq: (s?.seq ?? 0) + 1 }));
+    if (c) setSpeech((s) => ({ text: line(c, !!info?.llm?.online), seq: (s?.seq ?? 0) + 1 }));
     window.dispatchEvent(new CustomEvent("parley:case-changed", { detail: { id: openId } }));
-  }, [openId, loaded]);
+  }, [openId, loaded, info?.llm?.online]);
 
   // the chat acts on the page through these events
   useEffect(() => {
