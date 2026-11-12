@@ -5,6 +5,7 @@ import { useInfo } from "./hooks/useInfo";
 import { AllCases } from "./components/AllCases";
 import { DeadlinesTimeline } from "./components/DeadlinesTimeline";
 import { DeveloperPage } from "./components/DeveloperPage";
+import { DemoGate } from "./components/DemoGate";
 import { DisputeList } from "./components/DisputeList";
 import { PayPalFooter } from "./components/PayPalFooter";
 import { Tiles } from "./components/Tiles";
@@ -241,6 +242,7 @@ export function App() {
         <PayPalFooter calls={activity.calls} failed={failure} info={info} />
       </div>
       <Owl speech={speech} tucked={tucked} />
+      <DemoGate />
     </>
   );
 }

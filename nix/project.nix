@@ -59,6 +59,8 @@ in
       env.DECIDE_URL = "http://decide";
       # shortcut: every desk pod start reseeds the demo; drop before any real merchant data
       env.DEMO_RESET_ON_BOOT = "1";
+      # public demo: 10-minute sessions and per-IP rate limits (src/demo-limits.ts)
+      env.DEMO_LIMITS = "1";
       ingress.enable = true;
     };
     services.decide = {

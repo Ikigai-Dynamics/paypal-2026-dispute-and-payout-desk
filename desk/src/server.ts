@@ -46,6 +46,7 @@ import {
 } from "./draft.js";
 import { init as initActivity, list as listCalls, record } from "./activity.js";
 import { paypalRoutes } from "./paypal-routes.js";
+import { clientIp, createDemoLimits } from "./demo-limits.js";
 import { DraftCache, pool as runPool, stopAfterDown } from "./drafts.js";
 import {
   acceptClaim,
@@ -1263,6 +1264,8 @@ function send(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body));
 }
 
+const demoLimits = process.env["DEMO_LIMITS"] === "1" ? createDemoLimits() : null;
+
 const server = createServer((req, res) => {
   void (async () => {
     const started = Date.now();
@@ -1293,6 +1296,19 @@ const server = createServer((req, res) => {
         )
           send(res, 404, { error: "not_found", detail: url.pathname });
         return;
+      }
+      if (url.pathname.startsWith("/api/")) {
+        if (!demoLimits && url.pathname === "/api/demo/session") {
+          send(res, 200, { enabled: false });
+          return;
+        }
+        const v = demoLimits?.check(req, url.pathname, clientIp(req));
+        if (v && !v.ok) throw new HttpError(v.status, v.code, v.detail, v.extra);
+        if (v?.setCookie) res.setHeader("set-cookie", v.setCookie);
+        if (v?.body) {
+          send(res, 200, v.body);
+          return;
+        }
       }
       const r = await route(req, url);
       if (r === "handled") return;
