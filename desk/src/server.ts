@@ -19,6 +19,7 @@ import {
   toView,
   viewOf,
 } from "./analysis.js";
+import { staticAsset } from "./static.js";
 import { createDecisionCache, wholeDollarsCents } from "./decision-cache.js";
 import { chatRoutes } from "./chat.js";
 import {
@@ -530,6 +531,8 @@ const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
+  ".png": "image/png",
+  ".ico": "image/x-icon",
 };
 
 function serveFile(res: ServerResponse, file: string): boolean {
@@ -1294,6 +1297,12 @@ const server = createServer((req, res) => {
             join(publicDir, normalize(url.pathname).replace(/^\/+/, "")),
           )
         )
+          send(res, 404, { error: "not_found", detail: url.pathname });
+        return;
+      }
+      const asset = req.method === "GET" ? staticAsset(url.pathname) : null;
+      if (asset) {
+        if (!serveFile(res, join(publicDir, normalize(asset))))
           send(res, 404, { error: "not_found", detail: url.pathname });
         return;
       }

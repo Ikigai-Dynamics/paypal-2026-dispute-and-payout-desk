@@ -1,171 +1,313 @@
-/* Layout: an organized money desk (summary, deadlines, list, case) with a 1930s rubber-hose owl in the corner who talks it through. */
+/* Parley's console. Tokens and rules follow DESIGN.md (repo root): a dark navy canvas, a surface ladder with
+   hairline borders instead of shadows, 8px controls, 12px cards, one gold primary action. */
 :root {
-  --bg: #f3f6fb;          /* page */
-  --card: #ffffff;
-  --ink: #0b1f3f;         /* text, navy */
-  --muted: #5a6b85;
-  --line: #dde4ef;
-  --navy: #003087;        /* owl plumage, headings */
-  --blue: #0070e0;        /* links, owl belly band */
-  --sky: #009cde;         /* owl highlights */
-  --gold: #ffc439;        /* bow tie, beak, primary button */
+  /* surfaces */
+  --bg: #0a1222;          /* canvas */
+  --card: #0f1a2f;        /* surface 1: panels, cards */
+  --surface-2: #15223c;   /* surface 2: nested tiles, hover, selected */
+  --surface-3: #1b2b4a;   /* surface 3: menus, pressed */
+  --line: #1e2c47;        /* hairline */
+  --line-strong: #2c3e60;
+  /* text */
+  --ink: #eef3fb;
+  --ink-2: #c5d0e3;
+  --muted: #8fa0bc;
+  /* brand */
+  --navy: #1a4fb5;
+  --blue: #5aa9ff;        /* links, selection */
+  --sky: #36b6ee;
+  --gold: #ffc439;        /* the one primary action */
+  --gold-hover: #ffd36b;
   --gold-ink: #2b2100;
-  --cream: #fff6e0;       /* owl face, gloves */
-  --outline: #10131a;     /* rubber-hose outline */
-  --good: #1f8a52; --good-bg: #e3f5ea;
-  --warn: #b26a00; --warn-bg: #fff1d6;
-  --bad: #c0392b; --bad-bg: #fde7e4;
-  --display: "Lilita One", "Arial Rounded MT Bold", system-ui, sans-serif;
-  --body: "Figtree", system-ui, sans-serif;
+  --cream: #fff6e0;
+  --outline: #2c3e60;     /* legacy name: strong hairline */
+  --focus: #8cc8ff;
+  /* status */
+  --good: #5fcf8f; --good-bg: #10291f;
+  --warn: #f0b04b; --warn-bg: #2c2410;
+  --bad: #f38375; --bad-bg: #331a1c;
+  /* type */
+  --brand: "Lilita One", "Arial Rounded MT Bold", system-ui, sans-serif;  /* the wordmark only */
+  --display: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  /* shape and rhythm (4px base) */
+  --r-xs: 4px; --r-sm: 6px; --r-md: 8px; --r-lg: 12px; --r-xl: 16px; --r-pill: 9999px;
+  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-6: 24px; --s-8: 32px;
+  --topbar: 56px;
+  --gutter: 0px;          /* room on the right for Parley or the chat */
+  color-scheme: dark;
 }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --bg: #0c1424; --card: #131e33; --ink: #e8eefa; --muted: #93a3bd; --line: #24324d; --navy: #1a4fb5; --blue: #4ea3ff;
-  --good-bg: #13301f; --good: #5fcf8f; --warn-bg: #33270e; --warn: #f0b04b; --bad-bg: #3a1714; --bad: #f07b6e; color-scheme: dark } }
-:root[data-theme="dark"] {
-  --bg: #0c1424; --card: #131e33; --ink: #e8eefa; --muted: #93a3bd; --line: #24324d; --navy: #1a4fb5; --blue: #4ea3ff;
-  --good-bg: #13301f; --good: #5fcf8f; --warn-bg: #33270e; --warn: #f0b04b; --bad-bg: #3a1714; --bad: #f07b6e; color-scheme: dark }
+/* dark is the identity (the landing page is dark too); light is opt-in */
+:root[data-theme="light"] {
+  --bg: #f4f7fc; --card: #ffffff; --surface-2: #f0f4fa; --surface-3: #e6ecf6; --line: #dfe6f1; --line-strong: #c3cfe2;
+  --ink: #0b1f3f; --ink-2: #2a3d5e; --muted: #56678a; --blue: #0067d1; --sky: #0079ad; --outline: #c3cfe2; --focus: #0067d1;
+  --good: #17754a; --good-bg: #e3f5ea; --warn: #945700; --warn-bg: #fff1d6; --bad: #b93426; --bad-bg: #fde7e4;
+  color-scheme: light;
+}
 
 * { box-sizing: border-box }
-body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5;
-  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 18px 200px }
-.wrap { max-width: 1180px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px }
-button { font-family: inherit }
-button:focus-visible, textarea:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px }
+html { -webkit-text-size-adjust: 100% }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 400 14px/1.5 var(--body); letter-spacing: -.003em;
+  -webkit-font-smoothing: antialiased; overflow-x: hidden;
+  padding: 0 var(--gutter) 200px 0 }
+a { color: var(--blue); text-underline-offset: 2px }
+button { font-family: inherit; cursor: pointer }
+button:disabled { opacity: .5; cursor: not-allowed }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0) }
 
-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px }
-.brand { display: flex; align-items: center; gap: 10px }
-.brand h1 { font-family: var(--display); font-weight: 400; font-size: 2rem; margin: 0; color: var(--navy); letter-spacing: .01em }
-:root[data-theme="dark"] .brand h1 { color: var(--ink) }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .brand h1 { color: var(--ink) } }
-.brand h1 a { color: inherit; text-decoration: none }
-.brand small { color: var(--muted); font-weight: 600 }
-.tag { font: 700 .72rem var(--body); letter-spacing: .06em; text-transform: uppercase; padding: 4px 10px; border-radius: 999px; background: var(--card); border: 1px solid var(--line); color: var(--muted) }
-.chip { font: 700 .85rem var(--body); border: 1px solid var(--line); border-radius: 999px; background: var(--card); color: var(--ink); padding: 7px 14px; cursor: pointer }
+/* ── Top bar ─────────────────────────────────────── */
+.topbar { position: sticky; top: 0; z-index: 15; height: var(--topbar); background: color-mix(in srgb, var(--bg) 86%, transparent); backdrop-filter: blur(10px) }
+.topbar::after { content: ""; position: absolute; left: 0; right: calc(-1 * var(--gutter)); bottom: 0; height: 1px; background: var(--line) }
+.topbar-in, .wrap { max-width: 1280px; margin: 0 auto; padding-inline: max(16px, env(safe-area-inset-left, 0px)) max(16px, env(safe-area-inset-right, 0px)) }
+.topbar-in { height: 100%; display: flex; align-items: center; justify-content: space-between; gap: var(--s-3) }
+.brand { display: flex; align-items: baseline; gap: 10px; min-width: 0 }
+.brand h1 { font: 400 1.5rem/1 var(--brand); margin: 0; letter-spacing: .01em }
+.brand h1 a { color: var(--ink); text-decoration: none }
+.brand small { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.wrap { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s-4); padding-top: var(--s-4) }
+@media (min-width: 1100px) { .topbar-in, .wrap { padding-inline: var(--s-6) } }
 
-/* Summary tiles */
-.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px }
-.tile { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; display: grid; gap: 2px }
-.tile .k { font-size: .75rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted) }
-.tile .v { font: 400 1.9rem var(--display); color: var(--ink); font-variant-numeric: tabular-nums }
-.tile .s { font-size: .85rem; color: var(--muted) }
-.tile.hot { border-color: color-mix(in srgb, var(--bad) 40%, var(--line)) }
-.tile.hot .v { color: var(--bad) }
+/* ── Controls ─────────────────────────────────────── */
+.btns { display: flex; flex-wrap: wrap; gap: var(--s-2); align-items: center }
+.btn, .chip, button.primary,
+.tabpanel button:not([class]):not(.activity button), .confirm button:not([class]), .checklist button:not([class]), .checklist button.cancel {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; font: 500 14px/1.2 var(--body); padding: 8px 14px; min-height: 36px;
+  border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--ink); text-decoration: none;
+  transition: background .12s, border-color .12s, color .12s }
+.btn:hover, .chip:hover,
+.tabpanel button:not([class]):not(.activity button):hover, .confirm button:not([class]):hover, .checklist button:not([class]):hover, .checklist button.cancel:hover { background: var(--surface-3); border-color: var(--muted) }
+.btn.primary, button.primary { background: var(--gold); border-color: var(--gold); color: var(--gold-ink); font-weight: 600 }
+.btn.primary:hover, button.primary:hover { background: var(--gold-hover); border-color: var(--gold-hover) }
+.btn.quiet { background: transparent; border-color: transparent; color: var(--muted) }
+.btn.quiet:hover { background: var(--surface-2); color: var(--ink); border-color: transparent }
+.chip { font-size: 13px; padding: 6px 12px; min-height: 32px; background: var(--card); border-color: var(--line) }
+.chip.on { background: color-mix(in srgb, var(--gold) 18%, var(--card)); border-color: color-mix(in srgb, var(--gold) 50%, var(--line)); justify-self: start }
+.link { border: 0; background: none; padding: 0; font: inherit; font-weight: 500; color: var(--blue); text-align: left }
+.link:hover { text-decoration: underline }
+input:not([type=checkbox]):not([type=radio]), textarea, select { font: 400 14px/1.4 var(--body); padding: 8px 12px; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--bg); color: var(--ink); max-width: 100% }
+input::placeholder, textarea::placeholder { color: var(--muted) }
+input:not([type=checkbox]):not([type=radio]):focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; border-color: var(--focus) }
+input[type=checkbox] { accent-color: var(--blue) }
+input[type=file] { font-size: 13px; padding: 4px 6px }
+input[type=file]::file-selector-button { font: 500 13px var(--body); padding: 5px 10px; margin-right: 8px; border-radius: var(--r-sm); border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--ink); cursor: pointer }
+textarea { width: 100%; line-height: 1.6 }
+textarea.dim { opacity: .5 }
+textarea.flagged { outline: 2px solid var(--bad) }
 
-/* Deadlines strip */
-.strip { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 12px 16px; display: grid; gap: 8px }
-.strip h2, .panel h2 { font: 800 .8rem var(--body); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 }
-.days { display: grid; grid-template-columns: repeat(14, minmax(0, 1fr)); gap: 4px }
-.day { height: 34px; border-radius: 8px; background: var(--bg); display: grid; place-items: center; font-size: .72rem; color: var(--muted); position: relative }
-.day.has { background: var(--warn-bg); color: var(--warn); font-weight: 800 }
-.day.urgent { background: var(--bad-bg); color: var(--bad) }
+/* ── Type helpers ─────────────────────────────────── */
+h3, .strip h2, .panel h2, .tile .k, .reason .k, .facts dt, .group-head { font: 500 12px/1.3 var(--body); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin: 0 }
+h3 { margin: 14px 0 6px }
+.muted { color: var(--muted); font-size: 13px; margin: 2px 0 }
+.hint { color: var(--muted); font-size: 12px }
+.red { color: var(--bad); font-weight: 600 }
+.note { font-size: 14px; margin: 4px 0; color: var(--ink-2) }
+.empty { padding: 24px 8px; text-align: center }
+mark { background: color-mix(in srgb, var(--gold) 45%, transparent); color: inherit; border-radius: 2px }
+pre { background: var(--bg); border: 1px solid var(--line); padding: 10px 12px; white-space: pre-wrap; font: 12.5px/1.5 var(--mono); border-radius: var(--r-md); margin: 6px 0 }
+details summary { cursor: pointer; color: var(--muted); font-weight: 500; font-size: 13px }
 
-/* Main: list + case */
-.main { display: grid; grid-template-columns: minmax(0, 380px) minmax(0, 1fr); gap: 18px; align-items: start }
-.panel { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 14px; display: grid; gap: 10px; min-width: 0 }
-.list { display: grid; gap: 6px }
-.drow { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px; border-radius: 12px; border: 1px solid transparent; background: transparent; text-align: left; cursor: pointer; color: var(--ink) }
-.drow:hover { background: var(--bg) }
-.drow[aria-current="true"] { background: color-mix(in srgb, var(--blue) 9%, var(--card)); border-color: color-mix(in srgb, var(--blue) 35%, transparent) }
-.dico { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; font-size: 1.05rem }
-.drow .t { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
-.drow .m { font-size: .8rem; color: var(--muted) }
-.drow .r { text-align: right; display: grid; gap: 2px; justify-items: end }
-.amt { font-weight: 800; font-variant-numeric: tabular-nums }
-.call { font: 800 .68rem var(--body); letter-spacing: .05em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px }
-.call.offer { background: color-mix(in srgb, var(--gold) 40%, transparent); color: var(--gold-ink) }
-:root[data-theme="dark"] .call.offer { color: var(--gold) }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .call.offer { color: var(--gold) } }
+/* ── Cards, banners, pills ────────────────────────── */
+.card, .panel, .strip, .tile { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg) }
+.card { padding: var(--s-4) }
+.banner { background: var(--warn-bg); color: var(--warn); border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent); border-radius: var(--r-md); padding: 8px 14px; font-size: 13px; font-weight: 500 }
+.banner.warn { background: var(--bad-bg); color: var(--bad); border-color: color-mix(in srgb, var(--bad) 30%, transparent) }
+.errbox { background: var(--bad-bg); color: var(--bad); border: 1px solid color-mix(in srgb, var(--bad) 30%, transparent); padding: 8px 12px; border-radius: var(--r-md); font-weight: 500 }
+.formerr { color: var(--bad); font-size: 13px }
+.pill, .call, .due, .verdict .chip-p { display: inline-block; font: 600 11px/1.5 var(--body); letter-spacing: .03em; padding: 1px 8px; border-radius: var(--r-pill); white-space: nowrap }
+.pill { background: var(--surface-2); color: var(--ink-2); text-transform: none; letter-spacing: .01em }
+.pill.green { background: var(--good-bg); color: var(--good) } .pill.red { background: var(--bad-bg); color: var(--bad) }
+.pill.amber { background: var(--warn-bg); color: var(--warn) } .pill.grey { background: var(--surface-2); color: var(--muted) }
+.call { text-transform: uppercase }
+.call.offer { background: color-mix(in srgb, var(--gold) 16%, transparent); color: var(--gold) }
+:root[data-theme="light"] .call.offer { background: color-mix(in srgb, var(--gold) 40%, transparent); color: var(--gold-ink) }
 .call.fight { background: var(--good-bg); color: var(--good) }
 .call.accept { background: var(--bad-bg); color: var(--bad) }
-
-.case-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: baseline }
-.case-head h2.title { font: 400 1.45rem var(--display); letter-spacing: .01em; text-transform: none; color: var(--ink) }
-.due { font: 800 .75rem var(--body); padding: 4px 10px; border-radius: 999px; background: var(--warn-bg); color: var(--warn) }
+.call.none, .call.wait { background: var(--surface-2); color: var(--muted) }
+.due { background: var(--warn-bg); color: var(--warn); font-size: 12px; padding: 3px 10px }
 .due.urgent { background: var(--bad-bg); color: var(--bad) }
-.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px 16px; margin: 0 }
-.facts dt { font-size: .72rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 700 }
-.facts dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums }
 
-/* Parley's call card */
-.verdict { border-radius: 16px; padding: 14px 16px; background: color-mix(in srgb, var(--gold) 16%, var(--card)); border: 2px solid var(--outline); box-shadow: 4px 4px 0 var(--outline); display: grid; gap: 10px }
-.verdict .top { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; justify-content: space-between }
-.verdict .what { font: 400 1.5rem var(--display) }
-.verdict .why { margin: 0; color: var(--ink) }
-.reasons { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px }
-.reason { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; display: grid; gap: 4px }
-.reason .k { font-size: .72rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted) }
-.reason .v { font-weight: 800 }
+/* ── Summary tiles ────────────────────────────────── */
+.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s-3); max-width: 100% }
+.tile { padding: 12px 16px; display: grid; gap: 2px; align-content: start }
+.tile .v { font: 600 26px/1.2 var(--display); letter-spacing: -.03em; color: var(--ink); font-variant-numeric: tabular-nums }
+.tile .s { font-size: 12.5px; color: var(--muted) }
+.tile.hot .v { color: var(--bad) }
+.hint-line { margin: -4px 0; color: var(--muted); font-size: 13px; display: flex; gap: 8px; align-items: center }
+.hint-line button { border: 0; background: transparent; color: var(--muted); font-size: 16px; padding: 0 6px; border-radius: var(--r-sm) }
+
+/* ── Deadlines strip: each open dispute is a dot on its due day ── */
+.strip { padding: 12px 16px; display: grid; gap: 10px; max-width: 100% }
+.days { display: grid; grid-template-columns: repeat(14, minmax(0, 1fr)); gap: 4px; overflow-x: auto }
+.day { min-height: 46px; padding: 5px 2px; border-radius: var(--r-sm); background: var(--bg); border: 1px solid transparent; display: grid; align-content: space-between; justify-items: center; gap: 3px; font-size: 11px; color: var(--muted) }
+.day.has { background: var(--warn-bg); color: var(--warn); font-weight: 600; border-color: color-mix(in srgb, var(--warn) 18%, transparent) }
+.day.urgent { background: var(--bad-bg); color: var(--bad); border-color: color-mix(in srgb, var(--bad) 22%, transparent) }
+.day .lbl { font-size: 11px }
+.day .chips2 { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center }
+.dd { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--bg); padding: 0; background: var(--muted); transition: transform .12s }
+.dd:hover { transform: scale(1.2) }
+.dd.fight { background: var(--good) } .dd.accept { background: var(--bad) } .dd.offer { background: var(--gold) }
+.dd[aria-current="true"] { outline: 2px solid var(--focus); outline-offset: 1px }
+
+/* ── Main: list + case ────────────────────────────── */
+.main { display: grid; grid-template-columns: minmax(0, 384px) minmax(0, 1fr); gap: var(--s-4); align-items: start }
+.panel { padding: var(--s-4); display: grid; gap: 12px; min-width: 0 }
+.casepane { min-width: 0; display: grid; gap: var(--s-3) }
+.back-list { display: none }
+/* the list stays in view while a long case scrolls */
+.main > .panel:first-child { position: sticky; top: calc(var(--topbar) + var(--s-4)); max-height: calc(100vh - var(--topbar) - 2 * var(--s-4) - var(--dock-space, 0px)); overflow-y: auto; padding: 12px; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent }
+.main > .panel:first-child > h2 { padding: 4px 6px 0 }
+.list { display: grid; gap: 2px }
+.group-head { margin: 10px 6px 4px; display: flex; gap: 6px; align-items: baseline }
+.group-head .n { color: var(--ink-2); font-weight: 600 }
+.drow { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px; border-radius: var(--r-md); border: 1px solid transparent; background: transparent; text-align: left; color: var(--ink); font-size: 14px; transition: background .1s }
+.drow:hover { background: var(--surface-2) }
+.drow[aria-current="true"] { background: var(--surface-2); border-color: var(--line-strong); box-shadow: inset 2px 0 0 var(--blue) }
+.dico { width: 32px; height: 32px; border-radius: var(--r-md); display: grid; place-items: center; font-size: 15px; background: var(--bg) !important; border: 1px solid var(--line) }
+.drow .t { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.drow .t.wrapt { white-space: normal }
+.drow .st { margin-top: 2px }
+.drow .m { font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.drow .r { text-align: right; display: grid; gap: 3px; justify-items: end }
+.drow .ph { display: contents }
+.drow.dim { opacity: .35 }
+.drow.lit { box-shadow: 0 0 0 2px var(--gold) }
+.drow.wait { opacity: .75 }
+.drow.wait:hover, .drow.wait[aria-current="true"] { opacity: 1 }
+.amt { font-weight: 600; font-variant-numeric: tabular-nums }
+.later > summary { list-style: none; margin: 10px 6px 4px }
+.later > summary::-webkit-details-marker { display: none }
+.later > summary::before { content: "▸ "; color: var(--muted) } .later[open] > summary::before { content: "▾ " }
+.later > summary .group-head { display: inline-flex; margin: 0 }
+
+.case-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: center }
+.case-head h2.title { font: 600 22px/1.25 var(--display); letter-spacing: -.02em; text-transform: none; color: var(--ink) }
+.who-line { font: 400 15px var(--body); letter-spacing: 0; color: var(--muted) }
+.case-ref { margin: -8px 0 0; color: var(--muted); font: 12px var(--mono) }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px 16px; margin: 0; padding: 12px 0; border-block: 1px solid var(--line) }
+.facts dt { margin-bottom: 2px }
+.facts dd { margin: 0; font-weight: 500; font-variant-numeric: tabular-nums; overflow-wrap: anywhere }
+.facts .mono { font-family: var(--mono) }
+
+/* Parley's call: the one lifted card on the page */
+.verdict { border-radius: var(--r-lg); padding: var(--s-4); background: linear-gradient(180deg, color-mix(in srgb, var(--gold) 9%, var(--surface-2)), var(--surface-2)); border: 1px solid color-mix(in srgb, var(--gold) 38%, var(--line-strong)); display: grid; gap: 12px }
+.verdict .top { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between }
+.verdict .what { font: 600 20px/1.25 var(--display); letter-spacing: -.02em }
+.verdict .why { margin: 0; color: var(--ink-2) }
+.verdict .chip-p { background: var(--bg); border: 1px solid var(--line-strong); color: var(--ink-2); font-size: 12px; padding: 3px 10px; white-space: normal }
+.reasons { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px }
+.reason { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-md); padding: 10px 12px; display: grid; gap: 4px; align-content: start }
+.reason .v { font: 600 16px var(--display); letter-spacing: -.01em }
+.reason small { color: var(--muted) }
 .dots { display: flex; gap: 4px; flex-wrap: wrap }
-.pdot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--outline) }
+.pdot { width: 10px; height: 10px; border-radius: 50% }
 .pdot.w { background: var(--good) } .pdot.l { background: var(--bad) }
-.meter { height: 10px; border-radius: 999px; background: var(--bg); overflow: hidden; border: 1px solid var(--line) }
-.meter i { display: block; height: 100% }
-.btns { display: flex; flex-wrap: wrap; gap: 8px }
-.btn { font: 800 .95rem var(--body); padding: 10px 16px; border-radius: 12px; border: 2px solid var(--outline); background: var(--card); color: var(--ink); cursor: pointer; box-shadow: 3px 3px 0 var(--outline); transition: transform .08s, box-shadow .08s }
-.btn:hover { transform: translate(-1px,-1px); box-shadow: 4px 4px 0 var(--outline) }
-.btn:active { transform: translate(2px,2px); box-shadow: 1px 1px 0 var(--outline) }
-.btn.primary { background: var(--gold); color: var(--gold-ink) }
-.btn.quiet { border-color: var(--line); box-shadow: none; color: var(--muted) }
+.meter { height: 6px; border-radius: var(--r-pill); background: var(--bg); overflow: hidden; margin-top: 4px }
+.meter i { display: block; height: 100%; border-radius: inherit }
+.sentbox { border: 1px solid color-mix(in srgb, var(--good) 45%, transparent); background: var(--good-bg); color: var(--good); border-radius: var(--r-md); padding: 8px 12px; font-weight: 600 }
+
+/* "Needs your OK" */
+.confirm { border: 1px solid color-mix(in srgb, var(--gold) 45%, var(--line-strong)); border-radius: var(--r-lg); padding: 12px 16px; background: var(--surface-2); display: grid; gap: 10px }
+.confirm p { margin: 0; font-weight: 600 }
+.confirm code { font: 12.5px var(--mono); word-break: break-all; display: block; color: var(--ink-2) }
+.confirm pre { overflow-wrap: anywhere; white-space: pre-wrap; max-width: 100%; margin: 0 }
+.claim blockquote { margin: 0 0 4px; padding: 6px 10px; background: var(--bad-bg); border-left: 3px solid var(--bad); border-radius: 0 var(--r-sm) var(--r-sm) 0 }
+.claims-head { font-weight: 600; margin: 0 0 4px }
+.actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center }
 
 /* Tabs */
-.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); flex-wrap: wrap }
-.tabs button { border: 0; background: none; padding: 8px 12px; font-weight: 700; color: var(--muted); cursor: pointer; border-bottom: 3px solid transparent }
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; margin-top: 4px }
+.tabs::-webkit-scrollbar { display: none }
+.tabs button { flex: none; border: 0; background: none; padding: 10px 12px; font: 500 14px var(--body); color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; border-radius: var(--r-sm) var(--r-sm) 0 0; white-space: nowrap }
+.tabs button:hover { color: var(--ink) }
 .tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--blue) }
-.draft { border: 1px solid var(--line); border-radius: 12px; padding: 12px; line-height: 1.6; background: var(--bg) }
-.cite { font: 700 .7rem var(--mono); background: color-mix(in srgb, var(--blue) 14%, transparent); color: var(--blue); padding: 1px 6px; border-radius: 6px; margin-left: 2px; white-space: nowrap }
-.tl { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; border-left: 2px solid var(--line); padding-left: 14px }
-.tl li { position: relative } .tl li::before { content: ""; position: absolute; left: -21px; top: 6px; width: 12px; height: 12px; border-radius: 50%; background: var(--blue); border: 2px solid var(--card) }
+.tabs button:focus-visible { outline-offset: -2px }
+.tabpanel { display: grid; gap: 8px; min-width: 0 }
+.draft { border: 1px solid var(--line); border-radius: var(--r-md); padding: 12px; line-height: 1.6; background: var(--bg) }
+.cite { font: 600 11px var(--mono); background: color-mix(in srgb, var(--blue) 14%, transparent); color: var(--blue); padding: 1px 6px; border-radius: var(--r-xs); margin-left: 2px; white-space: nowrap }
+.tl { list-style: none; margin: 0; padding: 0 0 0 16px; display: grid; gap: 12px; border-left: 1px solid var(--line-strong) }
+.tl li { position: relative } .tl li::before { content: ""; position: absolute; left: -21px; top: 6px; width: 9px; height: 9px; border-radius: 50%; background: var(--blue); box-shadow: 0 0 0 3px var(--card) }
 .tl small { color: var(--muted) }
-.math { font: .8rem/1.55 var(--mono); white-space: pre-wrap; background: var(--bg); border-radius: 12px; padding: 12px; margin: 0; overflow-x: auto }
-.link { border: 0; background: none; padding: 0; font: inherit; font-weight: 700; color: var(--blue); cursor: pointer; text-align: left }
-.link:hover { text-decoration: underline }
-.ask { display: flex; gap: 6px; margin-top: 10px }
-.ask input { flex: 1; min-width: 0; font: 500 .9rem var(--body); padding: 7px 10px; border-radius: 10px; border: 2px solid var(--line); background: var(--bg); color: var(--ink) }
-.ask input:focus-visible { outline: 3px solid var(--gold); outline-offset: 1px }
-.hl { animation: hl 1.4s ease-in-out 3; border-radius: 12px }
-@keyframes hl { 0%,100% { box-shadow: 0 0 0 0 transparent } 50% { box-shadow: 0 0 0 4px var(--gold) } }
-@media (prefers-reduced-motion: reduce) { .hl { animation: none; box-shadow: 0 0 0 3px var(--gold) } }
-.drow.dim { opacity: .35 }
-#stage { margin-top: 10px; border: 2px dashed var(--outline); border-radius: 12px; padding: 10px; display: grid; gap: 8px; background: var(--bg) }
-#stage[hidden] { display: none }
-#stage .k { font: 800 .7rem var(--body); letter-spacing: .08em; text-transform: uppercase; color: var(--muted) }
-#stage code { font: .78rem var(--mono); word-break: break-all }
-#stage .btns .btn { padding: 6px 12px; font-size: .85rem }
-.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px }
-.chips button { font: 600 .78rem var(--body); border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 999px; padding: 4px 10px; cursor: pointer }
-#chat { position: fixed; right: max(14px, env(safe-area-inset-right, 0px)); bottom: calc(max(10px, env(safe-area-inset-bottom, 0px)) + 230px); width: min(420px, calc(100vw - 28px)); max-height: min(62vh, 560px); z-index: 21;
-  background: var(--card); border: 3px solid var(--outline); border-radius: 18px; box-shadow: 6px 6px 0 var(--outline); display: grid; grid-template-rows: auto auto 1fr auto; overflow: hidden; padding: 10px }
-#chat[hidden] { display: none }
-.chat-head { display: flex; gap: 6px; align-items: center; flex-wrap: wrap }
-.chat-head select { flex: 1; min-width: 0; font: 600 .85rem var(--body); padding: 6px 8px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink) }
-.chat-head .chip { padding: 5px 10px; font-size: .78rem }
-#mem { margin-top: 8px; padding: 8px 10px; background: var(--bg); border-radius: 10px; font-size: .85rem }
-#mem .k { font: 800 .7rem var(--body); letter-spacing: .08em; text-transform: uppercase; color: var(--muted) }
-#mem ul { margin: 4px 0; padding-left: 18px } #mem li { cursor: pointer } #mem li:hover { text-decoration: line-through } #mem small { color: var(--muted) }
-#log { overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 10px 2px; min-height: 120px }
-.msg { max-width: 85%; padding: 8px 12px; border-radius: 14px; line-height: 1.45; font-size: .92rem }
-.msg.p { align-self: flex-start; background: var(--bg); border: 1px solid var(--line) }
-.msg.u { align-self: flex-end; background: var(--navy); color: #fff }
-.msg b { background: color-mix(in srgb, var(--gold) 55%, transparent); padding: 0 3px; border-radius: 4px; color: inherit }
-.msg time { display: block; font-size: .68rem; color: var(--muted); margin-top: 2px } .msg.u time { color: #c9d6f2 }
-body.chatting .bubble { display: none }
-details summary { cursor: pointer; color: var(--muted); font-weight: 700; font-size: .85rem }
+.math { font: 12.5px/1.55 var(--mono); white-space: pre-wrap; background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-md); padding: 12px; margin: 0; overflow-x: auto }
+.hl { animation: hl 1.4s ease-in-out 3; border-radius: var(--r-md) }
+@keyframes hl { 0%,100% { box-shadow: 0 0 0 0 transparent } 50% { box-shadow: 0 0 0 3px var(--gold) } }
+@media (prefers-reduced-motion: reduce) { .hl { animation: none; box-shadow: 0 0 0 2px var(--gold) } * { transition: none !important } }
 
-/* ── Parley, corner companion ─────────────────────── */
+/* checklist, evidence, draft */
+.checklist { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px }
+.checklist li { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--bg) }
+.checklist li.no { border-color: color-mix(in srgb, var(--bad) 40%, var(--line)); background: color-mix(in srgb, var(--bad) 7%, var(--card)) }
+.checklist .ico { font-weight: 700; width: 18px }
+.checklist .ok .ico { color: var(--good) } .checklist .no .ico { color: var(--bad) } .checklist li.no > b { color: var(--bad) }
+.checklist li > b { font-weight: 600 }
+.checklist li.opt .ico, .checklist li.opt > b { color: var(--muted) }
+.checklist li.opt > b { font-weight: 500 }
+.checklist .why { color: var(--muted); font-size: 13px; flex: 1 1 200px }
+.checklist form { flex-basis: 100%; display: flex; flex-direction: column; gap: 8px; background: var(--card); border: 1px solid var(--line); padding: 12px; border-radius: var(--r-md) }
+.checklist form label { font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 4px }
+.checklist form .row { display: flex; gap: 8px; flex-wrap: wrap } .checklist form .row label { flex: 1 1 140px }
+.checklist li > button.primary { white-space: normal; text-align: left }
+.evidence .mine, #evidence .mine { color: var(--good); font-size: 12px }
+.sent { background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-md); padding: 10px 12px; white-space: pre-wrap; font-size: 14px }
+
+/* how Parley decided */
+.terms { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; font-size: 14px }
+.terms dt { color: var(--muted) } .terms dd { margin: 0; font-weight: 500 }
+table.prec { border-collapse: collapse; font-size: 13px; width: 100% }
+table.prec th { font: 500 12px var(--body); letter-spacing: .04em; text-transform: uppercase; color: var(--muted) }
+table.prec td, table.prec th { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top }
+.mathtab { overflow-x: auto }
+.mathtab details > summary { margin-top: 6px }
+
+/* ── All disputes (AG Grid) ───────────────────────── */
+.alld > summary { list-style: none; font: 500 12px var(--body); letter-spacing: .04em; text-transform: uppercase; color: var(--muted) }
+.alld > summary::-webkit-details-marker { display: none }
+.alld > summary::before { content: "▸ " } .alld[open] > summary::before { content: "▾ " }
+.alld .bar { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin: 12px 0 }
+.alld .bar form { display: flex; flex: 1 1 240px; min-width: 0 }
+.alld input[type=search] { width: 100%; max-width: 420px }
+.grid { height: 380px; max-width: 100%;
+  --ag-background-color: var(--card); --ag-foreground-color: var(--ink); --ag-text-color: var(--ink); --ag-header-text-color: var(--muted);
+  --ag-header-background-color: var(--surface-2); --ag-border-color: var(--line); --ag-row-border-color: var(--line); --ag-header-column-border-color: var(--line);
+  --ag-odd-row-background-color: var(--card); --ag-row-hover-color: var(--surface-2); --ag-selected-row-background-color: color-mix(in srgb, var(--blue) 14%, var(--card));
+  --ag-accent-color: var(--blue); --ag-font-family: var(--body); --ag-font-size: 13px; --ag-wrapper-border-radius: var(--r-md); --ag-border-radius: var(--r-sm);
+  --ag-input-background-color: var(--bg); --ag-input-border-color: var(--line-strong); --ag-menu-background-color: var(--surface-2); --ag-panel-background-color: var(--surface-2);
+  --ag-chrome-background-color: var(--surface-2); --ag-browser-color-scheme: inherit; --ag-icon-button-hover-background-color: var(--surface-3) }
+#results { border: 1px solid var(--line); border-radius: var(--r-md); padding: 8px 12px; margin-bottom: 10px }
+#results .hit { padding: 8px 0; border-bottom: 1px solid var(--line); cursor: pointer }
+#results .hit:last-child { border-bottom: 0 }
+.cell-fight { color: var(--good); font-weight: 600 } .cell-accept { color: var(--bad); font-weight: 600 } .cell-offer { color: var(--warn); font-weight: 600 }
+
+/* ── Status bar (footer) ──────────────────────────── */
+.activity { font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 4px; border-radius: var(--r-sm) }
+.activity button { display: flex; width: 100%; justify-content: space-between; gap: 12px; border: 0; background: transparent; text-align: left; font: inherit; color: var(--muted); padding: 8px 0 }
+.activity button span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.activity ul { list-style: none; margin: 0; padding: 4px 0 8px; max-height: 45vh; overflow: auto }
+.activity li { padding: 3px 0; overflow-wrap: anywhere }
+.activity.flash { background: color-mix(in srgb, var(--blue) 12%, transparent) }
+.s-ok { color: var(--good) } .s-bad { color: var(--bad) }
+.sdot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); margin-right: 8px }
+.sdot.ok { background: var(--good) } .sdot.bad { background: var(--bad) }
+.row-gap { display: grid; gap: 10px }
+
+/* ── Parley, the companion ────────────────────────── */
 .companion { position: fixed; right: max(14px, env(safe-area-inset-right, 0px)); bottom: max(10px, env(safe-area-inset-bottom, 0px)); z-index: 20; display: flex; align-items: flex-end; gap: 6px; pointer-events: none }
 .companion > * { pointer-events: auto }
-.bubble { position: relative; width: min(370px, calc(100vw - 190px)); margin-bottom: 70px; background: var(--card); color: var(--ink); border: 3px solid var(--outline); border-radius: 20px; padding: 12px 16px; box-shadow: 5px 5px 0 var(--outline); font-size: 1rem; line-height: 1.45 }
-.bubble::after { content: ""; position: absolute; right: -15px; bottom: 26px; border: 12px solid transparent; border-left: 15px solid var(--outline); border-right: 0 }
-.bubble .who { font: 400 .95rem var(--display); color: var(--navy); letter-spacing: .02em; display: flex; justify-content: space-between; gap: 8px }
-:root[data-theme="dark"] .bubble .who { color: var(--sky) }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .bubble .who { color: var(--sky) } }
-.bubble .who button { border: 0; background: none; color: var(--muted); cursor: pointer; font: 700 .75rem var(--body) }
-.bubble b { background: color-mix(in srgb, var(--gold) 55%, transparent); padding: 0 3px; border-radius: 4px }
+.bubble { position: relative; background: var(--surface-2); color: var(--ink); border: 1px solid var(--line-strong); border-radius: var(--r-lg); padding: 10px 14px; font-size: 14px; line-height: 1.5; transition: opacity .6s }
+.bubble .who { font: 600 12px var(--body); letter-spacing: .04em; text-transform: uppercase; color: var(--sky); display: flex; justify-content: space-between; gap: 8px; margin-bottom: 2px }
+.bubble .who .acts { display: flex; gap: 10px }
+.bubble .who button { border: 0; background: none; color: var(--muted); font: 500 12px var(--body); text-transform: none; letter-spacing: 0; padding: 0; border-radius: var(--r-xs) }
+.bubble .who button:hover { color: var(--ink) }
+.bubble b { background: color-mix(in srgb, var(--gold) 28%, transparent); padding: 0 3px; border-radius: 3px; font-weight: 600 }
 .bubble.tucked { display: none }
+.bubble.faded { opacity: 0; visibility: hidden; transition: opacity .6s, visibility 0s .6s }
 .caret { display: inline-block; width: .45em; height: 1em; background: var(--ink); vertical-align: -0.12em; margin-left: 2px; animation: caret 1s steps(1) infinite }
 @keyframes caret { 50% { opacity: 0 } }
-#owl { width: 170px; height: 220px; cursor: pointer; flex: none }
+.owlbox { display: flex; flex-direction: column; align-items: center; gap: 6px; align-self: flex-end }
+.talk-pill { font: 600 12.5px var(--body); border: 0; border-radius: var(--r-pill); background: var(--gold); color: var(--gold-ink); padding: 5px 12px; white-space: nowrap }
+.talk-pill:hover { background: var(--gold-hover) }
+#owl { width: 150px; height: 194px; cursor: pointer; flex: none }
 #owl .bounce { animation: squash 1.1s cubic-bezier(.5,0,.5,1) infinite; transform-origin: 100px 236px; transform-box: view-box }
 #owl .head { transition: transform .2s ease-out; transform-origin: 100px 110px; transform-box: view-box }
 #owl .arm-r { animation: wave 1.8s ease-in-out infinite; transform-origin: 152px 150px; transform-box: view-box }
@@ -180,203 +322,68 @@ details summary { cursor: pointer; color: var(--muted); font-weight: 700; font-s
 @keyframes hop { 0% { transform: scale(1.1,.85) } 40% { transform: scale(.9,1.12) translateY(-22px) } 75% { transform: scale(1.06,.92) } 100% { transform: none } }
 @keyframes wave { 0%,100% { transform: rotate(0) } 50% { transform: rotate(-10deg) } }
 @keyframes gesture { 0%,100% { transform: rotate(-4deg) } 50% { transform: rotate(-22deg) } }
-@media (prefers-reduced-motion: reduce) { #owl .bounce, #owl .arm-r, #owl.talk .arm-r, #owl.hop .bounce { animation: none } #owl { filter: none } }
+@media (prefers-reduced-motion: reduce) { #owl .bounce, #owl .arm-r, #owl.talk .arm-r, #owl.hop .bounce, .caret { animation: none } }
 
-/* Wide screens: the page keeps a right gutter for Parley, so nothing sits under the owl or the bubble. */
+/* Wide screens: a right gutter for Parley, so nothing sits under the owl or the bubble. */
 @media (min-width: 1280px) {
-  body { padding-right: 240px }
-  body.tucked { padding-right: max(16px, env(safe-area-inset-right, 0px)) }
-  .companion { flex-direction: column; align-items: flex-end; gap: 4px; width: 220px }
-  .bubble { width: 100%; margin: 0 0 14px; font-size: .92rem; padding: 10px 14px; max-height: calc(100vh - 270px); overflow-y: auto }
-  .bubble::after { right: 60px; bottom: -15px; border: 12px solid transparent; border-top: 15px solid var(--outline); border-bottom: 0; border-left-color: transparent }
+  body { --gutter: 232px; padding-bottom: 48px }
+  body.tucked { --gutter: 0px }
+  .companion { flex-direction: column; align-items: flex-end; gap: 10px; width: 208px }
+  .bubble { width: 100%; max-height: calc(100vh - 300px); overflow-y: auto }
 }
-.bubble { transition: opacity .6s }
-.bubble.faded { opacity: 0; visibility: hidden; transition: opacity .6s, visibility 0s .6s }
-@media (max-width: 860px) { .main { grid-template-columns: 1fr } }
-@media (max-width: 560px) {
-  #owl { width: 110px; height: 145px } .bubble { width: calc(100vw - 150px); margin-bottom: 40px; font-size: .92rem }
-  .days { grid-template-columns: repeat(7, minmax(0, 1fr)) }
-}
+/* the chat panel is 380px on the right: on wide screens the desk makes room for it */
+@media (min-width: 1100px) { body.chat-open { --gutter: 396px } }
 
-/* Phones and tablets: Parley docks across the bottom and the page reserves that space, so he never covers the desk. */
+/* Tablets and phones: Parley docks across the bottom and the page reserves that space, so he never covers the desk. */
 @media (max-width: 1279px) {
-  body { padding-bottom: calc(var(--dock, 160px) + 16px) }
-  .companion { left: 0; right: 0; bottom: 0; flex-direction: row-reverse; align-items: stretch; gap: 8px;
-    background: var(--card); border-top: 3px solid var(--outline);
+  body { padding-bottom: calc(var(--dock, 96px) + 16px); --dock-space: var(--dock, 96px) }
+  body.tucked { padding-bottom: 24px; --dock-space: 0px }
+  .companion { left: 0; right: 0; bottom: 0; flex-direction: row-reverse; align-items: center; gap: 10px;
+    background: color-mix(in srgb, var(--card) 94%, transparent); backdrop-filter: blur(10px); border-top: 1px solid var(--line-strong);
     padding: 8px max(12px, env(safe-area-inset-right, 0px)) calc(8px + env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px)) }
-  #owl { width: 64px; height: 84px; align-self: flex-end }
-  .bubble { flex: 1; min-width: 0; width: auto; margin: 0; border: 0; box-shadow: none; padding: 0; font-size: .9rem; background: transparent }
-  .bubble::after { display: none }
-  #say { max-height: 4.4em; overflow-y: auto }
-  .bubble .ask { margin-top: 6px }
-  .chips { flex-wrap: nowrap; overflow-x: auto; margin-top: 6px; padding-bottom: 2px; scrollbar-width: none }
-  .chips button { flex: none }
-  body.chatting .bubble { display: block }
-  body.chatting #say, body.chatting .bubble .ask, body.chatting .chips { display: none }
-  #chat { left: 0; right: 0; width: auto; bottom: var(--dock, 160px); max-height: 52vh; border-radius: 18px 18px 0 0; border-bottom: 0; box-shadow: none }
-  body.chatting { padding-bottom: calc(var(--dock, 160px) + var(--chat, 0px) + 16px) }
+  #owl { width: 52px; height: 67px }
+  .owlbox { align-self: center; gap: 2px }
+  .talk-pill { font-size: 11.5px; padding: 3px 9px }
+  .bubble { flex: 1; min-width: 0; margin: 0; border: 0; padding: 0; background: transparent; font-size: 13.5px; align-self: center }
+  #say { max-height: 4.5em; overflow-y: auto }
+  .bubble .who .acts button { padding: 4px 0 }
 }
-/* Tablets: a slim dock (<= 80px). The owl or the bubble still opens the chat; the ask row and chips are hidden. */
 @media (min-width: 721px) and (max-width: 1279px) {
-  .companion { padding-top: 6px; padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px)); align-items: center }
-  #owl { width: 56px; height: 72px; align-self: center }
-  .bubble { font-size: .9rem; align-self: center }
-  #say { max-height: 1.5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
-  .bubble .ask, .chips { display: none }
+  #say { max-height: 3em }
 }
 
-/* ── Desk pieces that are not in the prototype ───────────────── */
-.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0) }
-h3 { font: 800 .75rem var(--body); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 14px 0 6px }
-.muted { color: var(--muted); font-size: .85rem; margin: 2px 0 }
-.hint { color: var(--muted); font-size: .72rem }
-a { color: var(--blue) }
-input:not([type=checkbox]):not([type=radio]), textarea, select { font: 500 .9rem var(--body); padding: 7px 10px; border-radius: 10px; border: 2px solid var(--line); background: var(--bg); color: var(--ink); max-width: 100% }
-input:not([type=checkbox]):not([type=radio]):focus-visible, select:focus-visible { outline: 3px solid var(--gold); outline-offset: 1px }
-input[type=file] { font-size: .8rem; padding: 4px 6px }
-input[type=file]::file-selector-button { font: 800 .8rem var(--body); padding: 5px 10px; margin-right: 8px; border-radius: 10px; border: 2px solid var(--outline); background: var(--card); color: var(--ink); cursor: pointer }
-/* buttons without a class inside the case panel look like .btn (secondary) */
-.tabpanel button:not([class]):not(.activity button), .confirm button:not([class]), .checklist button:not([class]), .checklist button.cancel {
-  font: 800 .85rem var(--body); padding: 6px 12px; border-radius: 12px; border: 2px solid var(--outline); background: var(--card); color: var(--ink); box-shadow: 3px 3px 0 var(--outline); transition: transform .08s, box-shadow .08s }
-.tabpanel button:not([class]):not(.activity button):hover, .confirm button:not([class]):hover, .checklist button:not([class]):hover, .checklist button.cancel:hover { transform: translate(-1px,-1px); box-shadow: 4px 4px 0 var(--outline) }
-textarea { width: 100%; line-height: 1.6 }
-textarea.dim { opacity: .5 }
-textarea.flagged { outline: 2px solid var(--bad) }
-button { cursor: pointer }
-button:disabled { opacity: .5; cursor: not-allowed }
-button.primary { background: var(--gold); color: var(--gold-ink); border: 2px solid var(--outline); border-radius: 10px; font-weight: 800; padding: 6px 12px }
-.card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 12px 16px }
-.banner { background: var(--warn-bg); color: var(--warn); border-radius: 12px; padding: 8px 14px; font-size: .85rem; font-weight: 600 }
-.banner.warn { background: var(--bad-bg); color: var(--bad) }
-.errbox { background: var(--bad-bg); color: var(--bad); padding: 8px 12px; border-radius: 12px; font-weight: 600 }
-.formerr { color: var(--bad); font-size: .8rem }
-.pill { display: inline-block; font-size: .72rem; font-weight: 700; padding: 2px 10px; border-radius: 999px; background: var(--bg); color: var(--muted); text-transform: none; letter-spacing: 0 }
-.pill.green { background: var(--good-bg); color: var(--good) } .pill.red { background: var(--bad-bg); color: var(--bad) }
-.pill.amber { background: var(--warn-bg); color: var(--warn) } .pill.grey { background: var(--bg); color: var(--muted) }
-.red { color: var(--bad); font-weight: 700 }
-.note { font-size: .9rem; margin: 4px 0 }
-.empty { padding: 18px 8px; text-align: center }
-.chip.on { background: color-mix(in srgb, var(--gold) 40%, var(--card)) }
-.call.none { background: var(--bg); color: var(--muted) }
-.drow.lit { box-shadow: 0 0 0 2px var(--gold) }
-.drow .ph { display: contents }
-
-/* deadline strip: each open dispute is a dot on its due day */
-.day { height: auto; min-height: 50px; padding: 4px 2px; align-content: space-between; justify-items: center; gap: 2px }
-.day .lbl { font-size: .68rem }
-.day .chips2 { display: flex; flex-wrap: wrap; gap: 3px; justify-content: center }
-.dd { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--outline); padding: 0; background: var(--muted) }
-.dd.fight { background: var(--good) } .dd.accept { background: var(--bad) } .dd.offer { background: var(--gold) }
-.dd[aria-current="true"] { outline: 3px solid var(--blue); outline-offset: 1px }
-
-/* verdict extras */
-.verdict .chip-p { font: 800 .72rem var(--body); padding: 3px 10px; border-radius: 999px; background: var(--card); border: 1px solid var(--line) }
-.sentbox { border: 2px solid var(--good); background: var(--good-bg); color: var(--good); border-radius: 12px; padding: 8px 12px; font-weight: 800 }
-.reason small { color: var(--muted) }
-.facts .mono { font-family: var(--mono); font-weight: 600 }
-.tabs button:focus-visible { outline: 3px solid var(--gold) }
-.tabpanel { display: grid; gap: 8px; min-width: 0 }
-
-/* checklist, evidence, draft (existing flows) */
-.checklist { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px }
-.checklist li { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px }
-.checklist li.no { border-color: color-mix(in srgb, var(--bad) 45%, var(--line)); background: color-mix(in srgb, var(--bad) 7%, var(--card)) }
-.checklist .ico { font-weight: 800; width: 18px }
-.checklist .ok .ico { color: var(--good) } .checklist .no .ico { color: var(--bad) } .checklist li.no > b { color: var(--bad) }
-.checklist .why { color: var(--muted); font-size: .85rem; flex: 1 1 200px }
-.checklist form { flex-basis: 100%; display: flex; flex-direction: column; gap: 6px; background: var(--bg); padding: 8px; border-radius: 10px }
-.checklist form label { font-size: .75rem; display: flex; flex-direction: column; gap: 2px }
-.checklist form .row { display: flex; gap: 8px } .checklist form .row label { flex: 1 }
-.checklist li > button.primary { white-space: normal; text-align: left }
-.evidence .mine, #evidence .mine { color: var(--good); font-size: .75rem }
-.actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center }
-.confirm { border: 2px dashed var(--outline); border-radius: 12px; padding: 10px 14px; background: var(--bg); display: grid; gap: 8px }
-.confirm p { margin: 0; font-weight: 700 }
-.confirm code { font: .78rem var(--mono); word-break: break-all; display: block }
-.claim blockquote { margin: 0 0 4px; padding: 6px 10px; background: var(--bad-bg); border-left: 4px solid var(--bad) }
-.claims-head { font-weight: 700; margin: 0 0 4px }
-.sent { background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; white-space: pre-wrap; font-size: .9rem }
-
-/* how Parley decided */
-.terms { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0; font-size: .9rem }
-.terms dt { color: var(--muted) } .terms dd { margin: 0; font-weight: 700 }
-table.prec { border-collapse: collapse; font-size: .8rem; width: 100% }
-table.prec td, table.prec th { border-bottom: 1px solid var(--line); padding: 4px 6px; text-align: left; vertical-align: top }
-.mathtab details > summary { margin-top: 6px }
-pre { background: var(--bg); padding: 10px; white-space: pre-wrap; font: .78rem var(--mono); border-radius: 10px; margin: 6px 0 }
-
-/* all disputes + footer */
-.alld > summary { list-style: none; font: 800 .8rem var(--body); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); cursor: pointer }
-.alld > summary::before { content: "▸ " } .alld[open] > summary::before { content: "▾ " }
-.alld .bar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 10px 0 }
-.alld .bar form { display: flex }
-.alld input[type=search] { max-width: 100% }
-.grid { height: 380px }
-#results { border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; margin-bottom: 10px }
-#results .hit { padding: 6px 0; border-bottom: 1px solid var(--line); cursor: pointer }
-mark { background: color-mix(in srgb, var(--gold) 60%, transparent); color: inherit }
-.cell-fight { color: var(--good); font-weight: 700 } .cell-accept { color: var(--bad); font-weight: 700 } .cell-offer { color: var(--warn); font-weight: 700 }
-.activity { font-size: .8rem; color: var(--muted) }
-.activity button { display: flex; width: 100%; justify-content: space-between; gap: 12px; border: 0; background: transparent; text-align: left; font: inherit; color: var(--muted); padding: 6px 0 }
-.activity button span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
-.activity ul { list-style: none; margin: 0; padding: 4px 0 8px; max-height: 45vh; overflow: auto }
-.activity li { padding: 2px 0; overflow-wrap: anywhere }
-.activity.flash { background: color-mix(in srgb, var(--blue) 12%, transparent) }
-.s-ok { color: var(--good) } .s-bad { color: var(--bad) }
-.sdot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); margin-right: 8px }
-.sdot.ok { background: var(--good) } .sdot.bad { background: var(--bad) }
-
-/* companion extras */
-.bubble .who .acts { display: flex; gap: 10px }
-body.tucked { padding-bottom: 18px }
-@media (max-width: 1279px) { body.tucked { padding-bottom: 18px } .bubble .who .acts button { padding: 4px 0 } }
-.row-gap { display: grid; gap: 10px }
-
-/* strips and tile rows scroll inside their own box instead of widening the page */
-.strip, .tiles { max-width: 100% }
-.days { overflow-x: auto }
-.facts dd { overflow-wrap: anywhere }
-.case-ref { margin: -4px 0 0; color: var(--muted); font-size: .78rem }
-.group-head { font: 800 .72rem var(--body); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 10px 2px 2px; display: flex; gap: 6px; align-items: baseline }
-.group-head .n { font-weight: 700; color: var(--ink) }
-.drow.wait { opacity: .6 }
-.drow.wait:hover, .drow.wait[aria-current="true"] { opacity: 1 }
-.later > summary { list-style: none; cursor: pointer; margin: 10px 2px 2px }
-.later > summary::before { content: "▸ " } .later[open] > summary::before { content: "▾ " }
-.later > summary .group-head { display: inline-flex; margin: 0 }
-.call.wait { background: var(--bg); color: var(--muted) }
-.confirm pre { overflow-wrap: anywhere; white-space: pre-wrap; max-width: 100%; margin: 0 }
-.confirm details > summary { cursor: pointer; color: var(--muted); font-weight: 700; font-size: .85rem }
-.who-line { font-family: var(--body); font-size: 1rem; color: var(--muted) }
-
-/* optional evidence that is not on file is quiet, not an alarm */
-.checklist li.opt .ico, .checklist li.opt > b { color: var(--muted) }
-.checklist li.opt > b { font-weight: 600 }
-
-/* waiting rows: the status sits under the title so names are not cut */
-.drow .r .call.wait { white-space: nowrap }
-.drow .t.wrapt { white-space: normal }
-.drow .st { margin-top: 2px }
-.drow .m { white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
-
-/* first-run hint and the owl's "Talk to Parley" pill */
-.hint-line { margin: -6px 0 0; color: var(--muted); font-size: .85rem; display: flex; gap: 8px; align-items: center }
-.hint-line button { border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 1rem; padding: 0 4px }
-#owl { cursor: pointer }
-.talk-pill { font: 700 .8rem var(--body); border: 2px solid var(--outline); border-radius: 999px; background: var(--gold); color: var(--gold-ink); padding: 4px 12px; cursor: pointer; box-shadow: 2px 2px 0 var(--outline); white-space: nowrap }
-.talk-pill:hover { transform: translate(-1px,-1px) }
-.owlbox { display: flex; flex-direction: column; align-items: center; gap: 4px }
-@media (min-width: 1280px) { .owlbox { align-self: flex-end } }
-@media (max-width: 1279px) { .owlbox { align-self: flex-end } }
-
-/* the chat panel is 380 px on the right: on wide screens the desk makes room for it */
-@media (min-width: 1100px) {
-  body.chat-open { padding-right: 396px }
-}
-
-/* Public demo: the 10-minute session (DemoGate) */
-.demo-timer { position: fixed; top: 10px; right: 12px; z-index: 50; font: 700 .8rem var(--body); background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; font-variant-numeric: tabular-nums }
-.demo-gate { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 16px; background: color-mix(in srgb, #0a1222 82%, transparent); backdrop-filter: blur(4px) }
-.demo-gate-card { max-width: 460px; background: var(--card); color: var(--ink); border: 1px solid var(--line); border-radius: 18px; padding: 24px; display: grid; gap: 12px }
-.demo-gate-card h2 { font: 400 1.6rem var(--display); margin: 0 }
+/* ── Public demo: the 10-minute session (DemoGate) ── */
+.demo-timer { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 50; font: 500 12.5px var(--body); background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--line-strong); border-radius: var(--r-pill); padding: 5px 12px; font-variant-numeric: tabular-nums; white-space: nowrap }
+.demo-gate { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 16px; background: color-mix(in srgb, #050a14 80%, transparent); backdrop-filter: blur(6px) }
+.demo-gate-card { max-width: 440px; background: var(--card); color: var(--ink); border: 1px solid var(--line-strong); border-radius: var(--r-xl); padding: 28px; display: grid; gap: 14px }
+.demo-gate-card h2 { font: 600 24px/1.2 var(--display); letter-spacing: -.02em; margin: 0 }
 .demo-gate-card p { margin: 0; color: var(--muted) }
+.demo-gate-card .btn { background: var(--gold); border-color: var(--gold); color: var(--gold-ink); font-weight: 600; min-height: 44px }
+.demo-gate-card .btn:hover { background: var(--gold-hover) }
+
+/* Phones: the list comes first; a case opens as its own full-width view. */
+@media (max-width: 860px) {
+  .brand small { display: none }
+  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-2) }
+  .tile { padding: 10px 12px } .tile .v { font-size: 22px } .tile .s { font-size: 12px; line-height: 1.4 }
+  .days { grid-template-columns: repeat(7, minmax(0, 1fr)) }
+  .main { grid-template-columns: minmax(0, 1fr) }
+  .main > .panel:first-child { position: static; max-height: none; overflow: visible }
+  .wrap[data-view="case"] > .tiles, .wrap[data-view="case"] > .strip, .wrap[data-view="case"] > .hint-line, .wrap[data-view="case"] > .alld,
+  .wrap[data-view="case"] .main > .panel:first-child, .wrap[data-view="list"] .casepane { display: none }
+  .back-list { display: inline-flex; justify-self: start }
+  .casepane .panel { padding: 14px 12px }
+  .case-head h2.title { font-size: 19px }
+  .verdict { padding: 12px } .verdict .what { font-size: 18px }
+  .reasons { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px } .reason { padding: 8px } .reason .k { font-size: 10.5px; letter-spacing: .02em } .reason .v { font-size: 15px }
+  .verdict .btns .btn { flex: 1 1 auto; min-height: 44px }
+  .drow { min-height: 52px }
+  .tabs { margin-inline: -12px; padding-inline: 12px }
+  .tabs button { padding: 12px }
+  .chip { min-height: 36px }
+  .alld .bar .btns { width: 100% }
+  .terms { grid-template-columns: 1fr; gap: 0 } .terms dd { margin-bottom: 8px }
+  /* the countdown sits under the top bar, and the page makes room for it */
+  .demo-timer { top: calc(var(--topbar) + 8px); left: auto; right: 12px; transform: none }
+  body:has(.demo-timer) .wrap { padding-top: 48px }
+}

@@ -44,6 +44,8 @@ export function App() {
   const [openId, setOpenId] = useState<string | null>(hashId);
   const [reopen, setReopen] = useState(0); // bumps when the open case is opened again
   const [tab, setTab] = useState<Tab>("evidence");
+  // phones show the list first and a case as its own view (app.css, max-width 860px)
+  const [view, setView] = useState<"list" | "case">("list");
   const [highlight, setHighlight] = useState(0);
   const [lit, setLit] = useState<string[] | null>(null);
   const [speech, setSpeech] = useState<{ text: string; seq: number } | null>(null);
@@ -84,6 +86,8 @@ export function App() {
   const openCase = useCallback((id: string) => {
     setWasReset(false);
     dismissHint();
+    setView("case");
+    if (window.matchMedia?.("(max-width: 860px)").matches) window.scrollTo(0, 0);
     if (location.hash === `#case=${encodeURIComponent(id)}`) setReopen((n) => n + 1);
     else location.hash = `case=${encodeURIComponent(id)}`;
   }, []);
@@ -164,7 +168,25 @@ export function App() {
 
   return (
     <>
-      <div className="wrap">
+      <header className="topbar">
+        <div className="topbar-in">
+          <div className="brand">
+            <h1>
+              <a href="/" title="Parley home">Parley</a>
+            </h1>
+            <small>your dispute desk</small>
+          </div>
+          <nav className="btns" aria-label="Console">
+            <a className="chip" href="#developers">
+              Developers
+            </a>
+            <button type="button" className="chip" onClick={() => setTucked(!tucked)}>
+              {tucked ? "Bring Parley back" : "Tuck Parley away"}
+            </button>
+          </nav>
+        </div>
+      </header>
+      <div className="wrap" data-view={view}>
         {info?.sync?.error && (
           <div className="banner warn">PayPal is unreachable right now: showing the last synced cases.</div>
         )}
@@ -173,22 +195,6 @@ export function App() {
             The desk was reset since you opened this page: the case was reloaded with the current draft.
           </div>
         )}
-        <header>
-          <div className="brand">
-            <h1>
-              <a href="/" title="Parley home">Parley</a>
-            </h1>
-            <small>your dispute desk</small>
-          </div>
-          <div className="btns">
-            <a className="chip" href="#developers">
-              Developers
-            </a>
-            <button type="button" className="chip" onClick={() => setTucked(!tucked)}>
-              {tucked ? "Bring Parley back" : "Tuck Parley away"}
-            </button>
-          </div>
-        </header>
         {dev ? (
           <DeveloperPage />
         ) : (
@@ -221,6 +227,10 @@ export function App() {
             </div>
           ) : (
             openId && (
+              <div className="casepane">
+              <button type="button" className="chip back-list" onClick={() => setView("list")}>
+                ← All disputes
+              </button>
               <CasePanel
                 key={openId + ":" + reopen}
                 id={openId}
@@ -233,6 +243,7 @@ export function App() {
                 onAiDraft={() => {}}
                 onDecision={onDecision}
               />
+              </div>
             )
           )}
         </section>

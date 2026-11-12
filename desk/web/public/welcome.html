@@ -11,90 +11,127 @@
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Figtree:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<meta name="theme-color" content="#0a1222">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <style>
+  /* tokens: DESIGN.md (repo root), the same set as the console's app.css */
   :root {
-    --bg: #0a1222; --band: #0e1a30; --card: #131e33; --ink: #e8eefa; --muted: #93a3bd; --line: #24324d;
-    --blue: #4ea3ff; --sky: #009cde; --gold: #ffc439; --gold-ink: #2b2100; --good: #5fcf8f;
-    --display: "Lilita One", "Arial Rounded MT Bold", system-ui, sans-serif;
-    --body: "Figtree", system-ui, sans-serif; --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+    --bg: #0a1222; --card: #0f1a2f; --surface-2: #15223c; --surface-3: #1b2b4a; --line: #1e2c47; --line-strong: #2c3e60;
+    --ink: #eef3fb; --ink-2: #c5d0e3; --muted: #8fa0bc; --blue: #5aa9ff; --sky: #36b6ee; --focus: #8cc8ff;
+    --gold: #ffc439; --gold-hover: #ffd36b; --gold-ink: #2b2100; --good: #5fcf8f; --good-bg: #10291f; --bad: #f38375;
+    --brand: "Lilita One", "Arial Rounded MT Bold", system-ui, sans-serif;
+    --body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif; --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+    --r-md: 8px; --r-lg: 12px; --r-xl: 16px; --r-pill: 9999px;
     color-scheme: dark;
   }
   * { box-sizing: border-box }
-  html { scroll-behavior: smooth }
-  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto } }
-  body { margin: 0; background: var(--bg); color: var(--ink); font: 400 17px/1.55 var(--body) }
-  a { color: var(--blue) }
-  .in { max-width: 1120px; margin: 0 auto; padding: 0 max(16px, env(safe-area-inset-left, 0px)) }
-  .btn { display: inline-block; font: 800 1rem var(--body); text-decoration: none; border-radius: 999px; padding: 12px 22px; border: 1px solid transparent; cursor: pointer }
-  .btn.primary { background: var(--gold); color: var(--gold-ink) }
-  .btn.primary:hover { filter: brightness(1.06) }
-  .btn.ghost { border-color: var(--line); color: var(--ink); background: transparent }
-  .btn.ghost:hover { border-color: var(--blue) }
-  .btn:focus-visible, button:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px }
+  html { scroll-behavior: smooth; scroll-padding-top: 72px; -webkit-text-size-adjust: 100% }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 400 16px/1.5 var(--body); letter-spacing: -.003em; -webkit-font-smoothing: antialiased; overflow-x: hidden }
+  a { color: var(--blue); text-underline-offset: 2px }
+  .in { max-width: 1160px; margin: 0 auto; padding: 0 max(20px, env(safe-area-inset-left, 0px)) }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px }
 
-  nav { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line) }
-  nav .in { display: flex; align-items: center; gap: 20px; height: 64px }
-  .logo { font: 400 1.6rem var(--display); color: var(--ink); text-decoration: none; margin-right: auto }
-  nav .links a { color: var(--muted); text-decoration: none; font-weight: 700; margin-right: 18px }
-  nav .links a:hover { color: var(--ink) }
-  nav .btn { padding: 9px 18px }
+  .btn { display: inline-flex; align-items: center; justify-content: center; font: 600 15px/1.2 var(--body); text-decoration: none; border-radius: var(--r-md); padding: 11px 18px; min-height: 44px; border: 1px solid transparent; cursor: pointer; transition: background .12s, border-color .12s, transform .12s }
+  .btn.primary { background: var(--gold); color: var(--gold-ink) }
+  .btn.primary:hover { background: var(--gold-hover) }
+  .btn.ghost { border-color: var(--line-strong); color: var(--ink); background: var(--card) }
+  .btn.ghost:hover { background: var(--surface-2); border-color: var(--muted) }
+  .btn:active { transform: translateY(1px) }
+  .btn:disabled { opacity: .5; cursor: default }
+
+  nav { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line) }
+  nav .in { display: flex; align-items: center; gap: 24px; height: 56px }
+  .logo { font: 400 1.5rem/1 var(--brand); color: var(--ink); text-decoration: none; margin-right: auto; letter-spacing: .01em }
+  nav .links { display: flex; gap: 4px }
+  nav .links a { color: var(--muted); text-decoration: none; font: 500 14px var(--body); padding: 8px 10px; border-radius: var(--r-md) }
+  nav .links a:hover { color: var(--ink); background: var(--card) }
+  nav .btn { padding: 8px 14px; min-height: 36px; font-size: 14px }
   @media (max-width: 720px) { nav .links { display: none } }
 
-  .hero { padding: 72px 0 56px; background: radial-gradient(900px 420px at 80% 10%, #13306a 0%, transparent 70%) }
-  .hero .in { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, .8fr); gap: 32px; align-items: center }
-  .eyebrow { font: 800 .78rem var(--body); letter-spacing: .1em; text-transform: uppercase; color: var(--sky) }
-  h1 { font: 400 clamp(2.4rem, 5.5vw, 3.8rem)/1.05 var(--display); margin: 12px 0 18px }
-  .lede { font-size: 1.2rem; color: var(--muted); max-width: 34em; margin: 0 0 28px }
+  .eyebrow { font: 500 13px/1.3 var(--body); letter-spacing: .04em; text-transform: uppercase; color: var(--sky) }
+  .badge { display: inline-flex; align-items: center; gap: 8px; font: 500 13px var(--body); color: var(--ink-2); background: var(--card); border: 1px solid var(--line-strong); border-radius: var(--r-pill); padding: 5px 12px }
+  .badge i { width: 7px; height: 7px; border-radius: 50%; background: var(--gold) }
+
+  .hero { position: relative; padding: 88px 0 72px; overflow: hidden }
+  .hero::before { content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(720px 420px at 78% 30%, rgba(26, 79, 181, .38), transparent 70%), radial-gradient(520px 320px at 8% 0%, rgba(54, 182, 238, .10), transparent 70%) }
+  .hero .in { position: relative; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); gap: 48px; align-items: center }
+  h1 { font: 600 clamp(2.4rem, 5.6vw, 4.25rem)/1.04 var(--body); letter-spacing: -.035em; margin: 20px 0; text-wrap: balance }
+  .lede { font-size: 18px; line-height: 1.55; color: var(--ink-2); max-width: 34em; margin: 0 0 28px }
   .ctas { display: flex; flex-wrap: wrap; gap: 12px }
-  .note { color: var(--muted); font-size: .9rem; margin-top: 14px }
-  #owl { width: 100%; max-width: 300px; aspect-ratio: 170 / 220; margin: 0 auto }
-  @media (max-width: 720px) { .hero .in { grid-template-columns: 1fr } #owl { max-width: 200px; order: -1 } .hero { padding-top: 32px } }
+  .hero .note { color: var(--muted); font-size: 14px; margin: 16px 0 0 }
+  .stage { position: relative; display: grid; justify-items: center }
+  #owl { width: 100%; max-width: 300px; height: auto }
+  /* a small copy of the console's verdict card: the product is the picture */
+  .mock { width: min(100%, 360px); margin-top: -18px; position: relative; background: linear-gradient(180deg, color-mix(in srgb, var(--gold) 9%, var(--surface-2)), var(--surface-2)); border: 1px solid color-mix(in srgb, var(--gold) 38%, var(--line-strong)); border-radius: var(--r-lg); padding: 14px 16px; display: grid; gap: 10px; box-shadow: 0 24px 60px rgba(3, 8, 20, .55) }
+  .mock .k { font: 500 11px var(--body); letter-spacing: .05em; text-transform: uppercase; color: var(--muted) }
+  .mock .what { font: 600 18px/1.25 var(--body); letter-spacing: -.02em }
+  .mock .row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px }
+  .mock .cell { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-md); padding: 8px 10px; display: grid; gap: 2px }
+  .mock .cell b { font: 600 15px var(--body); font-variant-numeric: tabular-nums }
+  .mock .fake-btn { justify-self: start; font: 600 13px var(--body); background: var(--gold); color: var(--gold-ink); border-radius: var(--r-md); padding: 7px 12px }
+  @media (max-width: 860px) { .hero { padding: 40px 0 48px } .hero .in { grid-template-columns: minmax(0, 1fr); gap: 32px } #owl { max-width: 220px } }
 
-  .apis { border-block: 1px solid var(--line); background: var(--band); padding: 18px 0; color: var(--muted); font-weight: 700; font-size: .92rem }
-  .apis .in { display: flex; flex-wrap: wrap; gap: 10px 28px; align-items: center }
-  .apis span { color: var(--ink) }
+  .apis { border-block: 1px solid var(--line); background: var(--card); padding: 16px 0; color: var(--muted); font: 500 13px var(--body) }
+  .apis .in { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center }
+  .apis b { font-weight: 500; margin-right: 8px }
+  .apis span { font: 400 12.5px var(--mono); color: var(--ink-2); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 9px }
 
-  section { padding: 80px 0 }
-  section h2 { font: 400 clamp(1.8rem, 3.6vw, 2.5rem)/1.15 var(--display); margin: 8px 0 14px }
-  .sub { color: var(--muted); max-width: 40em; margin: 0 0 40px }
+  section { padding: 96px 0 }
+  section h2 { font: 600 clamp(1.75rem, 3.6vw, 2.5rem)/1.12 var(--body); letter-spacing: -.03em; margin: 10px 0 14px; text-wrap: balance }
+  .sub { color: var(--ink-2); font-size: 18px; max-width: 38em; margin: 0 0 40px }
 
-  .use { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 48px; align-items: center; padding: 36px 0; border-top: 1px solid var(--line) }
+  .use { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 56px; align-items: center; padding: 40px 0; border-top: 1px solid var(--line) }
   .use:nth-of-type(even) .art { order: 2 }
-  .use h3 { font: 400 1.6rem var(--display); margin: 6px 0 10px }
-  .use p { color: var(--muted); margin: 0 0 12px }
-  .use ul { margin: 0; padding-left: 1.1em; color: var(--muted) }
-  .use li { margin: 4px 0 }
+  .use h3 { font: 600 28px/1.2 var(--body); letter-spacing: -.025em; margin: 8px 0 12px }
+  .use p { color: var(--ink-2); margin: 0 0 12px }
+  .use ul { margin: 0; padding: 0; list-style: none; color: var(--ink-2); display: grid; gap: 8px }
+  .use li { padding-left: 24px; position: relative }
+  .use li::before { content: ""; position: absolute; left: 2px; top: .5em; width: 10px; height: 6px; border-left: 2px solid var(--good); border-bottom: 2px solid var(--good); transform: rotate(-45deg) }
   .use strong { color: var(--ink) }
-  @media (max-width: 720px) { .use { grid-template-columns: 1fr; gap: 20px } .use:nth-of-type(even) .art { order: 0 } }
+  @media (max-width: 860px) { section { padding: 64px 0 } .use { grid-template-columns: minmax(0, 1fr); gap: 20px; padding: 32px 0 } .use:nth-of-type(even) .art { order: 0 } .use h3 { font-size: 24px } }
 
-  /* shortcut: illustration placeholders describe the owl's pose; swap each for the finished art */
-  .art { aspect-ratio: 4 / 3; border: 2px dashed #2f4a7a; border-radius: 20px; background: linear-gradient(160deg, #10203d, #0c1730); display: grid; place-items: center; padding: 24px; text-align: center }
-  .art p { margin: 0; color: #8fb2e8; font: 600 .95rem/1.5 var(--body); max-width: 26em }
-  .art p::before { content: "Illustration"; display: block; font: 800 .7rem var(--body); letter-spacing: .12em; text-transform: uppercase; color: var(--sky); margin-bottom: 8px }
+  .art { display: grid; place-items: center }
+  .art img { width: auto; max-width: 100%; height: auto; max-height: 380px }
+  @media (max-width: 860px) { .art img { max-height: 260px } }
 
   .steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px }
-  .step { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 22px }
-  .step b { display: block; font: 400 2rem var(--display); color: var(--gold) }
-  .step h3 { margin: 6px 0 6px; font-size: 1.1rem }
-  .step p { margin: 0; color: var(--muted); font-size: .95rem }
-  @media (max-width: 720px) { .steps { grid-template-columns: 1fr } }
+  .step { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 24px }
+  .step b { display: grid; place-items: center; width: 28px; height: 28px; border-radius: var(--r-md); font: 600 13px var(--mono); color: var(--gold); background: color-mix(in srgb, var(--gold) 12%, transparent); border: 1px solid color-mix(in srgb, var(--gold) 35%, transparent) }
+  .step h3 { margin: 16px 0 6px; font: 600 20px/1.25 var(--body); letter-spacing: -.02em }
+  .step p { margin: 0; color: var(--ink-2); font-size: 15px }
+  @media (max-width: 860px) { .steps { grid-template-columns: minmax(0, 1fr) } }
 
-  .example { margin-top: 28px; background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 22px; display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px }
-  .example .k { font: 800 .72rem var(--body); letter-spacing: .08em; text-transform: uppercase; color: var(--muted) }
-  .example .v { font: 400 1.7rem var(--display); font-variant-numeric: tabular-nums }
-  .example code { font: 600 .82rem var(--mono); color: var(--blue); word-break: break-all }
+  .example { margin-top: 16px; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 20px 16px }
+  .example .k { font: 500 12px var(--body); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px }
+  .example .v { font: 600 26px/1.2 var(--body); letter-spacing: -.03em; font-variant-numeric: tabular-nums }
+  .example .v.gold { color: var(--gold) }
+  .example .wide { grid-column: 1 / -1; border-top: 1px solid var(--line); padding-top: 16px }
+  .example code { font: 400 13px var(--mono); color: var(--blue); word-break: break-all }
 
-  .demo { background: var(--band); border-block: 1px solid var(--line) }
-  .demo .in { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, .7fr); gap: 32px; align-items: center }
-  .demo ul { color: var(--muted); padding-left: 1.1em; margin: 0 }
-  .demo li { margin: 6px 0 }
+  .demo { padding-top: 0 }
+  .demo .in > div { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-xl); padding: 48px; display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, .7fr); gap: 32px; align-items: center }
+  .demo h2 { margin-top: 8px }
+  .demo ul { color: var(--ink-2); padding-left: 1.1em; margin: 0; font-size: 15px }
+  .demo li { margin: 8px 0 }
   .demo .ctas { justify-content: flex-end }
-  #reset-msg { color: var(--muted); font-size: .9rem; min-height: 1.4em; text-align: right; margin: 10px 0 0 }
-  @media (max-width: 720px) { .demo .in { grid-template-columns: 1fr } .demo .ctas { justify-content: flex-start } #reset-msg { text-align: left } }
+  #reset-msg { color: var(--muted); font-size: 14px; min-height: 1.4em; text-align: right; margin: 10px 0 0 }
+  @media (max-width: 860px) { .demo .in > div { grid-template-columns: minmax(0, 1fr); padding: 24px } .demo .ctas { justify-content: flex-start } #reset-msg { text-align: left } }
 
-  footer { padding: 32px 0 48px; color: var(--muted); font-size: .9rem }
+  footer { border-top: 1px solid var(--line); padding: 28px 0 48px; color: var(--muted); font-size: 13px }
   footer .in { display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: space-between }
+  footer a { color: var(--ink-2) }
+
+  /* sections ease in as they scroll into view; only when the script is running and motion is welcome */
+  @media (prefers-reduced-motion: no-preference) {
+    .js .reveal { opacity: 0; transform: translateY(14px); transition: opacity .5s ease, transform .5s ease }
+    .js .reveal.seen { opacity: 1; transform: none }
+  }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto } .btn { transition: none } }
 </style>
 </head>
 <body>
@@ -109,7 +146,7 @@
 <header class="hero">
   <div class="in">
     <div>
-      <div class="eyebrow">For PayPal sellers</div>
+      <span class="badge"><i></i>For PayPal sellers</span>
       <h1>Settle every dispute for the least it costs you.</h1>
       <p class="lede">Parley reads your open PayPal disputes and makes a call on each one: fight it, refund it, or offer a specific amount back. Every call shows its reasoning, and nothing goes to PayPal until you click.</p>
       <div class="ctas">
@@ -118,12 +155,24 @@
       </div>
       <p class="note">No sign-up. Each visit gets 10 minutes on a simulated PayPal account with 60 sample disputes.</p>
     </div>
-    <div id="owl" role="img" aria-label="Parley, a snowy owl in a navy waistcoat"></div>
+    <div class="stage">
+      <img id="owl" src="/img/hero.png" alt="Parley, a snowy owl in a navy waistcoat">
+      <div class="mock" aria-hidden="true">
+        <span class="k">Demo case · sleeping bag</span>
+        <span class="what">Parley says: offer $97.50 back</span>
+        <div class="row">
+          <div class="cell"><span class="k">Claimed</span><b>$179.00</b></div>
+          <div class="cell"><span class="k">Offer</span><b>$97.50</b></div>
+          <div class="cell"><span class="k">Accepts</span><b>59%</b></div>
+        </div>
+        <span class="fake-btn">Send $97.50 offer</span>
+      </div>
+    </div>
   </div>
 </header>
 
 <div class="apis">
-  <div class="in">Built on PayPal <span>Disputes v1</span> <span>Webhooks</span> <span>Transaction Search</span> <span>Agent Toolkit tool names</span></div>
+  <div class="in"><b>Built on PayPal</b> <span>Disputes v1</span> <span>Webhooks</span> <span>Transaction Search</span> <span>Agent Toolkit tool names</span></div>
 </div>
 
 <section id="use-cases">
@@ -132,8 +181,8 @@
     <h2>What Parley does for a small shop</h2>
     <p class="sub">A dispute gives you a few days to answer. Fighting takes hours and often loses; refunding everything is expensive. Parley does the math for you.</p>
 
-    <div class="use">
-      <div class="art"><p>The owl at a brass balance scale: a stack of coins on one pan, a folded receipt on the other, one eyebrow raised as it adds a single coin.</p></div>
+    <div class="use reveal">
+      <div class="art"><img src="/img/scale.png" alt="The owl at a brass balance scale: a stack of coins on one pan, a folded receipt on the other, one eyebrow raised as it adds a single coin." loading="lazy"></div>
       <div>
         <div class="eyebrow">Fight, refund or offer</div>
         <h3>A clear call on every dispute</h3>
@@ -146,8 +195,8 @@
       </div>
     </div>
 
-    <div class="use">
-      <div class="art"><p>The owl perched on a wall calendar, tapping a pocket watch, with three days circled in red ink.</p></div>
+    <div class="use reveal">
+      <div class="art"><img src="/img/calendar.png" alt="The owl perched on a wall calendar, tapping a pocket watch, with three days circled in red ink." loading="lazy"></div>
       <div>
         <div class="eyebrow">Deadlines</div>
         <h3>Never miss a reply date</h3>
@@ -155,8 +204,8 @@
       </div>
     </div>
 
-    <div class="use">
-      <div class="art"><p>The owl in an armchair with a notebook open, pencil behind its ear, chatting across a small desk with a shop owner.</p></div>
+    <div class="use reveal">
+      <div class="art"><img src="/img/chat.png" alt="The owl in an armchair with a notebook open, pencil behind its ear, chatting across a small desk with a shop owner." loading="lazy"></div>
       <div>
         <div class="eyebrow">Ask in plain words</div>
         <h3>A chat that knows your disputes</h3>
@@ -164,8 +213,8 @@
       </div>
     </div>
 
-    <div class="use">
-      <div class="art"><p>The owl holding up a large rubber stamp reading "Needs your OK", waiting politely for a nod before stamping a letter to PayPal.</p></div>
+    <div class="use reveal">
+      <div class="art"><img src="/img/stamp.png" alt="The owl holding up a large rubber stamp reading &quot;Needs your OK&quot;, waiting politely for a nod before stamping a letter to PayPal." loading="lazy"></div>
       <div>
         <div class="eyebrow">You stay in charge</div>
         <h3>Nothing is sent without your OK</h3>
@@ -173,8 +222,8 @@
       </div>
     </div>
 
-    <div class="use">
-      <div class="art"><p>The owl peering through a magnifying glass at a tracking label and a delivery photo, a draft letter beside it.</p></div>
+    <div class="use reveal">
+      <div class="art"><img src="/img/evidence.png" alt="The owl peering through a magnifying glass at a tracking label and a delivery photo, a draft letter beside it." loading="lazy"></div>
       <div>
         <div class="eyebrow">Evidence and replies</div>
         <h3>Drafts that stick to the facts</h3>
@@ -182,8 +231,8 @@
       </div>
     </div>
 
-    <div class="use">
-      <div class="art"><p>The owl filing folders into a tall cabinet, each drawer labelled: Calls, Approvals, Exports.</p></div>
+    <div class="use reveal">
+      <div class="art"><img src="/img/filing.png" alt="The owl filing folders into a tall cabinet, each drawer labelled: Calls, Approvals, Exports." loading="lazy"></div>
       <div>
         <div class="eyebrow">On the record</div>
         <h3>Every step is visible</h3>
@@ -193,28 +242,29 @@
   </div>
 </section>
 
-<section id="how" style="padding-top:40px">
+<section id="how" style="padding-top:0">
   <div class="in">
     <div class="eyebrow">How it decides</div>
     <h2>The AI writes. The math is done in cents.</h2>
     <p class="sub">A language model drafts replies and runs the chat. It never computes money: a separate decision engine does that, with the reasoning written out in plain words.</p>
-    <div class="steps">
+    <div class="steps reveal">
       <div class="step"><b>1</b><h3>Read</h3><p>Disputes come in from PayPal's Disputes API and webhooks, with the buyer's order history.</p></div>
       <div class="step"><b>2</b><h3>Weigh</h3><p>Past cases and the evidence on file give a chance to win. Parley compares fighting, refunding and offers in 50-cent steps.</p></div>
       <div class="step"><b>3</b><h3>You approve</h3><p>You see the call, the reasoning and the exact PayPal request. You decide whether to send it.</p></div>
     </div>
-    <div class="example">
+    <div class="example reveal">
       <div><div class="k">Demo case</div><div class="v">Sleeping bag</div></div>
       <div><div class="k">Buyer claims</div><div class="v">$179.00</div></div>
-      <div><div class="k">Parley offers</div><div class="v">$97.50</div></div>
+      <div><div class="k">Parley offers</div><div class="v gold">$97.50</div></div>
       <div><div class="k">Buyer likely to take it</div><div class="v">59%</div></div>
-      <div style="grid-column: 1 / -1"><div class="k">The call it sends on your OK</div><code>POST /v1/customer/disputes/{id}/make-offer</code></div>
+      <div class="wide"><div class="k">The call it sends on your OK</div><code>POST /v1/customer/disputes/{id}/make-offer</code></div>
     </div>
   </div>
 </section>
 
 <section class="demo">
   <div class="in">
+   <div class="reveal">
     <div>
       <div class="eyebrow">About the demo</div>
       <h2>Try it with sample disputes</h2>
@@ -231,6 +281,7 @@
       </div>
       <p id="reset-msg" role="status"></p>
     </div>
+   </div>
   </div>
 </section>
 
@@ -241,15 +292,15 @@
   </div>
 </footer>
 
-<script src="/owl.js"></script>
 <script>
   (function () {
-    var el = document.getElementById("owl");
-    if (window.ParleyOwl && el) {
-      var owl = window.ParleyOwl.mount(el);
-      owl.play("arrive");
-      addEventListener("pointermove", function (e) { owl.lookAt(e.clientX, e.clientY); });
-      el.addEventListener("click", function () { owl.react("poke"); });
+    // reveal on scroll (the styles apply only under .js)
+    if ("IntersectionObserver" in window) {
+      document.documentElement.classList.add("js");
+      var io = new IntersectionObserver(function (es) {
+        es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add("seen"); io.unobserve(e.target); } });
+      }, { rootMargin: "0px 0px -8% 0px" });
+      document.querySelectorAll(".reveal").forEach(function (n) { io.observe(n); });
     }
     var btn = document.getElementById("reset"), msg = document.getElementById("reset-msg");
     btn.addEventListener("click", function () {
