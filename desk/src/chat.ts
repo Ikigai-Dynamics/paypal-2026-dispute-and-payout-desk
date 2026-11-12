@@ -36,6 +36,8 @@ export interface ChatDeps {
       item?: string;
       amount_cents: number;
       call: string | null;
+      offer_cents?: number;
+      currency?: string;
     }[]
   >;
 }
@@ -45,6 +47,8 @@ export interface Staged {
   kind:
     "make_dispute_offer" | "provide_dispute_evidence" | "accept_dispute_claim";
   title: string;
+  /** a line shown above the buttons when the amount differs from the desk's call */
+  note?: string;
   paypal: { method: "POST"; path: string; body: Record<string, unknown> };
   desk: { method: "POST"; path: string; body: Record<string, unknown> };
 }
@@ -63,10 +67,41 @@ const OFFER_TYPES = [
 ];
 const money = (c: number, cur = "USD") =>
   `${cur === "USD" ? "$" : cur + " "}${(c / 100).toFixed(2)}`;
-const shortName = (b: string) => {
-  const w = b.trim().split(/\s+/);
-  return w.length > 1 ? `${w[0]} ${w[w.length - 1]![0]}.` : b;
-};
+/** "Ember 20F Sleeping Bag · Marcus Bell · $179.00": how replies name a case. */
+export const caseLabel = (c: {
+  buyer: string;
+  item?: string;
+  amount_cents: number;
+  currency?: string;
+}) =>
+  [c.item, c.buyer, money(c.amount_cents, c.currency)]
+    .filter(Boolean)
+    .join(" · ");
+
+/** Replaces case ids in visible text with their labels (ids stay in actions). */
+export function labelIds(
+  text: string,
+  cases: (Parameters<typeof caseLabel>[0] & { id: string })[],
+): string {
+  let out = text;
+  for (const c of [...cases].sort((a, b) => b.id.length - a.id.length))
+    out = out.split(c.id).join(caseLabel(c));
+  return out;
+}
+
+/** The desk's call in words a seller uses. */
+export const callWords = (
+  call: string | null | undefined,
+  offer?: number,
+  cur = "USD",
+) =>
+  call === "fight"
+    ? "Fight it"
+    : call === "accept"
+      ? "Refund in full"
+      : offer !== undefined && offer > 0
+        ? `Offer ${money(offer, cur)} back`
+        : "no call yet";
 
 /** shortcut: tolerant parse of the model's {reply, actions}; plain text becomes the reply */
 export function parseReply(content: string): {
@@ -166,9 +201,16 @@ export async function validateActions(
           const offerType = OFFER_TYPES.includes(str("offer_type"))
             ? str("offer_type")
             : "REFUND";
+          const note =
+            c.call === "fight" || c.call === "accept"
+              ? `Parley's call on this case is ${callWords(c.call)}.`
+              : c.offer_cents !== undefined && c.offer_cents !== cents
+                ? `Parley suggests ${money(c.offer_cents, c.currency)}; you asked ${money(cents as number, c.currency)}.`
+                : undefined;
           staged.push({
             id: randomUUID(),
             kind: "make_dispute_offer",
+            ...(note ? { note } : {}),
             title: `Offer ${money(cents as number, c.currency)} back to ${c.buyer} on ${on}`,
             paypal: {
               method: "POST",
@@ -235,11 +277,17 @@ export async function validateActions(
   return { ui, staged, remember };
 }
 
-const SYSTEM = `You are Parley, a calm, dry snowy-owl dispute advisor for a PayPal seller. Keep answers to one to three short sentences. Never invent money: every number comes from the case facts below. A "call" of accept means refund or accept the claim; fight means send evidence.
+const SYSTEM = `You are Parley, a calm, dry snowy-owl dispute advisor for a PayPal seller. Keep answers to one to three short sentences. Name a case by item, buyer and amount, like \"Ember 20F Sleeping Bag · Marcus Bell · $179.00\", and never write its PP-D id in the reply (ids belong only in actions). Never invent money: every number comes from the case facts below. A "call" of accept means refund or accept the claim; fight means send evidence.
 Reply ONLY with JSON: {"reply": "...", "actions": [...]}. Allowed actions:
 {"type":"select_case","id":"<case id>"}, {"type":"open_tab","tab":"overview|evidence|buyer|timeline|draft|math"}, {"type":"filter","ids":["<case id>"]} (ids null clears), {"type":"highlight_evidence"}, {"type":"remember","fact":"..."},
 {"type":"make_dispute_offer","case_id":"..","amount_cents":<int>,"offer_type":"REFUND"}, {"type":"provide_dispute_evidence","case_id":".."}, {"type":"accept_dispute_claim","case_id":".."}, {"type":"get_dispute","case_id":".."}, {"type":"list_disputes"}.
 The make_dispute_offer, provide_dispute_evidence and accept_dispute_claim actions only propose a card; the seller must approve it. get_dispute and list_disputes just read. Use no action when none is needed. When asked which disputes to refund or offer on, answer in the reply and send a filter action with those case ids. When asked to send an offer, send make_dispute_offer for that case (find it by item or buyer in the case list).`;
+
+/** What Parley says when the AI call fails. */
+export const busyReply = (ctx: CaseCtx | null): string =>
+  ctx
+    ? `Parley's AI is busy right now. Here is the desk's call for this case: ${callWords(ctx.call, ctx.offer_cents, ctx.currency)}.`
+    : "Parley's AI is busy right now. Open a case and I can give you the desk's call.";
 
 const ensure = new WeakSet<object>();
 async function init(db: Db): Promise<void> {
@@ -415,7 +463,7 @@ async function postMessage(
       facts.length
         ? `What you know about the seller:\n- ${facts.join("\n- ")}`
         : "",
-      `Cases: ${cases.map((x) => `${x.id} ${shortName(x.buyer)}${x.item ? ` (${x.item})` : ""} ${money(x.amount_cents)} call=${x.call ?? "?"}`).join("; ") || "none"}`,
+      `Cases: ${cases.map((x) => `id=${x.id} label=\"${caseLabel(x)}\" call=${callWords(x.call, x.offer_cents, x.currency)}`).join("; ") || "none"}`,
       ctx
         ? `Open case ${ctx.id}: ${ctx.buyer}${ctx.item ? ` (${ctx.item})` : ""}, ${money(ctx.amount_cents, ctx.currency)}, reason ${ctx.reason}, call ${ctx.call ?? "unknown"}` +
           (ctx.p !== undefined
@@ -455,16 +503,10 @@ async function postMessage(
       res.value.trim()
     ) {
       const parsed = parseReply(res.value);
-      reply = parsed.reply;
+      reply = labelIds(parsed.reply, cases);
       raw = parsed.actions;
     } else {
-      reply = ctx
-        ? `Parley couldn't reach the AI just now. Here is the call for this case: ${ctx.call ?? "no call yet"}` +
-          (ctx.p !== undefined
-            ? ` (about ${Math.round(ctx.p * 100)}% to win)`
-            : "") +
-          "."
-        : "Parley couldn't reach the AI just now. Open a case and I can give you the call.";
+      reply = busyReply(ctx);
     }
   }
   const { ui, staged, remember } = await validateActions(raw, deps, caseId);

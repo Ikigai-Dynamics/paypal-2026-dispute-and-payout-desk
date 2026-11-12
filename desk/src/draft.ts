@@ -21,7 +21,7 @@ export const LABEL_GROUNDED = (added: boolean) =>
 export const SYSTEM_PROMPT =
   "You write the merchant's written response to PayPal's dispute reviewer. It is not a letter to the buyer. " +
   "Write as the merchant named in the input, using 'we'. No salutation and no 'Dear ...'. Plain, factual prose; no headings. " +
-  "Write 3 to 5 sentences in this order: our position; the order and every piece of evidence on file in prose, then what the buyer said; the buyer pattern when facts_on_file has one; the last sentence is one request to PayPal. Do not state the dispute reason as a label. " +
+  "Write 3 to 5 sentences in this order: our position; the order and every piece of evidence on file in prose, then what the buyer said; the last sentence is one request to PayPal. Do not state the dispute reason as a label. " +
   "Copy dates and amounts exactly as written in facts_on_file (for example 'Nov 2, 2026' and 'USD 100.00'), and say 'the order was placed on <date>', never 'the order record shows'. Start the last sentence with 'We ask PayPal to'. " +
   "Mention every evidence item in facts_on_file by name (tracking, photos, email log, order record, prior orders and so on). " +
   "Never state a claim that is not in facts_on_file or our_position: no number, carrier, date, order id or document that is not there. " +
@@ -380,19 +380,18 @@ export function factsSentence(c: CaseView): string {
     : onFile;
 }
 
-/** The buyer pattern, only when the buyer has 3 or more disputes open with us at once. */
-export const patternSentence = (c: CaseView): string | undefined =>
-  (c.buyer_open_disputes ?? 0) >= 3
-    ? `${c.buyer} has ${c.buyer_open_disputes} open disputes with us at the same time; we ask PayPal to take this pattern into account.`
-    : undefined;
+const CLOSING = "We ask PayPal to find in our favor.";
+/** True when the text already ends with a request to PayPal. */
+export const endsWithAsk = (t: string): boolean =>
+  /ask PayPal|request that PayPal|rule in our favor|find in our favo/i.test(
+    sentencesOf(t).at(-1) ?? "",
+  );
+const compose = (c: CaseView, position: string, support?: string) => {
+  const body = [position, factsSentence(c), support].filter(Boolean).join(" ");
+  return endsWithAsk(body) ? body : `${body} ${CLOSING}`;
+};
 
-const CLOSING = "We ask PayPal to find in our favour.";
-const compose = (c: CaseView, position: string, support?: string) =>
-  [position, factsSentence(c), support, patternSentence(c), CLOSING]
-    .filter(Boolean)
-    .join(" ");
-
-/** Deterministic template per reason: position, the facts on file, the buyer pattern, the closing request. */
+/** Deterministic template per reason: position, the facts on file, the closing request. */
 export function fallbackDraft(
   c: CaseView,
   decision: Decision | null,
@@ -749,11 +748,6 @@ export async function draftResponse(
     ...(msg
       ? [`${c.buyer}'s message of ${day(msg.time_posted)}: "${msg.content}"`]
       : []),
-    ...(patternSentence(c)
-      ? [
-          `${c.buyer} has ${c.buyer_open_disputes} open disputes with us at the same time`,
-        ]
-      : []),
   ];
   const user = JSON.stringify({
     merchant: c.merchant,
@@ -842,7 +836,9 @@ export async function draftResponse(
         .join(" ");
       return !seenLead.has(lead) && !!seenLead.add(lead);
     });
-    const end = lastCloser ?? (uniq.length < 5 ? CLOSING : undefined);
+    const end =
+      lastCloser ??
+      (uniq.length < 5 && !endsWithAsk(uniq.join(" ")) ? CLOSING : undefined);
     kept.splice(0, kept.length, ...uniq, ...(end ? [end] : []));
     if (kept.length < 3 || kept.length > 5)
       return {

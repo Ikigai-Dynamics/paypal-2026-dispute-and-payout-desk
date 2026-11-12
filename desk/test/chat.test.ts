@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createLlm } from "@jeirslab/llm-client";
 import {
+  busyReply,
   chatRoutes,
+  labelIds,
   parseReply,
   validateActions,
   type CaseCtx,
@@ -164,5 +166,60 @@ describe("chatRoutes", () => {
     );
     assert.equal(r?.status, 200);
     assert.deepEqual(facts, ["I ship with USPS"]);
+  });
+});
+
+describe("case labels and the busy fallback", () => {
+  const cases = [
+    {
+      id: "PP-D-1",
+      buyer: "Marcus Bell",
+      item: "Ember 20F Sleeping Bag",
+      amount_cents: 17900,
+    },
+    { id: "PP-D-10", buyer: "Ava Chen", amount_cents: 5000 },
+  ];
+  it("replaces ids with item · buyer · amount, longest id first", () => {
+    const t = labelIds("Offer on PP-D-1, refund PP-D-10.", cases);
+    assert.equal(
+      t,
+      "Offer on Ember 20F Sleeping Bag · Marcus Bell · $179.00, refund Ava Chen · $50.00.",
+    );
+    assert.doesNotMatch(t, /PP-D-/);
+  });
+  it("busy fallback uses human call words and never says offline", () => {
+    assert.equal(
+      busyReply({ ...ctx, call: "offer", offer_cents: 9750 }),
+      "Parley's AI is busy right now. Here is the desk's call for this case: Offer $97.50 back.",
+    );
+    assert.match(busyReply({ ...ctx, call: "accept" }), /Refund in full\.$/);
+    assert.match(busyReply({ ...ctx, call: "fight" }), /Fight it\.$/);
+    assert.doesNotMatch(busyReply(null), /offline|couldn't/);
+  });
+});
+
+describe("staged offer note", () => {
+  const offer = (c: CaseCtx, cents: number) =>
+    validateActions(
+      [{ type: "make_dispute_offer", case_id: c.id, amount_cents: cents }],
+      { loadCase: async () => c, listCases: async () => [] },
+    );
+  it("says what Parley suggests when the amount differs", async () => {
+    const r = await offer({ ...ctx, call: "offer", offer_cents: 4000 }, 3000);
+    assert.equal(
+      r.staged[0]!.note,
+      "Parley suggests $40.00; you asked $30.00.",
+    );
+    assert.equal(
+      (await offer({ ...ctx, call: "offer", offer_cents: 3000 }, 3000))
+        .staged[0]!.note,
+      undefined,
+    );
+  });
+  it("names the call when it is fight or refund", async () => {
+    assert.equal(
+      (await offer({ ...ctx, call: "fight" }, 3000)).staged[0]!.note,
+      "Parley's call on this case is Fight it.",
+    );
   });
 });
