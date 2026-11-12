@@ -1395,7 +1395,15 @@ describe("draft cache", () => {
         calls++;
         return new Response(
           JSON.stringify({
-            choices: [{ message: { content: JSON.stringify({ response: fallbackDraft(base, decision).response }) } }],
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    response: fallbackDraft(base, decision).response,
+                  }),
+                },
+              },
+            ],
             usage: { prompt_tokens: 1000, completion_tokens: 500 },
           }),
         );
@@ -1419,7 +1427,12 @@ describe("draft cache", () => {
     const cache = new DraftCache(llm);
     let costs = 0;
     cache.onCost = () => costs++;
-    const d = await cache.get(base, { ...decision, call: "accept" } as Decision, [], {});
+    const d = await cache.get(
+      base,
+      { ...decision, call: "accept" } as Decision,
+      [],
+      {},
+    );
     assert.equal(n(), 0);
     assert.equal(costs, 0);
     assert.notEqual(d.source, "llm");

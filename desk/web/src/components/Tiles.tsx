@@ -22,7 +22,8 @@ export function Tiles({ cases, summary }: { cases: CaseSummary[]; summary?: Summ
       <div className="tile">
         <span className="k">Need your answer</span>
         <span className="v">{open.length}</span>
-        <span className="s">{week} due this week · {waiting} waiting on buyer or PayPal</span>
+        <span className="s">{week} due this week · {open.length - week} later</span>
+        <span className="s">{waiting} more waiting on buyer or PayPal</span>
       </div>
       <div className="tile hot">
         <span className="k">Money at stake</span>

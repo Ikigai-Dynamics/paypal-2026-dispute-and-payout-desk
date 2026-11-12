@@ -26,6 +26,7 @@ export const callLabel = (x: ActivityCall) => {
     return x.buyer && x.amount_cents != null
       ? `AI wrote a draft for ${x.buyer}'s ${money(x.amount_cents, x.currency || "USD")} case`
       : "AI wrote a draft reply";
+  if (x.method === "APPROVE") return "You approved an action";
   const via = ` · PayPal ${v}`;
   if (x.buyer && x.amount_cents != null && v === "make-offer")
     return `Offered ${money(x.amount_cents, x.currency || "USD")} to ${x.buyer}${via}`;
@@ -112,7 +113,7 @@ export function PayPalFooter({
     ...[...gets].map(([k, { n, x }]) =>
       n > 1 ? (
         <li key={k}>
-          {k} ×{n} · last {ago(x.at)}
+          {x.method === "APPROVE" ? `You approved ${n} actions` : `${k} ×${n}`} · last {ago(x.at)}
         </li>
       ) : (
         <Row key={k} x={x} />

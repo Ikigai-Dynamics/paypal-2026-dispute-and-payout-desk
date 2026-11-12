@@ -1,10 +1,8 @@
 import { useEffect, useState } from "react";
 import { api, type Analysis, type Assumption } from "../lib/api";
-import { money, pct, reasonWords, signed, unbracket } from "../lib/format";
+import { money, pct, reasonWords, signed } from "../lib/format";
 
 const words = (id: string) => id.replaceAll("_", " ").replace(/^./, (c) => c.toUpperCase());
-
-const plain = (t: string) => unbracket(t).replace(/^transaction\s+/i, "");
 
 /** An assumption's value in the units a seller reads: dollars, percents or plain numbers. */
 const valueOf = (x: Assumption, cur: string) => {
@@ -57,7 +55,7 @@ export function ShowTheMath({ analysis: a, cost }: { analysis: Analysis; cost: n
       : `About ${pct(d.p0)}% of ${kind} are won by sellers; with no similar past cases, your chance stays at ${pct(d.p)}%.`;
   const precs = new Map<string, { p: Analysis["precedents"][number]; n: number }>();
   for (const p of a.precedents.filter((p) => p.outcome != null)) {
-    const k = `${p.won}|${plain(p.snippet)}`;
+    const k = String(p.won);
     precs.set(k, { p, n: (precs.get(k)?.n ?? 0) + 1 });
   }
   return (
@@ -86,7 +84,7 @@ export function ShowTheMath({ analysis: a, cost }: { analysis: Analysis; cost: n
           <tbody>
             <tr>
               <th>Outcome</th>
-              <th>What happened</th>
+              <th>Dispute type</th>
             </tr>
             {[...precs.entries()].map(([k, { p, n }]) => (
               <tr key={k}>
@@ -94,7 +92,7 @@ export function ShowTheMath({ analysis: a, cost }: { analysis: Analysis; cost: n
                   {p.won ? "You won" : "Buyer won"}
                   {n > 1 ? ` · ${n} cases` : ""}
                 </td>
-                <td>{plain(p.snippet)}</td>
+                <td>{reasonWords(c.reason)}</td>
               </tr>
             ))}
           </tbody>

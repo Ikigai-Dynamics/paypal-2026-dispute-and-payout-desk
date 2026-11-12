@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, post } from "../lib/api";
 import type { CaseSummary } from "../lib/api";
-import { callKind, needsResponse } from "../lib/format";
+import { callKind, money, needsResponse } from "../lib/format";
 import "./chat.css";
 
 interface Staged {
@@ -29,10 +29,11 @@ const GREETING =
 /** Suggestions that fit the live state: an offer chip only while that offer is still unsent. */
 export function chipsFor(cases: CaseSummary[]): string[] {
   const c = cases.find((x) => needsResponse(x) && callKind(x.call) === "offer");
+  const what = c && (c.item ?? c.items?.[0]?.item_description ?? "case");
   return [
     "Which case should I deal with first?",
     "Which cases should I just refund?",
-    ...(c ? [`Send the offer on the ${c.item ?? c.items?.[0]?.item_description ?? "case"}`] : []),
+    ...(c ? [`Send the offer to ${c.buyer} on the ${what} (${money(c.offer_cents ?? c.amount_cents, c.currency, true)})`] : []),
   ];
 }
 
@@ -72,7 +73,7 @@ function StagedCard({
   );
   const settle = async (ok: boolean, text: string) => {
     setState(ok ? { ok, text } : "declined");
-    await post(`/api/chat/staged/${s.id}/approved`, { ok, result: text }).catch(
+    await post(`/api/chat/staged/${s.id}/approved`, { ok }).catch(
       () => undefined,
     );
     onDone(ok, text);
@@ -176,7 +177,11 @@ export function ChatPanel() {
   );
   useEffect(() => {
     window.addEventListener("parley:changed", loadChips);
-    return () => window.removeEventListener("parley:changed", loadChips);
+    window.addEventListener("parley:sent", loadChips);
+    return () => {
+      window.removeEventListener("parley:changed", loadChips);
+      window.removeEventListener("parley:sent", loadChips);
+    };
   }, [loadChips]);
 
   useEffect(() => {
@@ -232,6 +237,7 @@ export function ChatPanel() {
       const r = await post(`/api/chat/conversations/${id}/messages`, {
         text: t,
         case_id: caseId.current ?? undefined,
+        tz_offset: new Date().getTimezoneOffset(),
       });
       setMsgs((m) => [...m, r.message]);
       dispatchUi(r.ui_actions, r.message.text);

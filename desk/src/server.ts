@@ -649,20 +649,30 @@ const chatDeps = {
   pool,
   llm,
   listCases: async () =>
-    (await store.list()).filter(waiting).map((r) => ({
-      id: r.dispute_id,
-      buyer: r.buyer,
-      item: toView(r).items[0]?.item_description,
-      amount_cents: r.amount_cents,
-      currency: r.currency,
-      call: decisionCache.get(r.dispute_id)?.call ?? null,
-      offer_cents: decisionCache.get(r.dispute_id)?.offer_cents ?? null,
-      p: decisionCache.get(r.dispute_id)?.p ?? null,
-      reason: r.reason,
-      due_in_days: toView(r).days_left,
-      // past the deadline the desk lists it apart from the ones that need you
-      status_group: ((toView(r).days_left ?? 0) < 0 ? "waiting" : "needs_you") as "waiting" | "needs_you",
-    })),
+    (await store.list())
+      .filter((r) => waiting(r) || r.status === "WAITING_FOR_BUYER_RESPONSE")
+      .map((r) => ({
+        id: r.dispute_id,
+        buyer: r.buyer,
+        item: toView(r).items[0]?.item_description,
+        amount_cents: r.amount_cents,
+        currency: r.currency,
+        call: decisionCache.get(r.dispute_id)?.call ?? null,
+        offer_cents: decisionCache.get(r.dispute_id)?.offer_cents ?? null,
+        p: decisionCache.get(r.dispute_id)?.p ?? null,
+        reason: r.reason,
+        due_at: r.due_at,
+        due_in_days:
+          toView(r).days_left == null ? null : Math.round(toView(r).days_left!),
+        // an offer already out: the seller asked "send it" twice
+        sent_offer_cents:
+          r.status === "WAITING_FOR_BUYER_RESPONSE" &&
+          r.raw.offer?.seller_offered_amount
+            ? Math.round(Number(r.raw.offer.seller_offered_amount.value) * 100)
+            : null,
+        status_group: (waiting(r) ? "needs_you" : "waiting") as
+          "waiting" | "needs_you",
+      })),
   loadCase: async (id: string) => {
     const row = await store.get(id);
     if (!row) return null;

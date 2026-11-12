@@ -85,7 +85,7 @@ describe("validateActions", () => {
     const r = await validateActions(p.actions, deps);
     assert.equal(r.staged.length, 1);
     assert.equal(r.staged[0]!.kind, "make_dispute_offer");
-    assert.equal(r.ui.length, 0);
+    assert.deepEqual(r.ui, [{ type: "select_case", id: "PP-1" }]);
     const old = await validateActions(
       [
         { type: "make_offer", case_id: "PP-1" },
@@ -108,7 +108,10 @@ describe("validateActions", () => {
       [{ type: "provide_dispute_evidence", case_id: "PP-1" }],
       deps,
     );
-    assert.deepEqual(r.ui, [{ type: "open_tab", tab: "draft" }]);
+    assert.deepEqual(r.ui, [
+      { type: "open_tab", tab: "draft" },
+      { type: "select_case", id: "PP-1" },
+    ]);
     assert.equal(r.staged[0]!.desk.path, "/api/cases/PP-1/evidence");
   });
 });
@@ -226,29 +229,95 @@ describe("staged offer note", () => {
 });
 
 describe("grounded chat", () => {
-  const mk = (id: string, buyer: string, item: string, cents: number, call: string, due: number, reason: string, offer?: number) => ({
-    id, buyer, item, amount_cents: cents, currency: "USD", call, due_in_days: due, reason,
-    status_group: "needs_you" as const, offer_cents: offer ?? null,
+  const mk = (
+    id: string,
+    buyer: string,
+    item: string,
+    cents: number,
+    call: string,
+    due: number,
+    reason: string,
+    offer?: number,
+  ) => ({
+    id,
+    buyer,
+    item,
+    amount_cents: cents,
+    currency: "USD",
+    call,
+    due_in_days: due,
+    reason,
+    status_group: "needs_you" as const,
+    offer_cents: offer ?? null,
   });
   const list = [
-    mk("I", "Pat Lee", "Ikigai Gift Card", 10000, "fight", 3, "MERCHANDISE_OR_SERVICE_NOT_RECEIVED"),
-    mk("A", "Sam Alder", "Alder Boots", 16400, "accept", 1, "CREDIT_NOT_PROCESSED"),
-    mk("E", "Marcus Bell", "Ember Sleeping Bag", 17900, "offer", 5, "DUPLICATE_TRANSACTION", 9750),
+    mk(
+      "I",
+      "Pat Lee",
+      "Ikigai Gift Card",
+      10000,
+      "fight",
+      3,
+      "MERCHANDISE_OR_SERVICE_NOT_RECEIVED",
+    ),
+    mk(
+      "A",
+      "Sam Alder",
+      "Alder Boots",
+      16400,
+      "accept",
+      1,
+      "CREDIT_NOT_PROCESSED",
+    ),
+    mk(
+      "E",
+      "Marcus Bell",
+      "Ember Sleeping Bag",
+      17900,
+      "offer",
+      5,
+      "DUPLICATE_TRANSACTION",
+      9750,
+    ),
     mk("S1", "Ann Hill", "Summit Tent", 131700, "fight", 6, "UNAUTHORISED"),
-    mk("S2", "Bo Park", "Summit Tent", 60800, "fight", 7, "PAYMENT_BY_OTHER_MEANS"),
+    mk(
+      "S2",
+      "Bo Park",
+      "Summit Tent",
+      60800,
+      "fight",
+      7,
+      "PAYMENT_BY_OTHER_MEANS",
+    ),
   ];
-  const run = async (text: string, cases = list) => {
+  const run = async (
+    text: string,
+    cases: (Omit<(typeof list)[number], "status_group"> & {
+      status_group: "needs_you" | "waiting";
+      sent_offer_cents?: number;
+    })[] = list,
+  ) => {
     let llmCalls = 0;
     const saved: { actions: string }[] = [];
     const pool = {
       async query(sql: string, params: unknown[] = []) {
         if (sql.includes("from conversations where id"))
           return { rows: [{ id: "1", title: "x", case_id: null }] };
-        if (sql.includes("select fact")) return { rows: [{ fact: "I always refund gift cards under $50" }] };
+        if (sql.includes("select fact"))
+          return { rows: [{ fact: "I always refund gift cards under $50" }] };
         if (sql.includes("select role, text")) return { rows: [] };
         if (sql.includes("insert into messages") && sql.includes("returning")) {
           saved.push({ actions: params[2] as string });
-          return { rows: [{ id: "2", role: "parley", text: params[1], actions: JSON.parse(params[2] as string) }] };
+          return {
+            rows: [
+              {
+                id: "2",
+                role: "parley",
+                text: params[1],
+                actions: JSON.parse(params[2] as string),
+              },
+            ],
+          };
         }
         return { rows: [] };
       },
@@ -256,14 +325,40 @@ describe("grounded chat", () => {
     const llm = {
       complete: async () => {
         llmCalls++;
-        return { source: "llm", value: JSON.stringify({ reply: "Ok.", actions: [{ type: "make_dispute_offer", case_id: "S1", amount_cents: 25000 }] }) };
+        return {
+          source: "llm",
+          value: JSON.stringify({
+            reply: "Ok.",
+            actions: [
+              {
+                type: "make_dispute_offer",
+                case_id: "S1",
+                amount_cents: 25000,
+              },
+            ],
+          }),
+        };
       },
     } as unknown as ChatDeps["llm"];
-    const req = Object.assign((async function* () { yield Buffer.from(JSON.stringify({ text })); })(), { method: "POST" });
-    const r = await chatRoutes(req, new URL("http://x/api/chat/conversations/1/messages"), {
-      pool, llm, loadCase: async (id) => { const c = cases.find((x) => x.id === id); return c ? { ...c, offer_cents: c.offer_cents ?? undefined } : null; },
-      listCases: async () => cases,
-    });
+    const req = Object.assign(
+      (async function* () {
+        yield Buffer.from(JSON.stringify({ text }));
+      })(),
+      { method: "POST" },
+    );
+    const r = await chatRoutes(
+      req,
+      new URL("http://x/api/chat/conversations/1/messages"),
+      {
+        pool,
+        llm,
+        loadCase: async (id) => {
+          const c = cases.find((x) => x.id === id);
+          return c ? { ...c, offer_cents: c.offer_cents ?? undefined } : null;
+        },
+        listCases: async () => cases,
+      },
+    );
     return { body: r!.body as any, llmCalls }; // eslint-disable-line @typescript-eslint/no-explicit-any
   };
 
@@ -271,9 +366,14 @@ describe("grounded chat", () => {
     assert.equal(money(131700), "$1,317.00");
   });
   it("answers 'first' from the desk's call without the model", async () => {
-    const { body, llmCalls } = await run("Which case should I deal with first, and why?");
+    const { body, llmCalls } = await run(
+      "Which case should I deal with first, and why?",
+    );
     assert.equal(llmCalls, 0);
-    assert.match(body.message.text, /^Start with Alder Boots · Sam Alder · \$164\.00\. It's due tomorrow, and the desk's call is Refund in full\./);
+    assert.match(
+      body.message.text,
+      /^Start with Alder Boots · Sam Alder · \$164\.00\. It's due tomorrow, and the desk's call is Refund in full\./,
+    );
     assert.doesNotMatch(body.message.text, /Ikigai.*refund/i);
     assert.deepEqual(body.ui_actions, [{ type: "select_case", id: "A" }]);
   });
@@ -281,15 +381,22 @@ describe("grounded chat", () => {
     const { body, llmCalls } = await run("Which cases should I just refund?");
     assert.equal(llmCalls, 0);
     assert.equal(body.message.text, "Refund these 1 in full:");
-    assert.deepEqual(body.list, [{ id: "A", line: "Alder Boots · Sam Alder · $164.00 · due tomorrow" }]);
+    assert.deepEqual(body.list, [
+      { id: "A", line: "Alder Boots · Sam Alder · $164.00 · due tomorrow" },
+    ]);
     assert.deepEqual(body.ui_actions[0], { type: "filter", ids: ["A"] });
   });
   it("says so when no case has that call", async () => {
-    const { body } = await run("Which should I offer on?", list.filter((c) => c.call !== "offer"));
+    const { body } = await run(
+      "Which should I offer on?",
+      list.filter((c) => c.call !== "offer"),
+    );
     assert.match(body.message.text, /^None of your open cases/);
   });
   it("stages on the case the text names, over the model's id", async () => {
-    const { body } = await run("Offer $250 on the Summit tent where they paid another way");
+    const { body } = await run(
+      "Offer $250 on the Summit tent where they paid another way",
+    );
     assert.equal(body.staged.length, 1);
     assert.match(body.staged[0].desk.path, /\/S2\/offer$/);
   });
@@ -297,14 +404,94 @@ describe("grounded chat", () => {
     const { body } = await run("Offer $250 on the Summit tent");
     assert.equal(body.staged.length, 0);
     assert.equal(body.message.text, "Which one do you mean?");
-    assert.deepEqual(body.list.map((l: { line: string }) => l.line), [
-      "Summit Tent · Unauthorised · $1,317.00",
-      "Summit Tent · Paid another way · $608.00",
-    ]);
+    assert.deepEqual(
+      body.list.map((l: { line: string }) => l.line),
+      [
+        "Summit Tent · Ann Hill · Unauthorised · $1,317.00 · due in 6 days",
+        "Summit Tent · Bo Park · Paid another way · $608.00 · due in 7 days",
+      ],
+    );
+  });
+  it("resolves 'send the offer' to the one open offer case, with no model", async () => {
+    const cs = [
+      ...list,
+      mk(
+        "S3",
+        "Marcus Bell",
+        "Summit Tent",
+        60800,
+        "offer",
+        4,
+        "PAYMENT_BY_OTHER_MEANS",
+        28000,
+      ),
+    ];
+    const { body, llmCalls } = await run(
+      "Send the offer to Marcus Bell on the Summit Tent ($280)",
+      cs,
+    );
+    assert.equal(llmCalls, 0);
+    assert.equal(body.staged.length, 1);
+    assert.match(body.staged[0].desk.path, /\/S3\/offer$/);
+    assert.deepEqual(body.ui_actions.at(-1), { type: "select_case", id: "S3" });
+    assert.deepEqual(body.staged[0].paypal.body, {
+      offer_amount: { currency_code: "USD", value: "280.00" },
+      offer_type: "REFUND",
+    });
+  });
+  it("says so when that offer is already out", async () => {
+    const cs = [
+      ...list,
+      {
+        ...mk(
+          "S3",
+          "Marcus Bell",
+          "Summit Tent",
+          60800,
+          "offer",
+          4,
+          "PAYMENT_BY_OTHER_MEANS",
+          28000,
+        ),
+        status_group: "waiting" as const,
+        sent_offer_cents: 28000,
+      },
+    ];
+    const { body } = await run(
+      "Send the offer to Marcus Bell on the Summit Tent ($280)",
+      cs,
+    );
+    assert.equal(body.staged.length, 0);
+    assert.equal(body.message.text, "You already offered $280.00 on that one.");
+  });
+  it("counts 'due this week' like the list: open cases within 7 days, with whole-day wording", async () => {
+    const cs = [
+      ...list,
+      mk("L", "Late Lee", "Far Tent", 9000, "fight", 8, "OTHER"),
+      {
+        ...mk("W", "Wai Ting", "Sent Tent", 9000, "offer", 2, "OTHER"),
+        status_group: "waiting" as const,
+      },
+    ];
+    const { body } = await run("Which disputes are due this week?", cs);
+    assert.equal(body.message.text, "5 disputes are due this week:");
+    assert.equal(body.list.length, 5);
+    assert.equal(
+      body.list[0].line,
+      "Alder Boots · Sam Alder · $164.00 · due tomorrow",
+    );
   });
   it("collapses duplicated labels and bare ids", () => {
-    const cs = [{ id: "PP-D-1", buyer: "Ava Chen", item: "Boots", amount_cents: 5000 }];
-    assert.equal(labelIds("Refund Boots · Ava Chen · $50.00 (PP-D-1) now (PP-D-9).", cs), "Refund Boots · Ava Chen · $50.00 now.");
-    assert.equal(labelIds("Refund PP-D-1 (PP-D-1).", cs), "Refund Boots · Ava Chen · $50.00.");
+    const cs = [
+      { id: "PP-D-1", buyer: "Ava Chen", item: "Boots", amount_cents: 5000 },
+    ];
+    assert.equal(
+      labelIds("Refund Boots · Ava Chen · $50.00 (PP-D-1) now (PP-D-9).", cs),
+      "Refund Boots · Ava Chen · $50.00 now.",
+    );
+    assert.equal(
+      labelIds("Refund PP-D-1 (PP-D-1).", cs),
+      "Refund Boots · Ava Chen · $50.00.",
+    );
   });
 });

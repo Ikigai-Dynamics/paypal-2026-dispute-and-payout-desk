@@ -158,6 +158,7 @@ export function App() {
   const onWritten = useCallback(async () => {
     await activity.reload();
     await reload().catch(() => {});
+    window.dispatchEvent(new Event("parley:sent")); // the chat's chips look again
   }, [activity.reload, reload]);
 
   return (

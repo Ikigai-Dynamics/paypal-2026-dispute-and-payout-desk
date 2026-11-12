@@ -41,7 +41,11 @@ export interface ChatDeps {
       p?: number | null;
       reason?: string;
       due_in_days?: number | null;
-      /** 'needs_you' for the desk's "Disputes that need you" list, else 'waiting' */
+      /** ISO due time; the chat turns it into calendar days the way the list does */
+      due_at?: string | null;
+      /** cents of the offer already sent on this case, when one was */
+      sent_offer_cents?: number | null;
+      /** 'needs_you' for the desk's "Disputes that need you" list (open), else 'waiting' (sent or under review) */
       status_group?: "needs_you" | "waiting";
     }[]
   >;
@@ -87,7 +91,10 @@ const REASON_WORDS: Record<string, string> = {
 };
 export const reasonWords = (r = "") =>
   REASON_WORDS[r] ??
-  (r.replaceAll("_", " ").toLowerCase().replace(/^./, (m) => m.toUpperCase()) ||
+  (r
+    .replaceAll("_", " ")
+    .toLowerCase()
+    .replace(/^./, (m) => m.toUpperCase()) ||
     "Unknown");
 /** "Ember 20F Sleeping Bag · Marcus Bell · $179.00": how replies name a case. */
 export const caseLabel = (c: {
@@ -156,10 +163,28 @@ const ALIAS: Record<string, string> = {
 };
 
 type ListedCase = Awaited<ReturnType<ChatDeps["listCases"]>>[number];
-const STOP = new Set(["the", "and", "for", "with", "offer", "refund", "send", "where", "they", "this", "that", "dispute", "case"]);
+const STOP = new Set([
+  "the",
+  "and",
+  "for",
+  "with",
+  "offer",
+  "refund",
+  "send",
+  "where",
+  "they",
+  "this",
+  "that",
+  "dispute",
+  "case",
+]);
 const REASON_PHRASES: Record<string, string[]> = {
   UNAUTHORISED: ["unauthorised", "unauthorized"],
-  MERCHANDISE_OR_SERVICE_NOT_RECEIVED: ["not received", "never arrived", "didn't arrive"],
+  MERCHANDISE_OR_SERVICE_NOT_RECEIVED: [
+    "not received",
+    "never arrived",
+    "didn't arrive",
+  ],
   MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED: ["not as described"],
   DUPLICATE_TRANSACTION: ["duplicate"],
   CREDIT_NOT_PROCESSED: ["refund not processed", "credit not processed"],
@@ -168,7 +193,12 @@ const REASON_PHRASES: Record<string, string[]> = {
 };
 
 /** Cases the text names best: item words, buyer name, reason words, amount. Empty when nothing matches. */
-export function resolveCase(userText: string, cases: ListedCase[]): string[] {
+export const resolveCase = (userText: string, cases: ListedCase[]): string[] =>
+  rankCases(userText, cases).ids;
+export function rankCases(
+  userText: string,
+  cases: ListedCase[],
+): { ids: string[]; top: number } {
   const t = userText.toLowerCase();
   const words = new Set(t.match(/[a-z0-9']+/g) ?? []);
   const nums = new Set(
@@ -180,15 +210,20 @@ export function resolveCase(userText: string, cases: ListedCase[]): string[] {
       if (!STOP.has(w) && words.has(w)) n += 1;
     for (const w of c.buyer.toLowerCase().match(/[a-z]{2,}/g) ?? [])
       if (words.has(w)) n += 2;
-    if ((REASON_PHRASES[c.reason ?? ""] ?? []).some((p) => t.includes(p))) n += 3;
+    if ((REASON_PHRASES[c.reason ?? ""] ?? []).some((p) => t.includes(p)))
+      n += 3;
     if (nums.has(c.amount_cents / 100)) n += 4;
     return n;
   };
   const scored = cases.map((c) => [c, score(c)] as const);
   const top = Math.max(0, ...scored.map(([, n]) => n));
-  return top ? scored.filter(([, n]) => n === top).map(([c]) => c.id) : [];
+  return {
+    ids: top ? scored.filter(([, n]) => n === top).map(([c]) => c.id) : [],
+    top,
+  };
 }
 
+const isOpen = (c: ListedCase) => c.status_group !== "waiting";
 const TABS = ["overview", "evidence", "buyer", "timeline", "draft", "math"];
 
 /** Turns raw model actions into allowed ones; staged actions are described, never run. */
@@ -203,8 +238,11 @@ export async function validateActions(
   remember: string[];
   /** ids the text matched equally; nothing was staged for them */
   ambiguous?: string[];
+  /** the offer the text asked for is already out; nothing was staged */
+  already?: string;
 }> {
   let ambiguous: string[] | undefined;
+  let already: string | undefined;
   const ui: UiAction[] = [];
   const staged: Staged[] = [];
   const remember: string[] = [];
@@ -253,7 +291,36 @@ export async function validateActions(
       case "accept_dispute_claim": {
         let id = str("case_id") || openCase || "";
         if (userText) {
-          const hit = resolveCase(userText, await deps.listCases());
+          const all = await deps.listCases();
+          const open = all.filter(isOpen);
+          // a money action resolves to cases that can take it first: open ones whose call is the offer
+          const offers =
+            x["type"] === "make_dispute_offer"
+              ? rankCases(
+                  userText,
+                  open.filter((c) => c.call === "offer"),
+                )
+              : { ids: [], top: 0 };
+          const hit = offers.ids.length
+            ? offers.ids
+            : resolveCase(userText, open);
+          if (x["type"] === "make_dispute_offer") {
+            // a sent offer that fits the words better than any open one: say so instead of asking
+            const sent = rankCases(
+              userText,
+              all.filter((c) => c.sent_offer_cents),
+            );
+            const c = all.find((y) => y.id === sent.ids[0]);
+            if (
+              sent.ids.length === 1 &&
+              c &&
+              sent.top > offers.top &&
+              !(hit.length === 1 && !offers.ids.length)
+            ) {
+              already = `You already offered ${money(c.sent_offer_cents!, c.currency)} on that one.`;
+              break;
+            }
+          }
           if (hit.length > 1) {
             ambiguous = hit;
             break;
@@ -262,6 +329,7 @@ export async function validateActions(
         }
         const c = id ? await deps.loadCase(id) : null;
         if (!c) break;
+        const staged0 = staged.length;
         const on = c.item ? `the ${c.item} dispute` : "this dispute";
         const base = `${D}/${encodeURIComponent(c.id)}`;
         const cp = `/api/cases/${encodeURIComponent(c.id)}`;
@@ -297,7 +365,6 @@ export async function validateActions(
                   value: ((cents as number) / 100).toFixed(2),
                 },
                 offer_type: offerType,
-                note: "Offer to resolve this dispute.",
               },
             },
             desk: {
@@ -346,21 +413,53 @@ export async function validateActions(
             },
           });
         }
+        // the seller sees the card and its case together
+        if (staged.length > staged0) ui.push({ type: "select_case", id: c.id });
         break;
       }
     }
   }
-  return { ui, staged, remember, ...(ambiguous ? { ambiguous } : {}) };
+  return {
+    ui,
+    staged,
+    remember,
+    ...(ambiguous ? { ambiguous } : {}),
+    ...(already ? { already } : {}),
+  };
 }
 
+// same words as the list's dueWords in web/src/lib/format.ts
 const dueWords = (d: number | null | undefined) =>
-  d == null ? "soon" : d <= 0 ? "today" : d === 1 ? "tomorrow" : `in ${d} days`;
+  d == null
+    ? "soon"
+    : d < 0
+      ? "overdue"
+      : d === 0
+        ? "today"
+        : d === 1
+          ? "tomorrow"
+          : `in ${d} days`;
+/** Calendar days to the due time in the seller's timezone (offset as Date.getTimezoneOffset): the list's dayDiff. */
+export const calendarDays = (
+  iso: string,
+  tzOffsetMin = 0,
+  now = Date.now(),
+) => {
+  const day = (t: number) => Math.floor((t - tzOffsetMin * 60000) / 86400000);
+  return day(Date.parse(iso)) - day(now);
+};
+/** The list's DUE THIS WEEK group: open and due within 7 calendar days (overdue included). */
+export const dueThisWeek = (cases: ListedCase[]) =>
+  sortCases(cases).filter(
+    (c) => isOpen(c) && c.due_in_days != null && c.due_in_days <= 7,
+  );
 const listLine = (c: ListedCase) =>
   `${[c.item, c.buyer].filter(Boolean).join(" · ")} · ${money(c.amount_cents, c.currency)} · due ${dueWords(c.due_in_days)}`;
 const sortCases = (cases: ListedCase[]) =>
   [...cases].sort(
     (a, b) =>
-      Number(a.status_group === "waiting") - Number(b.status_group === "waiting") ||
+      Number(a.status_group === "waiting") -
+        Number(b.status_group === "waiting") ||
       (a.due_in_days ?? Infinity) - (b.due_in_days ?? Infinity),
   );
 
@@ -368,19 +467,43 @@ const sortCases = (cases: ListedCase[]) =>
 function deterministic(
   text: string,
   all: ListedCase[],
-): { reply: string; raw: unknown[]; list?: { id: string; line: string }[] } | null {
+): {
+  reply: string;
+  raw: unknown[];
+  list?: { id: string; line: string }[];
+} | null {
   const t = text.toLowerCase();
-  const open = sortCases(all).filter((c) => c.status_group !== "waiting");
-  const words = (c: ListedCase) => callWords(c.call, c.offer_cents ?? undefined, c.currency);
+  const open = sortCases(all).filter(isOpen);
+  const words = (c: ListedCase) =>
+    callWords(c.call, c.offer_cents ?? undefined, c.currency);
   if (/first|most urgent|priorit|start with/.test(t) && open[0]) {
     const [a, b] = open;
     return {
       reply:
         `Start with ${caseLabel(a!)}. It's due ${dueWords(a!.due_in_days)}, and the desk's call is ${words(a!)}.` +
-        (b ? ` Next up is ${caseLabel(b)}, due ${dueWords(b.due_in_days)}.` : ""),
+        (b
+          ? ` Next up is ${caseLabel(b)}, due ${dueWords(b.due_in_days)}.`
+          : ""),
       raw: [{ type: "select_case", id: a!.id }],
     };
   }
+  if (/due (this|next) week|this week/.test(t)) {
+    const hit = dueThisWeek(all);
+    if (!hit.length) return { reply: "Nothing is due this week.", raw: [] };
+    return {
+      reply: `${hit.length} ${hit.length === 1 ? "dispute is" : "disputes are"} due this week:`,
+      raw: [
+        { type: "filter", ids: hit.map((c) => c.id) },
+        { type: "select_case", id: hit[0]!.id },
+      ],
+      list: hit.map((c) => ({ id: c.id, line: listLine(c) })),
+    };
+  }
+  if (/^\s*send the offer\b/.test(t))
+    return {
+      reply: "Here is the offer, ready for your OK.",
+      raw: [{ type: "make_dispute_offer" }],
+    };
   const kind = /which\b[^.?]*\brefund|just refund/.test(t)
     ? (["accept", "Refund these", "in full"] as const)
     : /which\b[^.?]*\boffer/.test(t)
@@ -391,9 +514,13 @@ function deterministic(
   if (!kind) return null;
   const hit = open.filter((c) => c.call === kind[0]);
   if (!hit.length)
-    return { reply: "None of your open cases has that call right now.", raw: [] };
+    return {
+      reply: "None of your open cases has that call right now.",
+      raw: [],
+    };
+  const far = hit.filter((c) => (c.due_in_days ?? 0) > 14).length;
   return {
-    reply: `${kind[1]} ${hit.length}${kind[2] ? " " + kind[2] : ""}:`,
+    reply: `${kind[1]} ${hit.length}${kind[2] ? " " + kind[2] : ""}:${far ? ` (${far} of them ${far === 1 ? "is" : "are"} more than 14 days out)` : ""}`,
     raw: [
       { type: "filter", ids: hit.map((c) => c.id) },
       { type: "select_case", id: hit[0]!.id },
@@ -557,6 +684,16 @@ async function postMessage(
       ? b["case_id"]
       : (conv.case_id ?? undefined);
   const ctx = caseId ? await deps.loadCase(caseId) : null;
+  const tz = typeof b["tz_offset"] === "number" ? b["tz_offset"] : 0;
+  // whole calendar days in the seller's timezone, as the list counts them
+  const base = deps.listCases;
+  deps = {
+    ...deps,
+    listCases: async () =>
+      (await base()).map((c) =>
+        c.due_at ? { ...c, due_in_days: calendarDays(c.due_at, tz) } : c,
+      ),
+  };
 
   await db.query(
     `insert into messages(conversation_id, role, text) values ($1,'user',$2)`,
@@ -593,7 +730,14 @@ async function postMessage(
       facts.length
         ? `What you know about the seller:\n- ${facts.join("\n- ")}`
         : "",
-      `Cases:\n${sortCases(cases).map((x) => `id=${x.id} label="${caseLabel(x)}" reason="${reasonWords(x.reason)}" due_in_days=${x.due_in_days ?? "unknown"} group=${x.status_group ?? "needs_you"} call="${callWords(x.call, x.offer_cents ?? undefined, x.currency)}"${typeof x.p === "number" ? ` win=${Math.round(x.p * 100)}%` : ""}`).join("\n") || "none"}`,
+      `Cases:\n${
+        sortCases(cases)
+          .map(
+            (x) =>
+              `id=${x.id} label="${caseLabel(x)}" reason="${reasonWords(x.reason)}" due="${dueWords(x.due_in_days)}" group=${x.status_group ?? "needs_you"} call="${callWords(x.call, x.offer_cents ?? undefined, x.currency)}"${typeof x.p === "number" ? ` win=${Math.round(x.p * 100)}%` : ""}`,
+          )
+          .join("\n") || "none"
+      }`,
       ctx
         ? `Open case ${ctx.id}: ${ctx.buyer}${ctx.item ? ` (${ctx.item})` : ""}, ${money(ctx.amount_cents, ctx.currency)}, reason ${ctx.reason}, call ${ctx.call ?? "unknown"}` +
           (ctx.p !== undefined
@@ -639,12 +783,13 @@ async function postMessage(
       reply = busyReply(ctx);
     }
   }
-  const { ui, staged, remember, ambiguous } = await validateActions(
+  const { ui, staged, remember, ambiguous, already } = await validateActions(
     raw,
     deps,
     caseId,
     text,
   );
+  if (already) reply = already;
   if (ambiguous) {
     const all = await deps.listCases();
     reply = "Which one do you mean?";
@@ -652,7 +797,7 @@ async function postMessage(
       const c = all.find((x) => x.id === id)!;
       return {
         id,
-        line: `${c.item ?? c.buyer} · ${reasonWords(c.reason)} · ${money(c.amount_cents, c.currency)}`,
+        line: `${c.item ?? c.buyer} · ${c.item ? c.buyer + " · " : ""}${reasonWords(c.reason)} · ${money(c.amount_cents, c.currency)} · due ${dueWords(c.due_in_days)}`,
       };
     });
   }
@@ -661,7 +806,11 @@ async function postMessage(
   const saved = (
     await db.query(
       `insert into messages(conversation_id, role, text, actions) values ($1,'parley',$2,$3) returning id::text, role, text, actions, at`,
-      [cid, reply || "Done.", JSON.stringify({ ui, staged, ...(list ? { list } : {}) })],
+      [
+        cid,
+        reply || "Done.",
+        JSON.stringify({ ui, staged, ...(list ? { list } : {}) }),
+      ],
     )
   ).rows[0];
   await db.query(`update conversations set updated_at = now() where id = $1`, [

@@ -1,7 +1,13 @@
 import type { Llm } from "@jeirslab/llm-client";
 import type { DecideOptions } from "./decide-client.js";
 import { createHash } from "node:crypto";
-import { LABEL_TEMPLATE, draftResponse, fallbackDraft, markAdded, withAdded } from "./draft.js";
+import {
+  LABEL_TEMPLATE,
+  draftResponse,
+  fallbackDraft,
+  markAdded,
+  withAdded,
+} from "./draft.js";
 import type { Added, CaseView, Decision, Draft, Precedent } from "./types.js";
 
 /**
@@ -52,8 +58,17 @@ export class DraftCache {
     const knobs = `${o.prior ?? ""}|${o.handlingCostCents ?? ""}|${o.feeIfLostCents ?? ""}`;
     // Parley would not fight it, so there is nothing for the model to draft
     if (decision && decision.call !== "fight") {
-      const fb = fallbackDraft(withAdded(c, added), decision, o.handlingCostCents);
-      return { ...fb, checklist: markAdded(fb.checklist, added), source: "fallback", label: LABEL_TEMPLATE };
+      const fb = fallbackDraft(
+        withAdded(c, added),
+        decision,
+        o.handlingCostCents,
+      );
+      return {
+        ...fb,
+        checklist: markAdded(fb.checklist, added),
+        source: "fallback",
+        label: LABEL_TEMPLATE,
+      };
     }
     const hit = this.done.get(key);
     if (hit) {
