@@ -146,13 +146,13 @@ export interface BuyerInfo {
   name?: string;
   account_status?: string;
   payer_id?: string;
-  email?: string;
+  email_masked?: string;
   country?: string;
-  ship_to?: string;
-  orders?: number;
-  disputes?: number;
-  first_order?: string;
-  address_matches?: boolean | null;
+  ship_to?: { city?: string; state?: string | null } | null;
+  orders_with_you?: number;
+  disputes_with_you?: number;
+  first_order_at?: string;
+  address_matches_delivery?: boolean | null;
 }
 
 export interface ChecklistItem {

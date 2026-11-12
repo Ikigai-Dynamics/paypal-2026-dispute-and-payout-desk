@@ -17,7 +17,7 @@ export function BuyerTab({ id, name }: { id: string; name: string }) {
   }, [id]);
   if (!b) return <p className="muted">Loading buyer details…</p>;
   if (b === "missing") return <p className="muted">Buyer details unavailable for this dispute.</p>;
-  const more = (b.disputes ?? 0) > 1;
+  const more = (b.disputes_with_you ?? 0) > 1;
   return (
     <div className="tabpanel">
       <dl className="facts">
@@ -35,7 +35,7 @@ export function BuyerTab({ id, name }: { id: string; name: string }) {
         </div>
         <div>
           <dt>Email</dt>
-          <dd>{b.email ?? "Not shown"}</dd>
+          <dd>{b.email_masked ?? "Not shown"}</dd>
         </div>
         <div>
           <dt>Country</dt>
@@ -43,27 +43,27 @@ export function BuyerTab({ id, name }: { id: string; name: string }) {
         </div>
         <div>
           <dt>Ships to</dt>
-          <dd>{b.ship_to ?? "Not shown"}</dd>
+          <dd>{b.ship_to ? [b.ship_to.city, b.ship_to.state].filter(Boolean).join(", ") : "Not shown"}</dd>
         </div>
       </dl>
       <div className="reasons">
         <div className="reason">
           <span className="k">Orders with you</span>
-          <span className="v">{b.orders ?? "—"}</span>
-          {b.first_order && <small>first on {b.first_order}</small>}
+          <span className="v">{b.orders_with_you ?? "—"}</span>
+          {b.first_order_at?.slice(0, 10) && <small>first on {b.first_order_at?.slice(0, 10)}</small>}
         </div>
         <div className="reason">
           <span className="k">Disputes with you</span>
           <span className="v" style={{ color: more ? "var(--bad)" : "var(--ink)" }}>
-            {b.disputes ?? "—"}
+            {b.disputes_with_you ?? "—"}
           </span>
-          {b.disputes != null && <small>{more ? "more than most buyers" : "this is the first"}</small>}
+          {b.disputes_with_you != null && <small>{more ? "more than most buyers" : "this is the first"}</small>}
         </div>
-        {b.address_matches != null && (
+        {b.address_matches_delivery != null && (
           <div className="reason">
             <span className="k">Address match</span>
-            <span className="v" style={{ color: b.address_matches ? "var(--good)" : "var(--warn)" }}>
-              {b.address_matches ? "Matches delivery scan" : "Differs from scan"}
+            <span className="v" style={{ color: b.address_matches_delivery ? "var(--good)" : "var(--warn)" }}>
+              {b.address_matches_delivery ? "Matches delivery scan" : "Differs from scan"}
             </span>
           </div>
         )}
