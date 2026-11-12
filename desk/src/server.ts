@@ -268,6 +268,17 @@ async function runSync(): Promise<number> {
   }
 }
 
+/** Reseeds the PayPal mock (mock only; a no-op against the sandbox). */
+async function resetMock(): Promise<void> {
+  if (process.env["PAYPAL_ENV"] !== "mock") return;
+  const r = await fetch(`${process.env["PAYPAL_BASE_URL"]}/mock/reset`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{}",
+  });
+  if (!r.ok) throw new Error(`mock reset ${r.status}`);
+}
+
 async function boot(): Promise<void> {
   while (!draining) {
     try {
@@ -280,23 +291,13 @@ async function boot(): Promise<void> {
   }
   if (process.env["DEMO_RESET_ON_BOOT"] === "1" && !draining) {
     // reseed before the first sync so the activity panel still shows the sync's PayPal calls
-    if (process.env["PAYPAL_ENV"] === "mock") {
-      for (let i = 0; i < 5 && !draining; i++) {
-        try {
-          const r = await fetch(
-            `${process.env["PAYPAL_BASE_URL"]}/mock/reset`,
-            {
-              method: "POST",
-              headers: { "content-type": "application/json" },
-              body: "{}",
-            },
-          );
-          if (!r.ok) throw new Error(`mock reset ${r.status}`);
-          break;
-        } catch (e) {
-          log({ msg: "mock reset failed", error: String(e) });
-          await sleep(2000);
-        }
+    for (let i = 0; i < 5 && !draining; i++) {
+      try {
+        await resetMock();
+        break;
+      } catch (e) {
+        log({ msg: "mock reset failed", error: String(e) });
+        await sleep(2000);
       }
     }
     try {
@@ -608,9 +609,12 @@ async function route(
         "confirmation_required",
         "send confirm: true to clear saved work",
       );
+    // the mock too, so sent evidence and accepted claims come back for the next run of the demo
+    await resetMock();
     await store.resetWork();
     decisionCache.clear();
     drafts.clear();
+    await runSync();
     return { status: 200, body: { reset: true } };
   }
   const a =
