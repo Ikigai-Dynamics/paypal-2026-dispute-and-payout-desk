@@ -1,15 +1,19 @@
-import type { CaseSummary } from "../lib/api";
+import type { CaseSummary, Summary } from "../lib/api";
 import { dayDiff, money, needsResponse } from "../lib/format";
 
 const WON = "RESOLVED_SELLER_FAVOUR";
 const isClosed = (c: CaseSummary) => c.status === "RESOLVED" || !!c.outcome;
 
-export function Tiles({ cases }: { cases: CaseSummary[] }) {
+export function Tiles({ cases, summary }: { cases: CaseSummary[]; summary?: Summary | null }) {
   const open = cases.filter(needsResponse);
   const cur = open[0]?.currency ?? "USD";
   const sum = (f: (c: CaseSummary) => number) => open.reduce((t, c) => t + f(c), 0);
   const week = open.filter((c) => c.due_at && dayDiff(c.due_at) <= 7).length;
   const kept = open.filter((c) => c.keep_cents != null);
+  // the server's figure when it sends one; else the sum of the cards, in whole dollars
+  const serverKeep = summary?.expected_keep_cents;
+  const keepCents =
+    typeof serverKeep === "number" ? serverKeep : kept.length ? kept.reduce((t, c) => t + (c.keep_cents ?? 0), 0) : null;
   const closed = cases.filter(isClosed);
   const won = closed.filter((c) => c.outcome === WON);
   return (
@@ -27,7 +31,7 @@ export function Tiles({ cases }: { cases: CaseSummary[] }) {
       <div className="tile">
         <span className="k">Parley expects to keep</span>
         <span className="v">
-          {kept.length ? money(kept.reduce((t, c) => t + (c.keep_cents ?? 0), 0), cur, true) : "—"}
+          {keepCents != null ? money(Math.round(keepCents / 100) * 100, cur, true) : "—"}
         </span>
         <span className="s">
           of {money(sum((c) => c.amount_cents), cur, true)} at stake, if you follow every call

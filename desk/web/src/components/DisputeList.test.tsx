@@ -19,6 +19,6 @@ describe("DisputeList groups", () => {
     expect(screen.getByText(/Due this week/).textContent).toContain("1");
     expect(screen.getByText(/^Later/).textContent).toContain("1");
     expect(screen.getByText(/Waiting on the buyer or PayPal/).textContent).toContain("1");
-    expect(screen.getByText("Offer sent · waiting for buyer")).toBeInTheDocument();
+    expect(screen.getByText("Waiting on buyer")).toBeInTheDocument();
   });
 });

@@ -1,6 +1,9 @@
 import type { CaseSummary } from "../lib/api";
 import { byDue, waitingList } from "../hooks/useCases";
-import { callKind, afterSendWords, callWords, dayDiff, dueWords, money, needsResponse, reasonIcon, reasonShort } from "../lib/format";
+import { callKind, callWords, dayDiff, dueWords, money, needsResponse, reasonIcon, reasonShort } from "../lib/format";
+
+const waitWord = (c: CaseSummary, k: ReturnType<typeof callKind>) =>
+  c.status === "UNDER_REVIEW" ? "Under review" : k === "offer" ? "Offer sent" : "Waiting on buyer";
 
 /** "Disputes that need you": one row per open dispute with Parley's call. `lit` (from the chat) dims the rest. */
 export function DisputeList({
@@ -38,7 +41,12 @@ export function DisputeList({
           {reasonIcon(c.reason)}
         </span>
         <span style={{ minWidth: 0 }}>
-          <div className="t">{c.item ?? `Order from ${c.buyer}`}</div>
+          <div className={"t" + (wait ? " wrapt" : "")}>{c.item ?? `Order from ${c.buyer}`}</div>
+          {wait && (
+            <div className="st">
+              <span className="call wait">{waitWord(c, k)}</span>
+            </div>
+          )}
           <div className="m">
             {reasonShort(c.reason)}
             {!wait && c.due_at ? ` · ${dueWords(dayDiff(c.due_at))}` : ""}
@@ -46,11 +54,7 @@ export function DisputeList({
         </span>
         <span className="r">
           <span className="amt">{money(c.amount_cents, c.currency)}</span>
-          {wait ? (
-            <span className="call wait">{afterSendWords(null, c)}</span>
-          ) : (
-            <span className={`call ${k ?? "none"}`}>{callWords(c)}</span>
-          )}
+          {!wait && <span className={`call ${k ?? "none"}`}>{callWords(c)}</span>}
         </span>
       </button>
     );

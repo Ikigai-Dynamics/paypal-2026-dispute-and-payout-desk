@@ -58,6 +58,11 @@ function DecisionRecordBox({ id }: { id: string }) {
   );
 }
 
+type Entry = ActivityCall & { kind?: string; note?: string | null };
+// entries Parley writes itself ("AI drafted reply ($0.03)", "You approved: ...") carry their text in `note`
+const ownIcon = (x: Entry) =>
+  /draft/i.test(`${x.kind} ${x.note}`) ? "✎" : /approv/i.test(`${x.kind} ${x.note}`) ? "✔" : x.kind === "webhook" ? "↩" : null;
+
 /** this case's PayPal calls (newest first) and Parley's own events */
 export function ActivityTab({
   id,
@@ -70,23 +75,33 @@ export function ActivityTab({
   decision: Decision | null;
   currency: string;
 }) {
-  const mine = (calls ?? []).filter((x) => x.dispute_id === id);
+  const mine = (calls ?? []).filter((x) => x.dispute_id === id) as Entry[];
   return (
     <ul className="tl">
-      {mine.map((x) => (
+      {mine.map((x) =>
+        x.kind && x.kind !== "paypal" && x.kind !== "webhook" ? (
+          <li key={x.at + x.path}>
+            <span aria-hidden="true">{ownIcon(x) ?? "•"} </span>
+            {x.note || x.path}
+            <br />
+            <small>{when(x.at)} · Parley</small>
+          </li>
+        ) : (
         <li key={x.at + x.path}>
+          {ownIcon(x) && <span aria-hidden="true">{ownIcon(x)} </span>}
           {callLabel(x)} ·{" "}
           <span className={x.status < 400 ? "s-ok" : "s-bad"}>{x.status < 400 ? "ok" : `failed ${x.status}`}</span>
           <br />
-          <small>{when(x.at)} · PayPal call</small>
+          <small>{when(x.at)} · {x.kind === "webhook" ? "PayPal event" : "PayPal call"}</small>
         </li>
-      ))}
+        ),
+      )}
       {decision && (
         <li>
           Parley's call:{" "}
           {callWords({ call: decision.call, offer_cents: decision.offer?.amount_cents, currency })}
           <br />
-          <small>{decision.n} similar past case{decision.n === 1 ? "" : "s"} · decided by the desk's core</small>
+          <small>{decision.n} similar past case{decision.n === 1 ? "" : "s"} · Parley's call</small>
         </li>
       )}
       {decision && (

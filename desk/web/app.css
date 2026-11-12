@@ -340,3 +340,28 @@ body.tucked { padding-bottom: 18px }
 .confirm pre { overflow-wrap: anywhere; white-space: pre-wrap; max-width: 100%; margin: 0 }
 .confirm details > summary { cursor: pointer; color: var(--muted); font-weight: 700; font-size: .85rem }
 .who-line { font-family: var(--body); font-size: 1rem; color: var(--muted) }
+
+/* optional evidence that is not on file is quiet, not an alarm */
+.checklist li.opt .ico, .checklist li.opt > b { color: var(--muted) }
+.checklist li.opt > b { font-weight: 600 }
+
+/* waiting rows: the status sits under the title so names are not cut */
+.drow .r .call.wait { white-space: nowrap }
+.drow .t.wrapt { white-space: normal }
+.drow .st { margin-top: 2px }
+.drow .m { white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+
+/* first-run hint and the owl's "Talk to Parley" pill */
+.hint-line { margin: -6px 0 0; color: var(--muted); font-size: .85rem; display: flex; gap: 8px; align-items: center }
+.hint-line button { border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 1rem; padding: 0 4px }
+#owl { cursor: pointer }
+.talk-pill { font: 700 .8rem var(--body); border: 2px solid var(--outline); border-radius: 999px; background: var(--gold); color: var(--gold-ink); padding: 4px 12px; cursor: pointer; box-shadow: 2px 2px 0 var(--outline); white-space: nowrap }
+.talk-pill:hover { transform: translate(-1px,-1px) }
+.owlbox { display: flex; flex-direction: column; align-items: center; gap: 4px }
+@media (min-width: 1280px) { .owlbox { align-self: flex-end } }
+@media (max-width: 1279px) { .owlbox { align-self: flex-end } }
+
+/* the chat panel is 380 px on the right: on wide screens the desk makes room for it */
+@media (min-width: 1100px) {
+  body.chat-open { padding-right: 396px }
+}

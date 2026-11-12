@@ -37,6 +37,8 @@ interface State {
   /** the amount of the offer waiting for the seller's click */
   offerCents: number;
   loading: boolean;
+  loadFailed: boolean;
+  retried: boolean;
   drafting: boolean;
   busy: boolean;
   scrollSeq: number;
@@ -75,6 +77,8 @@ const fresh = (id: string): State => ({
   pending: null,
   offerCents: 0,
   loading: true,
+  loadFailed: false,
+  retried: false,
   drafting: false,
   busy: false,
   scrollSeq: 0,
@@ -187,13 +191,20 @@ export function useCase(
     try {
       a = await api<Analysis>(url(`/analysis?${q}`));
     } catch {
+      // the first failure is retried once after 2 s; the second shows a Retry button
+      if (fresh && !s.analysis && !s.retried) {
+        s.retried = true;
+        setTimeout(() => live() && void recompute(true), 2000);
+        return;
+      }
       return set({
         error: "Could not load this case. Try again.",
         loading: false,
+        loadFailed: !s.analysis,
       });
     }
     if (!live()) return;
-    const patch: Partial<State> = { analysis: a, error: null };
+    const patch: Partial<State> = { analysis: a, error: null, loadFailed: false };
     if (fresh) {
       const work = a.work ?? null;
       patch.work = work;
@@ -292,14 +303,19 @@ export function useCase(
     s.added.set(ev.item, ev);
     bump();
     saveWork(0);
-    void redraft();
+    void redraft().then(refresh);
   }
   function undo(item: string) {
     s.added.delete(item);
     bump();
     saveWork(0);
-    void redraft();
+    void redraft().then(refresh);
   }
+  // refetch the case (and the list) after a change; the merchant's unsent work is kept by recompute(false)
+  const refresh = async () => {
+    await recompute(false);
+    await opts.onWritten().catch(() => {});
+  };
 
   // the server looks for claims with no evidence on file; an old server has no check, so nothing is flagged
   async function checkDraft() {
@@ -491,6 +507,14 @@ export function useCase(
     dim: s.loading || s.drafting,
     scrollSeq: s.scrollSeq,
     recompute,
+    refresh,
+    reload: () => recompute(true),
+    retry: () => {
+      s.retried = false;
+      set({ error: null, loadFailed: false });
+      return recompute(true);
+    },
+    loadFailed: s.loadFailed,
     setDraft,
     addEvidence,
     undo,

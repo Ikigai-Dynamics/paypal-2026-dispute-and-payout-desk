@@ -78,3 +78,22 @@ describe("VerdictCard", () => {
     expect(screen.queryByText(/Buyer has disputed/)).toBeNull();
   });
 });
+
+describe("VerdictCard buyer warning", () => {
+  const show = (d: Partial<Decision>) =>
+    render(
+      <VerdictCard decision={{ ...offerDecision, buyer_flag: true, ...d } as Decision} amountCents={8000} currency="USD" precedents={[]}
+        checklist={[]} canAct fightAnyway={false} busy={false} sent={null} onOffer={() => {}} onFight={() => {}} onReview={() => {}} onRefund={() => {}} />,
+    );
+  it("says disputed X of Y only when orders is known and not smaller", () => {
+    show({ buyer_disputes: 3, buyer_orders: 5 });
+    expect(screen.getByText(/disputed 3 of 5 orders/)).toBeInTheDocument();
+  });
+  it("falls back to a count, and stays quiet under 3", () => {
+    const { unmount } = show({ buyer_disputes: 4, buyer_orders: 2 });
+    expect(screen.getByText(/Buyer has 4 disputes with you/)).toBeInTheDocument();
+    unmount();
+    show({ buyer_disputes: 2, buyer_orders: 9 });
+    expect(screen.queryByText(/Buyer has/)).toBeNull();
+  });
+});
