@@ -13,6 +13,10 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap">
 <meta name="theme-color" content="#0a1222">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <style>
   /* tokens: DESIGN.md (repo root), the same set as the console's app.css */
   :root {
@@ -61,7 +65,7 @@
   .ctas { display: flex; flex-wrap: wrap; gap: 12px }
   .hero .note { color: var(--muted); font-size: 14px; margin: 16px 0 0 }
   .stage { position: relative; display: grid; justify-items: center }
-  #owl { width: 100%; max-width: 270px; aspect-ratio: 170 / 220; cursor: pointer }
+  #owl { width: 100%; max-width: 340px; height: auto }
   /* a small copy of the console's verdict card: the product is the picture */
   .mock { width: min(100%, 360px); margin-top: -18px; position: relative; background: linear-gradient(180deg, color-mix(in srgb, var(--gold) 9%, var(--surface-2)), var(--surface-2)); border: 1px solid color-mix(in srgb, var(--gold) 38%, var(--line-strong)); border-radius: var(--r-lg); padding: 14px 16px; display: grid; gap: 10px; box-shadow: 0 24px 60px rgba(3, 8, 20, .55) }
   .mock .k { font: 500 11px var(--body); letter-spacing: .05em; text-transform: uppercase; color: var(--muted) }
@@ -70,7 +74,7 @@
   .mock .cell { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-md); padding: 8px 10px; display: grid; gap: 2px }
   .mock .cell b { font: 600 15px var(--body); font-variant-numeric: tabular-nums }
   .mock .fake-btn { justify-self: start; font: 600 13px var(--body); background: var(--gold); color: var(--gold-ink); border-radius: var(--r-md); padding: 7px 12px }
-  @media (max-width: 860px) { .hero { padding: 40px 0 48px } .hero .in { grid-template-columns: minmax(0, 1fr); gap: 32px } #owl { max-width: 180px } }
+  @media (max-width: 860px) { .hero { padding: 40px 0 48px } .hero .in { grid-template-columns: minmax(0, 1fr); gap: 32px } #owl { max-width: 220px } }
 
   .apis { border-block: 1px solid var(--line); background: var(--card); padding: 16px 0; color: var(--muted); font: 500 13px var(--body) }
   .apis .in { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center }
@@ -91,12 +95,9 @@
   .use strong { color: var(--ink) }
   @media (max-width: 860px) { section { padding: 64px 0 } .use { grid-template-columns: minmax(0, 1fr); gap: 20px; padding: 32px 0 } .use:nth-of-type(even) .art { order: 0 } .use h3 { font-size: 24px } }
 
-  /* shortcut: illustration placeholders describe the owl's pose; swap each for the finished art */
-  .art { aspect-ratio: 4 / 3; border: 1px solid var(--line); border-radius: var(--r-xl); background: radial-gradient(420px 260px at 70% 20%, rgba(26, 79, 181, .22), transparent 70%), var(--card); display: grid; place-items: center; padding: 28px; text-align: center; position: relative }
-  .art::before { content: ""; position: absolute; inset: 12px; border: 1px dashed var(--line-strong); border-radius: 10px; pointer-events: none }
-  .art p { margin: 0; color: var(--muted); font: 400 14px/1.55 var(--body); max-width: 26em }
-  .art p::before { content: "Illustration"; display: block; width: max-content; margin: 0 auto 10px; font: 500 11px var(--body); letter-spacing: .08em; text-transform: uppercase; color: var(--sky); background: var(--bg); border: 1px solid var(--line-strong); border-radius: var(--r-pill); padding: 3px 10px }
-  @media (max-width: 860px) { .art { aspect-ratio: 16 / 9 } }
+  .art { display: grid; place-items: center }
+  .art img { width: 100%; max-width: 440px; height: auto }
+  @media (max-width: 860px) { .art img { max-width: 300px } }
 
   .steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px }
   .step { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 24px }
@@ -155,7 +156,7 @@
       <p class="note">No sign-up. Each visit gets 10 minutes on a simulated PayPal account with 60 sample disputes.</p>
     </div>
     <div class="stage">
-      <div id="owl" role="img" aria-label="Parley, a snowy owl in a navy waistcoat"></div>
+      <img id="owl" src="/img/hero.png" alt="Parley, a snowy owl in a navy waistcoat">
       <div class="mock" aria-hidden="true">
         <span class="k">Demo case · sleeping bag</span>
         <span class="what">Parley says: offer $97.50 back</span>
@@ -181,7 +182,7 @@
     <p class="sub">A dispute gives you a few days to answer. Fighting takes hours and often loses; refunding everything is expensive. Parley does the math for you.</p>
 
     <div class="use reveal">
-      <div class="art"><p>The owl at a brass balance scale: a stack of coins on one pan, a folded receipt on the other, one eyebrow raised as it adds a single coin.</p></div>
+      <div class="art"><img src="/img/scale.png" alt="The owl at a brass balance scale: a stack of coins on one pan, a folded receipt on the other, one eyebrow raised as it adds a single coin." loading="lazy"></div>
       <div>
         <div class="eyebrow">Fight, refund or offer</div>
         <h3>A clear call on every dispute</h3>
@@ -195,7 +196,7 @@
     </div>
 
     <div class="use reveal">
-      <div class="art"><p>The owl perched on a wall calendar, tapping a pocket watch, with three days circled in red ink.</p></div>
+      <div class="art"><img src="/img/calendar.png" alt="The owl perched on a wall calendar, tapping a pocket watch, with three days circled in red ink." loading="lazy"></div>
       <div>
         <div class="eyebrow">Deadlines</div>
         <h3>Never miss a reply date</h3>
@@ -204,7 +205,7 @@
     </div>
 
     <div class="use reveal">
-      <div class="art"><p>The owl in an armchair with a notebook open, pencil behind its ear, chatting across a small desk with a shop owner.</p></div>
+      <div class="art"><img src="/img/chat.png" alt="The owl in an armchair with a notebook open, pencil behind its ear, chatting across a small desk with a shop owner." loading="lazy"></div>
       <div>
         <div class="eyebrow">Ask in plain words</div>
         <h3>A chat that knows your disputes</h3>
@@ -213,7 +214,7 @@
     </div>
 
     <div class="use reveal">
-      <div class="art"><p>The owl holding up a large rubber stamp reading "Needs your OK", waiting politely for a nod before stamping a letter to PayPal.</p></div>
+      <div class="art"><img src="/img/stamp.png" alt="The owl holding up a large rubber stamp reading &quot;Needs your OK&quot;, waiting politely for a nod before stamping a letter to PayPal." loading="lazy"></div>
       <div>
         <div class="eyebrow">You stay in charge</div>
         <h3>Nothing is sent without your OK</h3>
@@ -222,7 +223,7 @@
     </div>
 
     <div class="use reveal">
-      <div class="art"><p>The owl peering through a magnifying glass at a tracking label and a delivery photo, a draft letter beside it.</p></div>
+      <div class="art"><img src="/img/evidence.png" alt="The owl peering through a magnifying glass at a tracking label and a delivery photo, a draft letter beside it." loading="lazy"></div>
       <div>
         <div class="eyebrow">Evidence and replies</div>
         <h3>Drafts that stick to the facts</h3>
@@ -231,7 +232,7 @@
     </div>
 
     <div class="use reveal">
-      <div class="art"><p>The owl filing folders into a tall cabinet, each drawer labelled: Calls, Approvals, Exports.</p></div>
+      <div class="art"><img src="/img/filing.png" alt="The owl filing folders into a tall cabinet, each drawer labelled: Calls, Approvals, Exports." loading="lazy"></div>
       <div>
         <div class="eyebrow">On the record</div>
         <h3>Every step is visible</h3>
@@ -291,7 +292,6 @@
   </div>
 </footer>
 
-<script src="/owl.js"></script>
 <script>
   (function () {
     // reveal on scroll (the styles apply only under .js)
@@ -301,13 +301,6 @@
         es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add("seen"); io.unobserve(e.target); } });
       }, { rootMargin: "0px 0px -8% 0px" });
       document.querySelectorAll(".reveal").forEach(function (n) { io.observe(n); });
-    }
-    var el = document.getElementById("owl");
-    if (window.ParleyOwl && el) {
-      var owl = window.ParleyOwl.mount(el);
-      owl.play("arrive");
-      addEventListener("pointermove", function (e) { owl.lookAt(e.clientX, e.clientY); });
-      el.addEventListener("click", function () { owl.react("poke"); });
     }
     var btn = document.getElementById("reset"), msg = document.getElementById("reset-msg");
     btn.addEventListener("click", function () {
