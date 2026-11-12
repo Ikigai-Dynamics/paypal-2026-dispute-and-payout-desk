@@ -62,6 +62,11 @@ export function App() {
       localStorage.setItem(HINT_KEY, "1");
     } catch {}
   }, []);
+  // the owl's resting mood follows the open case's call
+  useEffect(() => {
+    const d = openId ? decisions[openId] : null;
+    dispatchEvent(new CustomEvent("parley:mood", { detail: { call: d?.call ?? null } }));
+  }, [openId, decisions]);
   const onDecision = useCallback((id: string, d: Decision | null) => setDecisions((m) => ({ ...m, [id]: d })), []);
 
   // a restart resets the saved drafts: reload the open case so Send diffs against the current one

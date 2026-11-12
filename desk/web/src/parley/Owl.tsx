@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { POKES } from "./lines";
+import { mountOwlImage } from "./owlImage";
 
 type OwlApi = {
   lookAt(x: number, y: number): void;
@@ -108,7 +109,7 @@ export function Owl({ speech, tucked }: { speech: { text: string; seq: number } 
 
   useEffect(() => {
     if (tucked || !owlEl.current) return;
-    owl.current = window.ParleyOwl ? window.ParleyOwl.mount(owlEl.current) : NOOP;
+    owl.current = mountOwlImage(owlEl.current);
     const o = owl.current;
     let notes = false;
     const move = (e: PointerEvent) => o.lookAt(e.clientX, e.clientY);
