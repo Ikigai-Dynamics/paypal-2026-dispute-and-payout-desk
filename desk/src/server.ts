@@ -1271,9 +1271,11 @@ const server = createServer((req, res) => {
     try {
       if (
         req.method === "GET" &&
-        (url.pathname === "/" || url.pathname === "/index.html")
+        (url.pathname === "/" || url.pathname === "/console")
       ) {
-        if (!serveFile(res, join(publicDir, "index.html")))
+        // the landing page at /, the desk itself at /console
+        const page = url.pathname === "/" ? "welcome.html" : "index.html";
+        if (!serveFile(res, join(publicDir, page)))
           send(res, 404, { error: "not_found", detail: "page missing" });
         return;
       }

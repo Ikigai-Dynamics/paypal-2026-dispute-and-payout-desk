@@ -174,7 +174,9 @@ export function App() {
         )}
         <header>
           <div className="brand">
-            <h1>Parley</h1>
+            <h1>
+              <a href="/" title="Parley home">Parley</a>
+            </h1>
             <small>your dispute desk</small>
           </div>
           <div className="btns">
