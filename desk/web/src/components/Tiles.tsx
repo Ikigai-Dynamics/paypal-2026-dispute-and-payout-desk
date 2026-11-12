@@ -1,5 +1,5 @@
 import type { CaseSummary, Summary } from "../lib/api";
-import { dayDiff, money, needsResponse } from "../lib/format";
+import { dayDiff, isWaiting, money, needsResponse } from "../lib/format";
 
 const WON = "RESOLVED_SELLER_FAVOUR";
 const isClosed = (c: CaseSummary) => c.status === "RESOLVED" || !!c.outcome;
@@ -9,6 +9,7 @@ export function Tiles({ cases, summary }: { cases: CaseSummary[]; summary?: Summ
   const cur = open[0]?.currency ?? "USD";
   const sum = (f: (c: CaseSummary) => number) => open.reduce((t, c) => t + f(c), 0);
   const week = open.filter((c) => c.due_at && dayDiff(c.due_at) <= 7).length;
+  const waiting = cases.filter(isWaiting).length;
   const kept = open.filter((c) => c.keep_cents != null);
   // the server's figure when it sends one; else the sum of the cards, in whole dollars
   const serverKeep = summary?.expected_keep_cents;
@@ -19,9 +20,9 @@ export function Tiles({ cases, summary }: { cases: CaseSummary[]; summary?: Summ
   return (
     <section className="tiles" aria-label="Summary">
       <div className="tile">
-        <span className="k">Open disputes</span>
+        <span className="k">Need your answer</span>
         <span className="v">{open.length}</span>
-        <span className="s">{week} need you this week</span>
+        <span className="s">{week} due this week · {waiting} waiting on buyer or PayPal</span>
       </div>
       <div className="tile hot">
         <span className="k">Money at stake</span>
