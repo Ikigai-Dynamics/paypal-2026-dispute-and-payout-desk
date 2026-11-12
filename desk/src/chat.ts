@@ -36,7 +36,7 @@ export interface ChatDeps {
       item?: string;
       amount_cents: number;
       call: string | null;
-      offer_cents?: number;
+      offer_cents?: number | null;
       currency?: string;
     }[]
   >;
@@ -463,7 +463,7 @@ async function postMessage(
       facts.length
         ? `What you know about the seller:\n- ${facts.join("\n- ")}`
         : "",
-      `Cases: ${cases.map((x) => `id=${x.id} label=\"${caseLabel(x)}\" call=${callWords(x.call, x.offer_cents, x.currency)}`).join("; ") || "none"}`,
+      `Cases: ${cases.map((x) => `id=${x.id} label=\"${caseLabel(x)}\" call=${callWords(x.call, x.offer_cents ?? undefined, x.currency)}`).join("; ") || "none"}`,
       ctx
         ? `Open case ${ctx.id}: ${ctx.buyer}${ctx.item ? ` (${ctx.item})` : ""}, ${money(ctx.amount_cents, ctx.currency)}, reason ${ctx.reason}, call ${ctx.call ?? "unknown"}` +
           (ctx.p !== undefined
