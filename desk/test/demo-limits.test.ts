@@ -29,11 +29,11 @@ describe("demo limits", () => {
     let t = 0;
     const g = createDemoLimits(() => t);
     let c = "";
+    // a start without a cookie always counts as a new demo, so no clock needs to pass
     for (let i = 0; i < 10; i++) {
-      t += SESSION_MS + 1;
+      t += 60_000;
       c = cookieOf(g.check(req("POST"), "/api/demo/start", "a"));
     }
-    t += SESSION_MS + 1;
     assert.equal((g.check(req("POST"), "/api/demo/start", "a") as any).status, 429);
     assert.equal(g.check(req("POST"), "/api/demo/start", "b").ok, true);
     t = 0; // a fresh guard for the AI and reset counts
