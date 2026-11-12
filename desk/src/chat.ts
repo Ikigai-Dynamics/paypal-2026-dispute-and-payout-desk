@@ -92,10 +92,12 @@ export async function validateActions(
   for (const a of raw.slice(0, 6)) {
     if (!a || typeof a !== "object") continue;
     const x = a as Record<string, unknown>;
-    const str = (k: string) => (typeof x[k] === "string" ? (x[k] as string) : "");
+    const str = (k: string) =>
+      typeof x[k] === "string" ? (x[k] as string) : "";
     switch (x["type"]) {
       case "select_case":
-        if (await deps.loadCase(str("id"))) ui.push({ type: "select_case", id: str("id") });
+        if (await deps.loadCase(str("id")))
+          ui.push({ type: "select_case", id: str("id") });
         break;
       case "open_tab":
         if (TABS.includes(str("tab").toLowerCase()))
@@ -108,7 +110,9 @@ export async function validateActions(
         }
         if (!Array.isArray(x["ids"])) break;
         const known = new Set((await deps.listCases()).map((c) => c.id));
-        const ids = x["ids"].filter((i): i is string => typeof i === "string" && known.has(i));
+        const ids = x["ids"].filter(
+          (i): i is string => typeof i === "string" && known.has(i),
+        );
         ui.push({ type: "filter", ids });
         break;
       }
@@ -130,9 +134,17 @@ export async function validateActions(
         const base = `${D}/${encodeURIComponent(c.id)}`;
         const cp = `/api/cases/${encodeURIComponent(c.id)}`;
         if (x["type"] === "make_offer") {
-          const cents = x["amount_cents"] === undefined ? c.offer_cents : x["amount_cents"];
-          if (!Number.isInteger(cents) || (cents as number) <= 0 || (cents as number) >= c.amount_cents) break;
-          const offerType = OFFER_TYPES.includes(str("offer_type")) ? str("offer_type") : "REFUND";
+          const cents =
+            x["amount_cents"] === undefined ? c.offer_cents : x["amount_cents"];
+          if (
+            !Number.isInteger(cents) ||
+            (cents as number) <= 0 ||
+            (cents as number) >= c.amount_cents
+          )
+            break;
+          const offerType = OFFER_TYPES.includes(str("offer_type"))
+            ? str("offer_type")
+            : "REFUND";
           staged.push({
             id: randomUUID(),
             kind: "make_offer",
@@ -141,20 +153,39 @@ export async function validateActions(
               method: "POST",
               path: `${base}/make-offer`,
               body: {
-                offer_amount: { currency_code: c.currency, value: ((cents as number) / 100).toFixed(2) },
+                offer_amount: {
+                  currency_code: c.currency,
+                  value: ((cents as number) / 100).toFixed(2),
+                },
                 offer_type: offerType,
                 note: "Offer to resolve this dispute.",
               },
             },
-            desk: { method: "POST", path: `${cp}/offer`, body: { confirm: true, amount_cents: cents, offer_type: offerType } },
+            desk: {
+              method: "POST",
+              path: `${cp}/offer`,
+              body: {
+                confirm: true,
+                amount_cents: cents,
+                offer_type: offerType,
+              },
+            },
           });
         } else if (x["type"] === "accept_claim") {
           staged.push({
             id: randomUUID(),
             kind: "accept_claim",
             title: `Accept ${who}'s claim of ${money(c.amount_cents, c.currency)}`,
-            paypal: { method: "POST", path: `${base}/accept-claim`, body: { note: "Seller accepts the claim." } },
-            desk: { method: "POST", path: `${cp}/accept`, body: { confirm: true } },
+            paypal: {
+              method: "POST",
+              path: `${base}/accept-claim`,
+              body: { note: "Seller accepts the claim." },
+            },
+            desk: {
+              method: "POST",
+              path: `${cp}/accept`,
+              body: { confirm: true },
+            },
           });
         } else {
           const text = c.draft_text?.trim();
@@ -164,8 +195,16 @@ export async function validateActions(
             id: randomUUID(),
             kind: "provide_evidence",
             title: `Send the saved reply to ${who}'s dispute`,
-            paypal: { method: "POST", path: `${base}/provide-evidence`, body: { evidences: [{ evidence_type: "OTHER", notes: text }] } },
-            desk: { method: "POST", path: `${cp}/evidence`, body: { confirm: true, text } },
+            paypal: {
+              method: "POST",
+              path: `${base}/provide-evidence`,
+              body: { evidences: [{ evidence_type: "OTHER", notes: text }] },
+            },
+            desk: {
+              method: "POST",
+              path: `${cp}/evidence`,
+              body: { confirm: true, text },
+            },
           });
         }
         break;
@@ -207,7 +246,10 @@ async function readBody(req: unknown): Promise<Record<string, unknown>> {
   }
 }
 
-const bad = (detail: string) => ({ status: 400, body: { error: "bad_request", detail } });
+const bad = (detail: string) => ({
+  status: 400,
+  body: { error: "bad_request", detail },
+});
 
 export async function chatRoutes(
   req: { method?: string } & AsyncIterable<Buffer>,
@@ -221,27 +263,47 @@ export async function chatRoutes(
   await init(db);
 
   if (p === "/api/chat/conversations" && m === "GET") {
-    const r = await db.query(`select id::text, title, case_id, created_at, updated_at from conversations order by updated_at desc, id desc limit 50`);
+    const r = await db.query(
+      `select id::text, title, case_id, created_at, updated_at from conversations order by updated_at desc, id desc limit 50`,
+    );
     return { status: 200, body: { conversations: r.rows } };
   }
   if (p === "/api/chat/conversations" && m === "POST") {
     const b = await readBody(req);
-    const r = await db.query(`insert into conversations(title, case_id) values ('New chat', $1) returning id::text, title, case_id, created_at, updated_at`, [typeof b["case_id"] === "string" ? b["case_id"] : null]);
+    const r = await db.query(
+      `insert into conversations(title, case_id) values ('New chat', $1) returning id::text, title, case_id, created_at, updated_at`,
+      [typeof b["case_id"] === "string" ? b["case_id"] : null],
+    );
     return { status: 201, body: { conversation: r.rows[0] } };
   }
   const c = /^\/api\/chat\/conversations\/(\d+)(\/messages)?$/.exec(p);
   if (c) {
     const cid = c[1]!;
-    const conv = (await db.query(`select id::text, title, case_id, created_at, updated_at from conversations where id = $1`, [cid])).rows[0];
-    if (!conv) return { status: 404, body: { error: "not_found", detail: "no such conversation" } };
+    const conv = (
+      await db.query(
+        `select id::text, title, case_id, created_at, updated_at from conversations where id = $1`,
+        [cid],
+      )
+    ).rows[0];
+    if (!conv)
+      return {
+        status: 404,
+        body: { error: "not_found", detail: "no such conversation" },
+      };
     if (!c[2] && m === "GET") {
-      const r = await db.query(`select id::text, role, text, actions, at from messages where conversation_id = $1 order by id`, [cid]);
+      const r = await db.query(
+        `select id::text, role, text, actions, at from messages where conversation_id = $1 order by id`,
+        [cid],
+      );
       return { status: 200, body: { conversation: conv, messages: r.rows } };
     }
-    if (c[2] && m === "POST") return postMessage(db, deps, cid, conv, await readBody(req));
+    if (c[2] && m === "POST")
+      return postMessage(db, deps, cid, conv, await readBody(req));
   }
   if (p === "/api/chat/memory" && m === "GET") {
-    const r = await db.query(`select id::text, fact, created_at from memory order by id`);
+    const r = await db.query(
+      `select id::text, fact, created_at from memory order by id`,
+    );
     return { status: 200, body: { memory: r.rows } };
   }
   const mem = /^\/api\/chat\/memory\/(\d+)$/.exec(p);
@@ -253,13 +315,33 @@ export async function chatRoutes(
   if (st && m === "POST") {
     const b = await readBody(req);
     if (typeof b["ok"] !== "boolean") return bad("ok must be true or false");
-    const r = await db.query(`select conversation_id::text as cid, actions from messages where actions @> $1::jsonb limit 1`, [JSON.stringify({ staged: [{ id: st[1] }] })]);
-    if (!r.rows[0]) return { status: 404, body: { error: "not_found", detail: "no such staged card" } };
-    const title = (r.rows[0].actions.staged as Staged[]).find((s) => s.id === st[1])?.title ?? "action";
-    const detail = typeof b["result"] === "string" && b["result"] ? `. ${b["result"].slice(0, 200)}` : "";
-    const text = b["ok"] ? `Sent to PayPal: ${title}${detail}` : `Not sent: ${title}${detail}`;
-    await db.query(`insert into messages(conversation_id, role, text) values ($1,'parley',$2)`, [r.rows[0].cid, text]);
-    await db.query(`update conversations set updated_at = now() where id = $1`, [r.rows[0].cid]);
+    const r = await db.query(
+      `select conversation_id::text as cid, actions from messages where actions @> $1::jsonb limit 1`,
+      [JSON.stringify({ staged: [{ id: st[1] }] })],
+    );
+    if (!r.rows[0])
+      return {
+        status: 404,
+        body: { error: "not_found", detail: "no such staged card" },
+      };
+    const title =
+      (r.rows[0].actions.staged as Staged[]).find((s) => s.id === st[1])
+        ?.title ?? "action";
+    const detail =
+      typeof b["result"] === "string" && b["result"]
+        ? `. ${b["result"].slice(0, 200)}`
+        : "";
+    const text = b["ok"]
+      ? `Sent to PayPal: ${title}${detail}`
+      : `Not sent: ${title}${detail}`;
+    await db.query(
+      `insert into messages(conversation_id, role, text) values ($1,'parley',$2)`,
+      [r.rows[0].cid, text],
+    );
+    await db.query(
+      `update conversations set updated_at = now() where id = $1`,
+      [r.rows[0].cid],
+    );
     return { status: 200, body: { logged: true } };
   }
   return { status: 404, body: { error: "not_found", detail: p } };
@@ -273,13 +355,23 @@ async function postMessage(
   b: Record<string, unknown>,
 ): Promise<{ status: number; body: unknown }> {
   const text = typeof b["text"] === "string" ? b["text"].trim() : "";
-  if (!text || text.length > 2000) return bad("text must be 1 to 2000 characters");
-  const caseId = typeof b["case_id"] === "string" && b["case_id"] ? b["case_id"] : (conv.case_id ?? undefined);
+  if (!text || text.length > 2000)
+    return bad("text must be 1 to 2000 characters");
+  const caseId =
+    typeof b["case_id"] === "string" && b["case_id"]
+      ? b["case_id"]
+      : (conv.case_id ?? undefined);
   const ctx = caseId ? await deps.loadCase(caseId) : null;
 
-  await db.query(`insert into messages(conversation_id, role, text) values ($1,'user',$2)`, [cid, text]);
+  await db.query(
+    `insert into messages(conversation_id, role, text) values ($1,'user',$2)`,
+    [cid, text],
+  );
   if (!conv.title || conv.title === "New chat")
-    await db.query(`update conversations set title = $2 where id = $1`, [cid, text.slice(0, 40)]);
+    await db.query(`update conversations set title = $2 where id = $1`, [
+      cid,
+      text.slice(0, 40),
+    ]);
 
   let reply = "";
   let raw: unknown[] = [];
@@ -288,47 +380,86 @@ async function postMessage(
     raw = [{ type: "remember", fact: rem[1] }];
     reply = "Noted. I will keep that in mind.";
   } else {
-    const hist = (await db.query(`select role, text from messages where conversation_id = $1 order by id desc limit 12`, [cid])).rows.reverse();
-    const facts = (await db.query(`select fact from memory order by id`)).rows.map((r) => r.fact as string);
+    const hist = (
+      await db.query(
+        `select role, text from messages where conversation_id = $1 order by id desc limit 12`,
+        [cid],
+      )
+    ).rows.reverse();
+    const facts = (
+      await db.query(`select fact from memory order by id`)
+    ).rows.map((r) => r.fact as string);
     const cases = await deps.listCases();
     const context = [
-      facts.length ? `What you know about the seller:\n- ${facts.join("\n- ")}` : "",
+      facts.length
+        ? `What you know about the seller:\n- ${facts.join("\n- ")}`
+        : "",
       `Cases: ${cases.map((x) => `${x.id} ${shortName(x.buyer)} ${money(x.amount_cents)} call=${x.call ?? "?"}`).join("; ") || "none"}`,
       ctx
         ? `Open case ${ctx.id}: ${ctx.buyer}, ${money(ctx.amount_cents, ctx.currency)}, reason ${ctx.reason}, call ${ctx.call ?? "unknown"}` +
-          (ctx.p !== undefined ? `, win chance ${Math.round(ctx.p * 100)}%` : "") +
-          (ctx.interval ? ` (range ${Math.round(ctx.interval[0] * 100)}-${Math.round(ctx.interval[1] * 100)}%)` : "") +
-          (ctx.offer_cents !== undefined ? `, offer ${money(ctx.offer_cents, ctx.currency)}` : "") +
-          (ctx.keep_cents !== undefined ? `, keep ${money(ctx.keep_cents, ctx.currency)}` : "") +
-          (ctx.missing_evidence?.length ? `, missing evidence: ${ctx.missing_evidence.join(", ")}` : "")
+          (ctx.p !== undefined
+            ? `, win chance ${Math.round(ctx.p * 100)}%`
+            : "") +
+          (ctx.interval
+            ? ` (range ${Math.round(ctx.interval[0] * 100)}-${Math.round(ctx.interval[1] * 100)}%)`
+            : "") +
+          (ctx.offer_cents !== undefined
+            ? `, offer ${money(ctx.offer_cents, ctx.currency)}`
+            : "") +
+          (ctx.keep_cents !== undefined
+            ? `, keep ${money(ctx.keep_cents, ctx.currency)}`
+            : "") +
+          (ctx.missing_evidence?.length
+            ? `, missing evidence: ${ctx.missing_evidence.join(", ")}`
+            : "")
         : "No case is open.",
-    ].filter(Boolean).join("\n");
+    ]
+      .filter(Boolean)
+      .join("\n");
     const res = await deps.llm.complete<string>(
       {
         system: `${SYSTEM}\n\n${context}`,
-        messages: hist.map((h) => ({ role: h.role === "user" ? ("user" as const) : ("assistant" as const), content: h.text as string })),
+        messages: hist.map((h) => ({
+          role: h.role === "user" ? ("user" as const) : ("assistant" as const),
+          content: h.text as string,
+        })),
         maxTokens: 500,
         temperature: 0.3,
       },
       () => "",
     );
-    if (res.source === "llm" && typeof res.value === "string" && res.value.trim()) {
+    if (
+      res.source === "llm" &&
+      typeof res.value === "string" &&
+      res.value.trim()
+    ) {
       const parsed = parseReply(res.value);
       reply = parsed.reply;
       raw = parsed.actions;
     } else {
       reply = ctx
         ? `Parley is offline right now; here is the call for this case: ${ctx.call ?? "no call yet"}` +
-          (ctx.p !== undefined ? ` (about ${Math.round(ctx.p * 100)}% to win)` : "") + "."
+          (ctx.p !== undefined
+            ? ` (about ${Math.round(ctx.p * 100)}% to win)`
+            : "") +
+          "."
         : "Parley is offline right now. Open a case and I can give you the call.";
     }
   }
   const { ui, staged, remember } = await validateActions(raw, deps, caseId);
-  for (const f of remember) await db.query(`insert into memory(fact) values ($1)`, [f]);
-  const saved = (await db.query(
-    `insert into messages(conversation_id, role, text, actions) values ($1,'parley',$2,$3) returning id::text, role, text, actions, at`,
-    [cid, reply || "Done.", JSON.stringify({ ui, staged })],
-  )).rows[0];
-  await db.query(`update conversations set updated_at = now() where id = $1`, [cid]);
-  return { status: 200, body: { message: saved, ui_actions: ui, staged, remembered: remember } };
+  for (const f of remember)
+    await db.query(`insert into memory(fact) values ($1)`, [f]);
+  const saved = (
+    await db.query(
+      `insert into messages(conversation_id, role, text, actions) values ($1,'parley',$2,$3) returning id::text, role, text, actions, at`,
+      [cid, reply || "Done.", JSON.stringify({ ui, staged })],
+    )
+  ).rows[0];
+  await db.query(`update conversations set updated_at = now() where id = $1`, [
+    cid,
+  ]);
+  return {
+    status: 200,
+    body: { message: saved, ui_actions: ui, staged, remembered: remember },
+  };
 }

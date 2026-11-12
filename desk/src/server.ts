@@ -514,14 +514,12 @@ const chatDeps = {
   pool,
   llm,
   listCases: async () =>
-    (await store.list())
-      .filter(waiting)
-      .map((r) => ({
-        id: r.dispute_id,
-        buyer: r.buyer,
-        amount_cents: r.amount_cents,
-        call: decisionCache.get(r.dispute_id)?.call ?? null,
-      })),
+    (await store.list()).filter(waiting).map((r) => ({
+      id: r.dispute_id,
+      buyer: r.buyer,
+      amount_cents: r.amount_cents,
+      call: decisionCache.get(r.dispute_id)?.call ?? null,
+    })),
   loadCase: async (id: string) => {
     const row = await store.get(id);
     if (!row) return null;
