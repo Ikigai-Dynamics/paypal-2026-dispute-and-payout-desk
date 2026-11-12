@@ -6,7 +6,10 @@ export function line(c: CaseSummary): string {
   const first = c.buyer.split(" ")[0] || "The buyer";
   const item = (c.item ?? "order").toLowerCase();
   const k = callKind(c.call);
-  const chance = c.p != null ? ` You'd probably ${c.p >= 0.5 ? "win" : "lose"}, about **${pct(c.p)}%**, but` : "";
+  const chance =
+    c.p != null
+      ? ` You'd probably ${c.p >= 0.5 ? "win" : "lose"}, about **${pct(c.p)}%**, but`
+      : "";
   if (k === "offer" && c.offer_cents)
     return `${first} opened a dispute over the ${item}.${chance ? `${chance} a loss costs the refund plus fees.` : ""} Offer **${money(c.offer_cents, c.currency)}** back and this is likely over.`;
   if (k === "fight")
