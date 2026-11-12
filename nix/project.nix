@@ -69,10 +69,6 @@ in
     paypalMock = {
       enable = true;
     };
-    llm = {
-      baseUrl = "http://10.1.1.71:4000/v1";
-      model = "coder";
-    };
     postgres.enable = true;
     otel.enable = true;
     extraPackages.e2e = e2e;
