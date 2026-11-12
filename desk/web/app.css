@@ -173,7 +173,7 @@ details summary { cursor: pointer; color: var(--muted); font-weight: 500; font-s
 .drow .ph { display: contents }
 .drow.dim { opacity: .35 }
 .drow.lit { box-shadow: 0 0 0 2px var(--gold) }
-.drow.wait { opacity: .65 }
+.drow.wait { opacity: .75 }
 .drow.wait:hover, .drow.wait[aria-current="true"] { opacity: 1 }
 .amt { font-weight: 600; font-variant-numeric: tabular-nums }
 .later > summary { list-style: none; margin: 10px 6px 4px }
@@ -352,6 +352,15 @@ table.prec td, table.prec th { border-bottom: 1px solid var(--line); padding: 6p
   #say { max-height: 3em }
 }
 
+/* ── Public demo: the 10-minute session (DemoGate) ── */
+.demo-timer { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 50; font: 500 12.5px var(--body); background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--line-strong); border-radius: var(--r-pill); padding: 5px 12px; font-variant-numeric: tabular-nums; white-space: nowrap }
+.demo-gate { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 16px; background: color-mix(in srgb, #050a14 80%, transparent); backdrop-filter: blur(6px) }
+.demo-gate-card { max-width: 440px; background: var(--card); color: var(--ink); border: 1px solid var(--line-strong); border-radius: var(--r-xl); padding: 28px; display: grid; gap: 14px }
+.demo-gate-card h2 { font: 600 24px/1.2 var(--display); letter-spacing: -.02em; margin: 0 }
+.demo-gate-card p { margin: 0; color: var(--muted) }
+.demo-gate-card .btn { background: var(--gold); border-color: var(--gold); color: var(--gold-ink); font-weight: 600; min-height: 44px }
+.demo-gate-card .btn:hover { background: var(--gold-hover) }
+
 /* Phones: the list comes first; a case opens as its own full-width view. */
 @media (max-width: 860px) {
   .brand small { display: none }
@@ -366,6 +375,7 @@ table.prec td, table.prec th { border-bottom: 1px solid var(--line); padding: 6p
   .casepane .panel { padding: 14px 12px }
   .case-head h2.title { font-size: 19px }
   .verdict { padding: 12px } .verdict .what { font-size: 18px }
+  .reasons { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px } .reason { padding: 8px } .reason .k { font-size: 10.5px; letter-spacing: .02em } .reason .v { font-size: 15px }
   .verdict .btns .btn { flex: 1 1 auto; min-height: 44px }
   .drow { min-height: 52px }
   .tabs { margin-inline: -12px; padding-inline: 12px }
@@ -373,13 +383,7 @@ table.prec td, table.prec th { border-bottom: 1px solid var(--line); padding: 6p
   .chip { min-height: 36px }
   .alld .bar .btns { width: 100% }
   .terms { grid-template-columns: 1fr; gap: 0 } .terms dd { margin-bottom: 8px }
+  /* the countdown sits under the top bar, and the page makes room for it */
+  .demo-timer { top: calc(var(--topbar) + 8px); left: auto; right: 12px; transform: none }
+  body:has(.demo-timer) .wrap { padding-top: 48px }
 }
-
-/* ── Public demo: the 10-minute session (DemoGate) ── */
-.demo-timer { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 50; font: 500 12.5px var(--body); background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--line-strong); border-radius: var(--r-pill); padding: 5px 12px; font-variant-numeric: tabular-nums; white-space: nowrap }
-.demo-gate { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 16px; background: color-mix(in srgb, #050a14 80%, transparent); backdrop-filter: blur(6px) }
-.demo-gate-card { max-width: 440px; background: var(--card); color: var(--ink); border: 1px solid var(--line-strong); border-radius: var(--r-xl); padding: 28px; display: grid; gap: 14px }
-.demo-gate-card h2 { font: 600 24px/1.2 var(--display); letter-spacing: -.02em; margin: 0 }
-.demo-gate-card p { margin: 0; color: var(--muted) }
-.demo-gate-card .btn { background: var(--gold); border-color: var(--gold); color: var(--gold-ink); font-weight: 600; min-height: 44px }
-.demo-gate-card .btn:hover { background: var(--gold-hover) }
