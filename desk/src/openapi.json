@@ -16,10 +16,7 @@
             "required": false,
             "schema": {
               "type": "string",
-              "enum": [
-                "json",
-                "csv"
-              ]
+              "enum": ["json", "csv"]
             },
             "description": "csv downloads a spreadsheet"
           }
@@ -81,10 +78,7 @@
             "required": false,
             "schema": {
               "type": "string",
-              "enum": [
-                "json",
-                "csv"
-              ]
+              "enum": ["json", "csv"]
             },
             "description": "csv downloads a spreadsheet"
           }
@@ -156,9 +150,7 @@
                 "properties": {
                   "event_type": {
                     "type": "string",
-                    "examples": [
-                      "CUSTOMER.DISPUTE.UPDATED"
-                    ]
+                    "examples": ["CUSTOMER.DISPUTE.UPDATED"]
                   },
                   "resource": {
                     "type": "object",

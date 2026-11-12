@@ -234,7 +234,9 @@ const dollars = (c: number | null | undefined) =>
 
 let BUILD = "dev";
 try {
-  BUILD = JSON.parse(readFileSync(join(here, "..", "package.json"), "utf8")).version;
+  BUILD = JSON.parse(
+    readFileSync(join(here, "..", "package.json"), "utf8"),
+  ).version;
 } catch {
   /* keep dev */
 }
@@ -290,7 +292,13 @@ async function activityEvents() {
       ),
     ),
     ...sent.map((x) =>
-      ev(new Date(x.at).toISOString(), "approval", x.dispute_id, "evidence approved and sent", "approved"),
+      ev(
+        new Date(x.at).toISOString(),
+        "approval",
+        x.dispute_id,
+        "evidence approved and sent",
+        "approved",
+      ),
     ),
   ].sort((a, b) => Date.parse(b.time) - Date.parse(a.time));
 }
@@ -704,7 +712,16 @@ async function route(
         url,
         { events },
         events,
-        ["time", "kind", "case", "buyer", "amount", "currency", "status", "detail"],
+        [
+          "time",
+          "kind",
+          "case",
+          "buyer",
+          "amount",
+          "currency",
+          "status",
+          "detail",
+        ],
         "parley-activity.csv",
       ),
     };
@@ -718,7 +735,11 @@ async function route(
         body: await callDecide(decideUrl, b as never),
       };
     } catch {
-      throw new HttpError(502, "decide_unavailable", "the decision core did not accept or answer this request");
+      throw new HttpError(
+        502,
+        "decide_unavailable",
+        "the decision core did not accept or answer this request",
+      );
     }
   }
   if (m === "GET" && p === "/api/paypal-activity")
@@ -749,61 +770,61 @@ async function route(
       v.days_left !== null && v.days_left < 0;
     const needs = views.filter((v) => open(v) && !late(v));
     const out = {
-        summary: {
-          total: views.length,
-          needs_response: needs.length,
-          under_review: views.filter((v) => v.status === "UNDER_REVIEW").length,
-          closed: views.filter((v) => v.status === "RESOLVED").length,
-          missed_deadline: views.filter((v) => open(v) && late(v)).length,
-          waiting_on_buyer: views.filter(
-            (v) => v.status === "WAITING_FOR_BUYER_RESPONSE",
-          ).length,
-          // anything else (e.g. a status PayPal adds later), so the buckets always add up to total
-          other: views.filter(
-            (v) =>
-              !open(v) &&
-              ![
-                "UNDER_REVIEW",
-                "RESOLVED",
-                "WAITING_FOR_BUYER_RESPONSE",
-              ].includes(v.status),
-          ).length,
-          at_stake_cents: needs
-            .filter((v) => v.currency === currency)
-            .reduce((n, v) => n + v.amount_cents, 0),
-          currency,
-        },
-        cases: rows.map((r) => {
-          const v = toView(r, now);
-          const d = decisionCache.get(r.dispute_id);
-          return {
-            dispute_id: v.dispute_id,
-            reason: v.reason,
-            stage: v.stage,
-            status: v.status,
-            outcome: v.outcome,
-            amount_cents: v.amount_cents,
-            currency: v.currency,
-            buyer: v.buyer,
-            item: v.items[0]?.item_description ?? null,
-            item_quantity: v.items[0]?.item_quantity ?? null,
-            items: v.items,
-            due_at: v.due_at,
-            days_left: v.days_left,
-            evidence_on_file: v.evidence_on_file,
-            call: d
-              ? d.marginal && d.call !== "offer"
-                ? `${d.call} (marginal)`
-                : d.call
-              : null,
-            margin_cents: d?.margin_cents ?? null,
-            offer_cents: d?.offer_cents ?? null,
-            p: d?.p ?? null,
-            p_lo: d?.p_lo ?? null,
-            p_hi: d?.p_hi ?? null,
-            keep_cents: d?.keep_cents ?? null,
-          };
-        }),
+      summary: {
+        total: views.length,
+        needs_response: needs.length,
+        under_review: views.filter((v) => v.status === "UNDER_REVIEW").length,
+        closed: views.filter((v) => v.status === "RESOLVED").length,
+        missed_deadline: views.filter((v) => open(v) && late(v)).length,
+        waiting_on_buyer: views.filter(
+          (v) => v.status === "WAITING_FOR_BUYER_RESPONSE",
+        ).length,
+        // anything else (e.g. a status PayPal adds later), so the buckets always add up to total
+        other: views.filter(
+          (v) =>
+            !open(v) &&
+            ![
+              "UNDER_REVIEW",
+              "RESOLVED",
+              "WAITING_FOR_BUYER_RESPONSE",
+            ].includes(v.status),
+        ).length,
+        at_stake_cents: needs
+          .filter((v) => v.currency === currency)
+          .reduce((n, v) => n + v.amount_cents, 0),
+        currency,
+      },
+      cases: rows.map((r) => {
+        const v = toView(r, now);
+        const d = decisionCache.get(r.dispute_id);
+        return {
+          dispute_id: v.dispute_id,
+          reason: v.reason,
+          stage: v.stage,
+          status: v.status,
+          outcome: v.outcome,
+          amount_cents: v.amount_cents,
+          currency: v.currency,
+          buyer: v.buyer,
+          item: v.items[0]?.item_description ?? null,
+          item_quantity: v.items[0]?.item_quantity ?? null,
+          items: v.items,
+          due_at: v.due_at,
+          days_left: v.days_left,
+          evidence_on_file: v.evidence_on_file,
+          call: d
+            ? d.marginal && d.call !== "offer"
+              ? `${d.call} (marginal)`
+              : d.call
+            : null,
+          margin_cents: d?.margin_cents ?? null,
+          offer_cents: d?.offer_cents ?? null,
+          p: d?.p ?? null,
+          p_lo: d?.p_lo ?? null,
+          p_hi: d?.p_hi ?? null,
+          keep_cents: d?.keep_cents ?? null,
+        };
+      }),
     };
     return {
       status: 200,
@@ -811,7 +832,18 @@ async function route(
         url,
         out,
         out.cases,
-        ["dispute_id", "buyer", "reason", "status", "amount_cents", "currency", "due_at", "call", "offer_cents", "margin_cents"],
+        [
+          "dispute_id",
+          "buyer",
+          "reason",
+          "status",
+          "amount_cents",
+          "currency",
+          "due_at",
+          "call",
+          "offer_cents",
+          "margin_cents",
+        ],
         "parley-disputes.csv",
       ),
     };
@@ -824,7 +856,9 @@ async function route(
     const precedents = await findPrecedents(store, row);
     const aiCostCents = await store.aiCostCents(row.dispute_id);
     const request = buildDecideRequest(row, precedents, { aiCostCents });
-    const response = await decideFor({ decideUrl, store }, row, precedents, { aiCostCents });
+    const response = await decideFor({ decideUrl, store }, row, precedents, {
+      aiCostCents,
+    });
     return {
       status: 200,
       body: {

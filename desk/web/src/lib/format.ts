@@ -65,9 +65,13 @@ export const statusWords = (c: StatusLike) => {
 };
 
 /** cases we answered and are now waiting on the buyer or PayPal */
-export const isWaiting = (c: StatusLike) => c.status === "WAITING_FOR_BUYER_RESPONSE" || c.status === "UNDER_REVIEW";
+export const isWaiting = (c: StatusLike) =>
+  c.status === "WAITING_FOR_BUYER_RESPONSE" || c.status === "UNDER_REVIEW";
 /** the badge after the seller acted; `kind` is what was just sent, else the status says it */
-export const afterSendWords = (kind: "offer" | "accept" | "evidence" | null, c?: StatusLike) =>
+export const afterSendWords = (
+  kind: "offer" | "accept" | "evidence" | null,
+  c?: StatusLike,
+) =>
   kind === "accept"
     ? "Refunded"
     : kind === "evidence" || c?.status === "UNDER_REVIEW"
@@ -77,7 +81,8 @@ export const afterSendWords = (kind: "offer" | "accept" | "evidence" | null, c?:
         : c
           ? statusWords(c)
           : "Sent";
-export const pastCases = (n: number) => `${n} similar past case${n === 1 ? "" : "s"}`;
+export const pastCases = (n: number) =>
+  `${n} similar past case${n === 1 ? "" : "s"}`;
 
 export type CallKind = "fight" | "accept" | "offer";
 // the core's call may read "accept (marginal)"
