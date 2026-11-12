@@ -36,3 +36,4 @@
 .pc-item:hover { border-color: var(--blue); }
 .pc-item.active { background: var(--gold); color: var(--gold-ink); border-color: var(--gold); }
 .pc-next { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 10px 0; }
+.pc-next .pc-chip { white-space: normal; text-align: left; }
