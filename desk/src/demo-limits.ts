@@ -85,6 +85,10 @@ export function createDemoLimits(now: () => number = Date.now, secret = randomBy
   return { check };
 }
 
-/** The visitor's address: Caddy, the public edge, overwrites X-Forwarded-For from untrusted clients. */
+/** The visitor's address. The cluster's ingress rewrites X-Forwarded-For to its own neighbour, so the public
+ * edge (Caddy) stamps X-Parley-Client, overwriting whatever the visitor sent. */
 export const clientIp = (req: IncomingMessage) =>
-  String(req.headers["x-forwarded-for"] ?? "").split(",")[0]!.trim() || req.socket.remoteAddress || "unknown";
+  String(req.headers["x-parley-client"] ?? "").trim() ||
+  String(req.headers["x-forwarded-for"] ?? "").split(",")[0]!.trim() ||
+  req.socket.remoteAddress ||
+  "unknown";

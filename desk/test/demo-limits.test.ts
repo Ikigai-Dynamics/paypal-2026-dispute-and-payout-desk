@@ -45,3 +45,13 @@ describe("demo limits", () => {
     assert.equal((h.check(req("POST", c), "/api/demo/reset", "a") as any).status, 429);
   });
 });
+
+describe("clientIp", () => {
+  it("prefers the edge's header over X-Forwarded-For", async () => {
+    const { clientIp } = await import("../src/demo-limits.js");
+    const r = (h: Record<string, string>) => ({ headers: h, socket: { remoteAddress: "10.0.0.9" } }) as unknown as IncomingMessage;
+    assert.equal(clientIp(r({ "x-parley-client": "203.0.113.5", "x-forwarded-for": "10.42.0.1" })), "203.0.113.5");
+    assert.equal(clientIp(r({ "x-forwarded-for": "198.51.100.7, 10.0.0.1" })), "198.51.100.7");
+    assert.equal(clientIp(r({})), "10.0.0.9");
+  });
+});
