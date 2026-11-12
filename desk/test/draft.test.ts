@@ -359,7 +359,10 @@ describe("draftResponse", () => {
   it("uses the fallback offline and labels it", async () => {
     const d = await draftResponse(createLlm({ env: {} }), base, decision, []);
     assert.equal(d.source, "fallback");
-    assert.equal(d.label, "Drafted from the case facts (AI unavailable right now)");
+    assert.equal(
+      d.label,
+      "Drafted from the case facts (AI unavailable right now)",
+    );
     assert.ok(d.error);
   });
 
@@ -867,7 +870,10 @@ describe("grounded drafting over the seeded cases", () => {
 
     it(`${name}: the template draft is grounded too`, async () => {
       const d = await draftResponse(createLlm({ env: {} }), c, decision, []);
-      assert.equal(d.label, "Drafted from the case facts (AI unavailable right now)");
+      assert.equal(
+        d.label,
+        "Drafted from the case facts (AI unavailable right now)",
+      );
       assert.deepEqual(
         groundingProblems(d.response, buildChecklist(c), ""),
         [],
@@ -898,7 +904,10 @@ describe("grounded drafting over the seeded cases", () => {
         d.response,
         /acknowledged|separate shipments|same cardholder|within minutes|distinct purchases/i,
       );
-      assert.notEqual(d.label, "Drafted from the case facts (AI unavailable right now)");
+      assert.notEqual(
+        d.label,
+        "Drafted from the case facts (AI unavailable right now)",
+      );
       assert.ok(sentencesOf(d.response).length >= 3);
     });
     it("drops 'our system shows' with nothing on file", async () => {
@@ -1004,7 +1013,10 @@ describe("grounded drafting over the seeded cases", () => {
         },
       });
       const d = await draftResponse(llm, bag, decision, []);
-      assert.equal(d.label, "Drafted from the case facts (AI unavailable right now)");
+      assert.equal(
+        d.label,
+        "Drafted from the case facts (AI unavailable right now)",
+      );
       assert.equal(d.fallback_reason, "ai_down");
     });
     it("no seeded case's draft says lack, enclosed or providing without an item on file", async () => {

@@ -84,11 +84,20 @@ describe("validateActions", () => {
     assert.equal(r.staged[0]!.kind, "make_dispute_offer");
     assert.equal(r.ui.length, 0);
     const old = await validateActions(
-      [{ type: "make_offer", case_id: "PP-1" }, { type: "accept_claim", case_id: "PP-1" }],
+      [
+        { type: "make_offer", case_id: "PP-1" },
+        { type: "accept_claim", case_id: "PP-1" },
+      ],
       deps,
     );
-    assert.deepEqual(old.staged.map((s) => s.kind), ["make_dispute_offer", "accept_dispute_claim"]);
-    const g = await validateActions([{ type: "get_dispute", case_id: "PP-1" }], deps);
+    assert.deepEqual(
+      old.staged.map((s) => s.kind),
+      ["make_dispute_offer", "accept_dispute_claim"],
+    );
+    const g = await validateActions(
+      [{ type: "get_dispute", case_id: "PP-1" }],
+      deps,
+    );
     assert.deepEqual(g.ui, [{ type: "select_case", id: "PP-1" }]);
   });
   it("stages evidence with the saved draft and opens the draft tab", async () => {

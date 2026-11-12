@@ -214,7 +214,8 @@ export function useCase(
       patch.serverText = patch.draftText ?? dr.response;
     patch.aiPending = !!a.drafting && dr.source !== "llm";
     const label = fresh ? patch.draftLabel : s.draftLabel;
-    patch.draftAi = dr.source === "llm" || /^(AI draft|Written by Parley)/.test(label ?? "");
+    patch.draftAi =
+      dr.source === "llm" || /^(AI draft|Written by Parley)/.test(label ?? "");
     if (fresh) patch.loading = false;
     set(patch);
     if (patch.draftAi) opts.onAiDraft();

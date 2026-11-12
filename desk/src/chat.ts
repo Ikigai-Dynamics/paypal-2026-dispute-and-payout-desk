@@ -30,13 +30,20 @@ export interface ChatDeps {
   loadCase: (id: string) => Promise<CaseCtx | null>;
   /** the cases the seller can see, for filters and context */
   listCases: () => Promise<
-    { id: string; buyer: string; item?: string; amount_cents: number; call: string | null }[]
+    {
+      id: string;
+      buyer: string;
+      item?: string;
+      amount_cents: number;
+      call: string | null;
+    }[]
   >;
 }
 
 export interface Staged {
   id: string;
-  kind: "make_dispute_offer" | "provide_dispute_evidence" | "accept_dispute_claim";
+  kind:
+    "make_dispute_offer" | "provide_dispute_evidence" | "accept_dispute_claim";
   title: string;
   paypal: { method: "POST"; path: string; body: Record<string, unknown> };
   desk: { method: "POST"; path: string; body: Record<string, unknown> };
