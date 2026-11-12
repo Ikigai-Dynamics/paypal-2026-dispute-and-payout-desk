@@ -522,7 +522,7 @@ const chatDeps = {
     (await store.list()).filter(waiting).map((r) => ({
       id: r.dispute_id,
       buyer: r.buyer,
-      item: r.item,
+      item: toView(r).items[0]?.item_description,
       amount_cents: r.amount_cents,
       call: decisionCache.get(r.dispute_id)?.call ?? null,
     })),
@@ -537,7 +537,7 @@ const chatDeps = {
       amount_cents: row.amount_cents,
       currency: row.currency,
       reason: row.reason,
-      item: row.item,
+      item: toView(row).items[0]?.item_description,
       call: d?.call ?? null,
       draft_text: work?.draft_text ?? null,
     };
