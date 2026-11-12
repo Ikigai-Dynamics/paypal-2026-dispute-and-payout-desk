@@ -17,6 +17,7 @@ import {
   toView,
   viewOf,
 } from "./analysis.js";
+import { chatRoutes } from "./chat.js";
 import { DEFAULT_HANDLING_CENTS } from "./decide-client.js";
 import { PgStore, type AddedEv } from "./db.js";
 import {
@@ -488,12 +489,43 @@ async function loadRow(id: string) {
   return row;
 }
 
+const chatDeps = {
+  pool,
+  llm,
+  listCases: async () =>
+    (await store.list())
+      .filter(waiting)
+      .map((r) => ({
+        id: r.dispute_id,
+        buyer: r.buyer,
+        amount_cents: r.amount_cents,
+        call: decisionCache.get(r.dispute_id)?.call ?? null,
+      })),
+  loadCase: async (id: string) => {
+    const row = await store.get(id);
+    if (!row) return null;
+    const d = decisionCache.get(id);
+    const work = await store.getWork(id);
+    return {
+      id,
+      buyer: row.buyer,
+      amount_cents: row.amount_cents,
+      currency: row.currency,
+      reason: row.reason,
+      call: d?.call ?? null,
+      draft_text: work?.draft_text ?? null,
+    };
+  },
+};
+
 async function route(
   req: IncomingMessage,
   url: URL,
 ): Promise<{ status: number; body: unknown } | "handled"> {
   const m = req.method ?? "GET";
   const p = url.pathname;
+  const chat = await chatRoutes(req, url, chatDeps);
+  if (chat) return chat;
   if (m === "GET" && p === "/healthz")
     return { status: 200, body: { status: "ok" } };
   if (m === "GET" && p === "/readyz") {
