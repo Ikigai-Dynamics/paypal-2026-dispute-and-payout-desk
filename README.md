@@ -1,9 +1,23 @@
 # Parley: a dispute desk for PayPal sellers
 
+<p align="center"><img src="assets/owl/landing/hero.png" alt="Parley, a snowy owl in a navy waistcoat" width="220"></p>
+
+**Try it live: <https://parleyowl.app>** (no sign-up; each visit gets 10 minutes on a simulated PayPal account with 60 sample disputes).
+**Demo video:** _YouTube link added at submission._
+
 Parley reads your PayPal disputes and tells you, case by case, whether to fight, refund or offer $X, with an estimated chance of winning.
 It drafts the reply and the evidence list for you, and sends nothing to PayPal without your OK.
 
 PayPal APIs used: Disputes v1 (list, get, provide-evidence, accept-claim, make-offer), Webhooks (`CUSTOMER.DISPUTE.CREATED`, `UPDATED`, `RESOLVED`, checked with verify-webhook-signature) and Transaction Search (the buyer's order history). Built for the [PayPal AI Hackathon 2026](https://developer.paypal.com/community/blog/PayPal_AI_Hackathon/).
+
+## The owl
+
+| | | |
+| --- | --- | --- |
+| <img src="assets/owl/landing/scale.png" width="200" alt="Weighing fight, refund or offer"> | <img src="assets/owl/landing/calendar.png" width="200" alt="Watching the deadlines"> | <img src="assets/owl/landing/stamp.png" width="200" alt="Nothing sent without your OK"> |
+| Fight, refund or offer $X | Never miss a reply date | Nothing sent without your OK |
+
+Art in `assets/owl/` (landing poses, console moods, favicons, and the Rive file `parley.riv`).
 
 ## Try it in 60 seconds
 
@@ -45,7 +59,7 @@ Tear down: `nix run .#undeploy -- dispute-and-payout-desk` or `nix run .#cluster
 
 ## What is real and what is simulated
 
-- **PayPal is the bundled PayPal mock**, which implements the Disputes v1 shapes (and Transaction Search, webhooks). The demo runs against the bundled mock. Against the real PayPal sandbox, our app's credentials got an OAuth token and `GET /v1/customer/disputes` returned HTTP 200 with no disputes (2026-11-12). Opening a sandbox dispute needs a buyer to file one in the sandbox web UI, which we did not manage, so the write calls (make-offer, provide-evidence, accept-claim) were exercised only against the mock. The desk's sandbox path is `PAYPAL_ENV=sandbox` with a client id and secret.
+- **PayPal is the bundled PayPal mock**, which implements the Disputes v1 shapes (and Transaction Search, webhooks). The demo runs against the bundled mock. Against the real PayPal sandbox, my app's credentials got an OAuth token and `GET /v1/customer/disputes` returned HTTP 200 with no disputes (2026-11-12). Opening a sandbox dispute needs a buyer to file one in the sandbox web UI, which I did not manage, so the write calls (make-offer, provide-evidence, accept-claim) were exercised only against the mock. The desk's sandbox path is `PAYPAL_ENV=sandbox` with a client id and secret.
 - **The AI is a real LLM** reached through an OpenAI-compatible endpoint (`@jeirslab/llm-client`). It drafts replies and answers in the chat. Without a key the desk falls back to template drafts and labels them as such.
 - **The money decision is integer-cent arithmetic in the Rust core**, not a model.
 - **Win chances are estimated**: a beta posterior from similar past cases, pulled toward an assumed starting guess. They are not calibrated against PayPal outcomes.
