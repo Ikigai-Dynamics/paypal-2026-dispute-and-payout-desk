@@ -12,8 +12,10 @@ export interface DecideOptions {
   feeIfLostCents?: number;
   /** what the AI work on this case cost so far, in cents */
   aiCostCents?: number;
-  /** the buyer's orders and disputes with this seller; both count this case */
-  buyerCases?: number;
+  /** the buyer's orders with this seller; null/absent when really unknown */
+  buyerOrders?: number | null;
+  /** the buyer's disputes in the index, this case included */
+  buyerDisputes?: number;
 }
 
 export const DEFAULT_HANDLING_CENTS = 1500;
@@ -42,8 +44,13 @@ export function buildDecideRequest(
     handling_cost_cents: o.handlingCostCents ?? DEFAULT_HANDLING_CENTS,
     ai_cost_cents: safeCents(o.aiCostCents),
     fee_if_lost_cents: o.feeIfLostCents ?? 0,
-    buyer_orders: safeCount(o.buyerCases),
-    buyer_disputes: safeCount(o.buyerCases),
+    // decide.v2 defaults a missing buyer_orders to 0 and lifts it to the dispute count, so unknown orders are left out
+    // rather than copied from disputes; orders below disputes are treated as unknown too
+    ...(o.buyerOrders != null &&
+    safeCount(o.buyerOrders) >= safeCount(o.buyerDisputes)
+      ? { buyer_orders: safeCount(o.buyerOrders) }
+      : {}),
+    buyer_disputes: safeCount(o.buyerDisputes),
     precedents: precedents.map((p) => ({
       dispute_id: p.dispute_id,
       won: p.won,

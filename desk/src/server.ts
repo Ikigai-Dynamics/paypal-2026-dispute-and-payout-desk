@@ -14,12 +14,14 @@ import {
   analyse,
   decideFor,
   findPrecedents,
+  orderCounter,
+  requestFor,
   toView,
   viewOf,
 } from "./analysis.js";
+import { createDecisionCache, wholeDollarsCents } from "./decision-cache.js";
 import { chatRoutes } from "./chat.js";
 import {
-  buildDecideRequest,
   callAssumptions,
   callDecide,
   DEFAULT_HANDLING_CENTS,
@@ -35,7 +37,10 @@ import {
 import type { Added, CaseRow, Decision, Draft } from "./types.js";
 import {
   evidenceOnFile,
+  fallbackDraft,
   LABEL_AI,
+  markAdded,
+  withAdded,
   LABEL_GROUNDED,
   LABEL_TEMPLATE,
 } from "./draft.js";
@@ -125,39 +130,56 @@ const syncState: {
   attempts: 0,
   cases: 0,
 };
-// decisions at the default c and F, shown in the grid's Call column
-const decisionCache = new Map<string, CachedDecision>();
-interface CachedDecision {
-  at: string;
-  call: string;
-  margin_cents: number;
-  marginal: boolean;
-  offer_cents: number | null;
-  p: number;
-  p_lo: number;
-  p_hi: number;
-  keep_cents: number;
+// one call per case: every reader goes through callFor, with the same fixed default options
+const DEFAULT_OPTS = {
+  prior: null,
+  handlingCostCents: DEFAULT_HANDLING_CENTS,
+  feeIfLostCents: 0,
+};
+const decideDeps = {
+  decideUrl,
+  store,
+  orders: orderCounter(paypal),
+};
+let buildSeen = { at: 0, id: "unknown" };
+/** the decide core's contract and assumptions version: a new core build recomputes every call */
+async function coreBuild(): Promise<string> {
+  if (Date.now() - buildSeen.at < 30_000) return buildSeen.id;
+  try {
+    const a = await callAssumptions(decideUrl);
+    buildSeen = { at: Date.now(), id: `decide.v2@${a.version}` };
+  } catch {
+    buildSeen.at = Date.now() - 25_000; // keep the last known build, retry in 5 s
+  }
+  return buildSeen.id;
 }
-const toCached = (d: Decision): CachedDecision => ({
-  at: new Date().toISOString(),
-  call: d.call,
-  margin_cents: d.margin_cents,
-  marginal: d.marginal,
-  offer_cents: d.call === "offer" ? (d.offer?.amount_cents ?? null) : null,
-  p: d.p,
-  p_lo: d.p_lo,
-  p_hi: d.p_hi,
-  keep_cents: d.keep_cents,
+const calls = createDecisionCache({
+  compute: async (row) =>
+    decideFor(decideDeps, row, await findPrecedents(store, row), DEFAULT_OPTS),
+  build: coreBuild,
 });
+const callFor = calls.callFor;
+const decisionCache = calls;
 
 // online = the last real completion worked, or a fresh probe of the gateway answered.
 // A failed draft only forces a new probe; it never turns the badge off by itself.
 let probe = { at: 0, ok: false };
-// the AI cost of a draft joins the case's fight cost; its cached call is then stale
+// the AI cost of the kept draft joins the case's fight cost (set, never added: a retry costs nothing more);
+// the cached call is stale only when the stored cents really changed
 drafts.onCost = (id, usd) => {
   void store
-    .addAiCost(id, usd)
-    .then(() => decisionCache.delete(id))
+    .setAiCost(id, usd)
+    .then((changed) => {
+      if (changed) decisionCache.drop(id);
+      record({
+        method: "AI",
+        path: `${DISPUTES}/${id}#ai-draft`,
+        status: 200,
+        ms: 0,
+        kind: "ai",
+        note: `AI drafted reply ($${usd.toFixed(2)})`,
+      });
+    })
     .catch((e) => log({ msg: "ai cost not stored", error: String(e) }));
 };
 drafts.onResult = (ok) => {
@@ -229,6 +251,22 @@ const asFormat = (
   url.searchParams.get("format") === "csv"
     ? new Raw("text/csv; charset=utf-8", toCsv(rows, cols), file)
     : body;
+const DISPUTES = "/v1/customer/disputes";
+const approved = (
+  id: string,
+  what: string,
+  cents?: number,
+  currency?: string,
+) =>
+  record({
+    method: "APPROVE",
+    path: `${DISPUTES}/${id}#approved`,
+    status: 200,
+    ms: 0,
+    kind: "approval",
+    note: `You approved: ${what}`,
+    ...(cents != null ? { amount_cents: cents, currency } : {}),
+  });
 const dollars = (c: number | null | undefined) =>
   c == null ? "" : (c / 100).toFixed(2);
 
@@ -243,14 +281,7 @@ try {
 
 /** Everything the desk did, newest first: PayPal calls, Parley's calls, human approvals. */
 async function activityEvents() {
-  const [calls, rows, sent] = await Promise.all([
-    listCalls(200),
-    store.list(),
-    pool
-      .query("select dispute_id, at from case_sent order by id desc limit 200")
-      .then((r) => r.rows)
-      .catch(() => []),
-  ]);
+  const [logged, rows] = await Promise.all([listCalls(200), store.list()]);
   const by = new Map(rows.map((r) => [r.dispute_id, r]));
   const ev = (
     at: string,
@@ -271,33 +302,26 @@ async function activityEvents() {
     detail,
   });
   return [
-    ...calls.map((c) =>
+    ...logged.map((c) =>
       ev(
         c.at,
         c.kind,
         c.dispute_id,
-        `${c.method} ${c.path}${c.note ? ` (${c.note})` : ""}`,
+        c.kind === "ai" || c.kind === "approval"
+          ? (c.note ?? "")
+          : `${c.method} ${c.path}${c.note ? ` (${c.note})` : ""}`,
         c.status,
         c.amount_cents,
         c.currency,
       ),
     ),
-    ...[...decisionCache].map(([id, d]) =>
+    ...[...decisionCache.entries()].map(([id, d]) =>
       ev(
         d.at,
         "decision",
         id,
         d.call + (d.offer_cents != null ? ` ${dollars(d.offer_cents)}` : ""),
         "decided",
-      ),
-    ),
-    ...sent.map((x) =>
-      ev(
-        new Date(x.at).toISOString(),
-        "approval",
-        x.dispute_id,
-        "evidence approved and sent",
-        "approved",
       ),
     ),
   ].sort((a, b) => Date.parse(b.time) - Date.parse(a.time));
@@ -324,32 +348,20 @@ const rank = (id: string) => {
   return i < 0 ? FIRST.length : i;
 };
 
-/** Decision at the default options for one waiting case, cached for the grid's Call column. */
-async function ensureDecision(row: CaseRow): Promise<boolean> {
-  if (decisionCache.has(row.dispute_id)) return true;
-  const d = await decideFor(
-    { decideUrl, store },
-    row,
-    await findPrecedents(store, row),
-    {},
-  );
-  if (!d) return false;
-  decisionCache.set(row.dispute_id, toCached(d));
-  return true;
-}
-
 let warming: Promise<void> | null = null;
-// retries every 5 s for up to 3 min until every waiting case has a decision
+// computes every waiting case's call (cached ones are reused); retries every 5 s for up to 3 min until all have one
 function warmDecisions(): Promise<void> {
   return (warming ??= (async () => {
     const until = Date.now() + 180_000;
     for (;;) {
-      const rows = (await store.list()).filter(
-        (r) => waiting(r) && !decisionCache.has(r.dispute_id),
-      );
-      if (!rows.length || Date.now() > until) return;
-      await runPool(rows, 4, async (r) => (await ensureDecision(r), true));
-      if (rows.some((r) => !decisionCache.has(r.dispute_id))) await sleep(5000);
+      const rows = (await store.list()).filter(waiting);
+      await runPool(rows, 4, async (r) => (await callFor(r), true));
+      if (
+        rows.every((r) => decisionCache.has(r.dispute_id)) ||
+        Date.now() > until
+      )
+        return;
+      await sleep(5000);
     }
   })().finally(() => {
     warming = null;
@@ -365,12 +377,8 @@ async function preDraft(only?: Set<string>, attempt = 0): Promise<void> {
   const keepGoing = stopAfterDown(2);
   await runPool(rows, 2, async (row) => {
     const precedents = await findPrecedents(store, row);
-    const o = {
-      prior: null,
-      handlingCostCents: DEFAULT_HANDLING_CENTS,
-      feeIfLostCents: 0,
-    };
-    const decision = await decideFor({ decideUrl, store }, row, precedents, o);
+    const o = DEFAULT_OPTS;
+    const decision = (await callFor(row))?.full ?? null;
     const d = await drafts.get(
       await viewOf(store, row),
       decision,
@@ -451,6 +459,7 @@ async function boot(): Promise<void> {
     try {
       await store.resetWork();
       decisionCache.clear();
+      decideDeps.orders.clear();
       drafts.clear();
     } catch (e) {
       log({ msg: "work reset failed", error: String(e) });
@@ -465,12 +474,16 @@ async function boot(): Promise<void> {
       await sleep(2000);
     }
   }
+  // every call is in place before the list can be read; drafting then goes on in the background
+  await warmDecisions().catch((e) =>
+    log({ msg: "warm failed", error: String(e) }),
+  );
   ready = true;
-  // pre-drafting starts at startup even when the first syncs failed and the index is from before
+  // a successful sync already started drafting
   if (!syncState.lastOk)
-    void warmDecisions()
-      .then(() => preDraft())
-      .catch((e) => log({ msg: "warm failed", error: String(e) }));
+    void preDraft().catch((e) =>
+      log({ msg: "predraft failed", error: String(e) }),
+    );
 }
 void boot();
 // no webhooks: without this the index keeps what the mock served at the first sync, even after the mock restarts or re-anchors its dates
@@ -593,12 +606,8 @@ async function addedByMerchant(
   if (base === null) {
     // never shown: what the desk would write now
     const precedents = await findPrecedents(store, row);
-    const o = {
-      prior: null,
-      handlingCostCents: DEFAULT_HANDLING_CENTS,
-      feeIfLostCents: 0,
-    };
-    const decision = await decideFor({ decideUrl, store }, row, precedents, o);
+    const o = DEFAULT_OPTS;
+    const decision = (await callFor(row))?.full ?? null;
     const work = await store.getWork(id);
     base = (
       await drafts.get(
@@ -645,12 +654,17 @@ const chatDeps = {
       buyer: r.buyer,
       item: toView(r).items[0]?.item_description,
       amount_cents: r.amount_cents,
+      currency: r.currency,
       call: decisionCache.get(r.dispute_id)?.call ?? null,
+      offer_cents: decisionCache.get(r.dispute_id)?.offer_cents ?? null,
+      p: decisionCache.get(r.dispute_id)?.p ?? null,
+      reason: r.reason,
+      due_in_days: toView(r).days_left,
     })),
   loadCase: async (id: string) => {
     const row = await store.get(id);
     if (!row) return null;
-    const d = decisionCache.get(id);
+    const d = await callFor(row);
     const work = await store.getWork(id);
     return {
       id,
@@ -660,6 +674,7 @@ const chatDeps = {
       reason: row.reason,
       item: toView(row).items[0]?.item_description,
       call: d?.call ?? null,
+      offer_cents: d?.offer_cents ?? undefined,
       draft_text: work?.draft_text ?? null,
     };
   },
@@ -677,6 +692,7 @@ async function route(
     HttpError,
     readJson,
     loadRow,
+    orders: decideDeps.orders,
   });
   if (pr) return pr;
   const chat = await chatRoutes(req, url, chatDeps);
@@ -738,7 +754,7 @@ async function route(
       throw new HttpError(
         502,
         "decide_unavailable",
-        "the decision core did not accept or answer this request",
+        "Parley's call did not accept or answer this request",
       );
     }
   }
@@ -752,11 +768,12 @@ async function route(
     const rows = await store.list();
     const now = Date.now();
     const open = waiting;
-    // never leave a waiting case without a call while decide is reachable
+    // the list never answers before the calls are in: wait for a warm in flight, then fill any gap
+    await warming?.catch(() => undefined);
     await runPool(
       rows.filter((r) => waiting(r) && !decisionCache.has(r.dispute_id)),
       4,
-      async (r) => (await ensureDecision(r), true),
+      async (r) => (await callFor(r), true),
     );
     const views = rows.map((r) => toView(r, now));
     const currency =
@@ -792,6 +809,15 @@ async function route(
         at_stake_cents: needs
           .filter((v) => v.currency === currency)
           .reduce((n, v) => n + v.amount_cents, 0),
+        // what Parley expects to keep over the open cases, from the one stored call per case, in whole dollars
+        expected_keep_cents: wholeDollarsCents(
+          rows
+            .filter((r) => waiting(r) && r.currency === currency)
+            .reduce(
+              (n, r) => n + (decisionCache.get(r.dispute_id)?.keep_cents ?? 0),
+              0,
+            ),
+        ),
         currency,
       },
       cases: rows.map((r) => {
@@ -854,11 +880,10 @@ async function route(
   if (m === "GET" && rec) {
     const row = await loadRow(decodeURIComponent(rec[1]!));
     const precedents = await findPrecedents(store, row);
-    const aiCostCents = await store.aiCostCents(row.dispute_id);
-    const request = buildDecideRequest(row, precedents, { aiCostCents });
-    const response = await decideFor({ decideUrl, store }, row, precedents, {
-      aiCostCents,
-    });
+    const request = await requestFor(decideDeps, row, precedents, DEFAULT_OPTS);
+    const response = waiting(row)
+      ? ((await callFor(row))?.full ?? null)
+      : await decideFor(decideDeps, row, precedents, DEFAULT_OPTS);
     return {
       status: 200,
       body: {
@@ -874,7 +899,9 @@ async function route(
   if (m === "GET" && one) {
     const row = await loadRow(decodeURIComponent(one[1]!));
     const precedents = await findPrecedents(store, row);
-    const decision = await decideFor({ decideUrl, store }, row, precedents, {});
+    const decision = waiting(row)
+      ? ((await callFor(row))?.full ?? null)
+      : await decideFor(decideDeps, row, precedents, DEFAULT_OPTS);
     return {
       status: 200,
       body: {
@@ -905,6 +932,7 @@ async function route(
     await resetMock();
     await store.resetWork();
     decisionCache.clear();
+    decideDeps.orders.clear();
     drafts.clear();
     await runSync();
     return { status: 200, body: { reset: true } };
@@ -922,12 +950,35 @@ async function route(
       const fee = dollarsToCents(url.searchParams.get("fee"));
       const work = await store.getWork(id);
       const sent = await store.getSent(id);
+      const whatIf =
+        prior !== undefined || c !== undefined || fee !== undefined;
       const out = await analyse(
         {
           store,
           llm,
           decideUrl,
-          draft: (v, dc, pr, o, ad) => drafts.get(v, dc, pr, o, ad),
+          orders: decideDeps.orders,
+          // the default view reads the stored call; a what-if computes its own and never stores it
+          ...(whatIf || !waiting(row)
+            ? {}
+            : {
+                decide: async (r: CaseRow) => (await callFor(r))?.full ?? null,
+              }),
+          // a slow gateway answers the page with the call first: the draft keeps going and joins the next read
+          draft: async (v, dc, pr, o, ad) => {
+            const d = drafts.get(v, dc, pr, o, ad);
+            const quick = await Promise.race([d, sleep(4000).then(() => null)]);
+            d.catch(() => undefined);
+            if (quick) return quick;
+            const fb = fallbackDraft(withAdded(v, ad), dc, o.handlingCostCents);
+            return {
+              ...fb,
+              checklist: markAdded(fb.checklist, ad),
+              source: "fallback" as const,
+              fallback_reason: "ai_down" as const,
+              label: LABEL_TEMPLATE,
+            };
+          },
         },
         row,
         {
@@ -959,13 +1010,6 @@ async function route(
           label: labelFor(storedOf(out.draft), hasAdded, false),
         };
       }
-      if (
-        out.decision &&
-        prior === undefined &&
-        c === undefined &&
-        fee === undefined
-      )
-        decisionCache.set(id, toCached(out.decision));
       // a slow gateway call must not leave the fallback as final: try the model once more in the background
       let drafting = false;
       if (
@@ -1043,17 +1087,8 @@ async function route(
       const added = parseAdded(b["added"]);
       const row = await loadRow(id);
       const precedents = await findPrecedents(store, row);
-      const o = {
-        prior: null,
-        handlingCostCents: DEFAULT_HANDLING_CENTS,
-        feeIfLostCents: 0,
-      };
-      const decision = await decideFor(
-        { decideUrl, store },
-        row,
-        precedents,
-        o,
-      );
+      const o = DEFAULT_OPTS;
+      const decision = (await callFor(row))?.full ?? null;
       const draft = await drafts.get(
         await viewOf(store, row),
         decision,
@@ -1167,6 +1202,7 @@ async function route(
         }
         await store.recordSent(id, text, sentEv, held);
         await store.deleteWork(id);
+        approved(id, "Send to PayPal");
       } else {
         const note =
           typeof b["note"] === "string" && b["note"].trim()
@@ -1174,8 +1210,9 @@ async function route(
             : "Accepted by the seller from the desk";
         row = await acceptClaim(paypal, store, id, note);
         await store.deleteWork(id);
+        approved(id, "Accept the claim");
       }
-      decisionCache.delete(id);
+      decisionCache.drop(id);
       return { status: 200, body: { case: toView(row) } };
     }
   }

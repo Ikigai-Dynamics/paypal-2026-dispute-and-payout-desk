@@ -283,14 +283,16 @@ export class PgStore {
     );
   }
 
-  /** adds the USD one AI draft cost to the case's running total; never a negative or NaN value */
-  async addAiCost(id: string, usd: number): Promise<void> {
-    if (!Number.isFinite(usd) || usd <= 0) return;
+  /** stores the USD cost of the draft that is kept (a set: retries do not add); true when the whole cents changed */
+  async setAiCost(id: string, usd: number): Promise<boolean> {
+    if (!Number.isFinite(usd) || usd <= 0) return false;
+    const before = await this.aiCostCents(id);
     await this.pool.query(
       `insert into case_ai_cost (dispute_id, usd) values ($1,$2)
-       on conflict (dispute_id) do update set usd = case_ai_cost.usd + $2`,
+       on conflict (dispute_id) do update set usd = $2`,
       [id, usd],
     );
+    return Math.round(usd * 100) !== before;
   }
 
   /** the case's AI cost so far, in whole cents */
@@ -338,6 +340,10 @@ export class PgStore {
   async resetWork(): Promise<void> {
     await this.pool.query(
       "truncate case_work, case_generated, case_sent, case_ai_cost, paypal_calls",
+    );
+    // demo chat starts empty; the memory table (remembered facts) stays. chat.ts may not have made the tables yet
+    await this.pool.query(
+      `do $$ begin if to_regclass('conversations') is not null and to_regclass('messages') is not null then truncate conversations, messages; end if; end $$`,
     );
   }
 }

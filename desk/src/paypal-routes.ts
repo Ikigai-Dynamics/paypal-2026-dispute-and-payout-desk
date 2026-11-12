@@ -3,7 +3,7 @@ import { PayPalApiError, type PayPalClient } from "@jeirslab/paypal-client";
 import { record } from "./activity.js";
 import type { PgStore } from "./db.js";
 import { refreshCase } from "./sync.js";
-import { toView } from "./analysis.js";
+import { buyerCounts, toView } from "./analysis.js";
 import type { CaseRow } from "./types.js";
 
 type Result = { status: number; body: unknown };
@@ -20,6 +20,8 @@ export interface Deps {
   HttpError: ErrCtor;
   readJson: (req: IncomingMessage) => Promise<Record<string, unknown>>;
   loadRow: (id: string) => Promise<CaseRow>;
+  /** the buyer's real order count, see analysis.orderCounter */
+  orders?: (row: CaseRow, others: CaseRow[]) => Promise<number | null>;
 }
 
 const D = "/v1/customer/disputes";
@@ -201,6 +203,17 @@ async function offer(
       currency: row0.currency,
       note: "offer",
     });
+    if (status === 200)
+      record({
+        method: "APPROVE",
+        path: `${D}/${id}#approved`,
+        status: 200,
+        ms: 0,
+        kind: "approval",
+        amount_cents: ck.cents,
+        currency: row0.currency,
+        note: `You approved: Offer $${(ck.cents / 100).toFixed(2)}`,
+      });
   }
   const row = await refreshCase(paypal, deps.store, id);
   return { status: 200, body: { case: toView(row) } };
@@ -212,6 +225,8 @@ async function buyer(id: string, deps: Deps): Promise<Result> {
   const tx = row.raw.disputed_transactions?.[0];
   const others = await store.byBuyer(row.buyer, id);
   const all = [row, ...others];
+  // the same two numbers the decision request carries (orders lifted to disputes when unknown, as decide.v2 does)
+  const counts = await buyerCounts(deps, row);
   const firsts = all
     .map((r) => r.raw.disputed_transactions?.[0]?.create_time)
     .filter((x): x is string => !!x)
@@ -245,8 +260,8 @@ async function buyer(id: string, deps: Deps): Promise<Result> {
       account_status: p?.account_status ?? null,
       country: p?.country_code ?? addr?.country_code ?? null,
       ship_to: addr ? { city: addr.city, state: addr.state ?? null } : null,
-      orders_with_you: all.length,
-      disputes_with_you: all.length,
+      orders_with_you: Math.max(counts.orders ?? 0, counts.disputes),
+      disputes_with_you: counts.disputes,
       first_order_at: firsts[0] ?? null,
       address_matches_delivery:
         p?.country_code && addr?.country_code
