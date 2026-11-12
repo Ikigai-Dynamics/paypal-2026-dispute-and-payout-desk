@@ -1,39 +1,47 @@
-.parley-chat { font-family: var(--body); color: var(--ink); position: fixed; top: 0; right: 0; bottom: 0; width: 380px; z-index: 50; display: flex; flex-direction: column; background: var(--card); border-left: 1px solid var(--line); box-shadow: -4px 0 18px rgba(0,0,0,.12); }
+/* The chat panel; tokens come from app.css (DESIGN.md) */
+.parley-chat { font-family: var(--body); color: var(--ink); position: fixed; top: 0; right: 0; bottom: 0; width: 380px; z-index: 50; display: flex; flex-direction: column; background: var(--card); border-left: 1px solid var(--line-strong); }
 .parley-chat[hidden] { display: none; }
-.pc-head { display: flex; gap: 6px; align-items: center; padding: 8px 10px; border-bottom: 1px solid #dde2ea; background: var(--navy, var(--blue, #003087)); color: #fff; }
-.pc-select { flex: 1; min-width: 0; font: 600 .85rem var(--body); padding: 6px 8px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
-.pc-chip { font: 700 .8rem var(--body); border: 1px solid var(--line); border-radius: 999px; background: var(--card); color: var(--ink); padding: 5px 12px; cursor: pointer; white-space: nowrap; }
+.pc-head { display: flex; gap: 6px; align-items: center; min-height: 56px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
+.pc-select { flex: 1; min-width: 0; font: 500 13px var(--body); padding: 7px 8px; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--bg); color: var(--ink); }
+.pc-chip { font: 500 13px/1.3 var(--body); border: 1px solid var(--line-strong); border-radius: 9999px; background: var(--surface-2); color: var(--ink); padding: 6px 12px; cursor: pointer; white-space: nowrap; transition: border-color .12s, background .12s; }
 .pc-chip:hover { border-color: var(--blue); }
 .pc-chip[aria-pressed="true"] { background: var(--gold); color: var(--gold-ink); border-color: var(--gold); }
-.pc-chip.small { padding: 2px 9px; font-size: .75rem; }
+.pc-chip.small { padding: 2px 9px; font-size: 12px; }
 .pc-chip:disabled { opacity: .5; cursor: default; }
-.pc-head .pc-x { background: transparent; color: #fff; border: 0; font-size: 20px; line-height: 1; cursor: pointer; padding: 2px 6px; }
-.pc-card .primary, .pc-form .primary { font: 800 .85rem var(--body); padding: 7px 14px; border-radius: 12px; border: 2px solid var(--outline); background: var(--gold); color: var(--gold-ink); cursor: pointer; box-shadow: 2px 2px 0 var(--outline); }
-.pc-card .primary:disabled, .pc-form .primary:disabled { opacity: .5; cursor: default; box-shadow: none; }
-.pc-form input { font: 500 .9rem var(--body); padding: 7px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
-.pc-memory { padding: 8px 12px; background: #f3f5f8; border-bottom: 1px solid #dde2ea; font-size: 13px; max-height: 30%; overflow: auto; }
-.pc-memory li { display: flex; justify-content: space-between; gap: 8px; margin: 3px 0; }
+.pc-head .pc-x { background: transparent; color: var(--muted); border: 0; font-size: 22px; line-height: 1; cursor: pointer; padding: 4px 8px; border-radius: 6px; }
+.pc-head .pc-x:hover { color: var(--ink); background: var(--surface-3); }
+.pc-card .primary, .pc-form .primary { font: 600 14px var(--body); padding: 8px 14px; min-height: 36px; border-radius: 8px; border: 1px solid var(--gold); background: var(--gold); color: var(--gold-ink); cursor: pointer; }
+.pc-card .primary:hover, .pc-form .primary:hover { background: var(--gold-hover); }
+.pc-card .primary:disabled, .pc-form .primary:disabled { opacity: .5; cursor: default; }
+.pc-memory { padding: 10px 12px; background: var(--bg); border-bottom: 1px solid var(--line); font-size: 13px; max-height: 30%; overflow: auto; }
+.pc-memory li { display: flex; justify-content: space-between; gap: 8px; margin: 4px 0; }
 .pc-memory ul { margin: 0; padding: 0; list-style: none; }
-.pc-log { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
-.pc-msg { max-width: 88%; padding: 7px 11px; border-radius: 12px; font-size: 14px; line-height: 1.35; white-space: pre-line; }
-.pc-msg.user { align-self: flex-end; background: var(--btn, #0070e0); color: #fff; }
-.pc-msg.parley { align-self: flex-start; background: #eef1f6; color: #1b2430; }
-.pc-card { align-self: stretch; border: 2px solid var(--amber, #9a6b00); border-radius: 10px; padding: 10px 12px; background: #fffaf0; font-size: 13px; }
-.pc-card h4 { margin: 0 0 2px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--amber, #9a6b00); }
-.pc-card .t { font-weight: 700; font-size: 15px; margin-bottom: 6px; }
-.pc-card pre { margin: 4px 0 8px; padding: 6px 8px; background: #1b2430; color: #e6edf5; border-radius: 6px; font: 12px/1.35 ui-monospace, monospace; overflow: auto; max-height: 160px; white-space: pre-wrap; word-break: normal; overflow-wrap: anywhere; }
+.pc-log { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+.pc-msg { max-width: 88%; padding: 8px 12px; border-radius: 12px; font-size: 14px; line-height: 1.45; white-space: pre-line; }
+.pc-msg.user { align-self: flex-end; background: var(--navy); color: #fff; border-bottom-right-radius: 4px; }
+.pc-msg.parley { align-self: flex-start; background: var(--surface-2); color: var(--ink); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
+/* "Needs your OK": the exact PayPal call, sent only on a click */
+.pc-card { align-self: stretch; border: 1px solid color-mix(in srgb, var(--gold) 50%, var(--line-strong)); border-radius: 12px; padding: 12px; background: color-mix(in srgb, var(--gold) 7%, var(--surface-2)); font-size: 13px; }
+.pc-card h4 { margin: 0 0 2px; font: 600 11px var(--body); text-transform: uppercase; letter-spacing: .05em; color: var(--gold); }
+:root[data-theme="light"] .pc-card h4 { color: var(--warn); }
+.pc-card .t { font-weight: 600; font-size: 15px; margin-bottom: 6px; }
+.pc-card pre { margin: 4px 0 8px; padding: 8px 10px; background: var(--bg); color: var(--ink-2); border: 1px solid var(--line); border-radius: 8px; font: 12px/1.4 var(--mono); overflow: auto; max-height: 160px; white-space: pre-wrap; word-break: normal; overflow-wrap: anywhere; }
 .pc-card .row { display: flex; gap: 8px; }
-.pc-card .ok { color: var(--green, #0a7f3f); font-weight: 600; }
-.pc-card .err { color: var(--red, #b42318); font-weight: 600; }
-.pc-form { display: flex; gap: 6px; padding: 10px; border-top: 1px solid #dde2ea; }
+.pc-card .ok { color: var(--good); font-weight: 600; }
+.pc-card .err { color: var(--bad); font-weight: 600; }
+.pc-card .note { margin: 6px 0; font-size: 13px; font-weight: 500; color: var(--ink); }
+.pc-form { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--line); }
 .pc-form input { flex: 1; min-width: 0; }
-@media (max-width: 720px) {
-  .parley-chat { top: auto; left: 0; width: auto; bottom: 64px; max-height: 70vh; height: 70vh; border-left: 0; border-top: 1px solid #dde2ea; border-radius: 14px 14px 0 0; }
-}
-.pc-card .note { margin: 6px 0; font-size: .85rem; font-weight: 600; color: var(--ink); }
 .pc-chips { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
-.pc-item { align-self: stretch; text-align: left; font: 600 .85rem var(--body); border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--ink); padding: 6px 10px; cursor: pointer; }
+.pc-item { align-self: stretch; text-align: left; font: 500 13px var(--body); border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); padding: 8px 10px; cursor: pointer; }
 .pc-item:hover { border-color: var(--blue); }
-.pc-item.active { background: var(--gold); color: var(--gold-ink); border-color: var(--gold); }
-.pc-next { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 10px 0; }
-.pc-next .pc-chip { white-space: normal; text-align: left; }
+.pc-item.active { background: color-mix(in srgb, var(--gold) 18%, var(--card)); border-color: var(--gold); }
+.pc-next { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px 0; }
+.pc-next .pc-chip, .pc-chips .pc-chip { white-space: normal; text-align: left; border-radius: 12px; }
+/* phones and small tablets: a sheet above Parley's dock */
+@media (max-width: 720px) {
+  .parley-chat { top: auto; left: 0; width: auto; bottom: var(--dock, 64px); height: min(68vh, calc(100vh - var(--dock, 64px) - 56px)); border-left: 0; border-top: 1px solid var(--line-strong); border-radius: 16px 16px 0 0; box-shadow: 0 -12px 32px rgba(0, 0, 0, .45); }
+  .pc-head { border-radius: 16px 16px 0 0; }
+  .pc-next { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .pc-next .pc-chip { flex: none; white-space: nowrap; }
+}
