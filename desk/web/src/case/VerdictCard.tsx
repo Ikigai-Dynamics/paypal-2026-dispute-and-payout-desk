@@ -47,7 +47,7 @@ export function VerdictCard(p: Props) {
         <p className="why">Parley has no call on this one yet. You can still write a reply in the Draft reply tab.</p>
       </div>
     );
-  const what = kind === "offer" ? `Offer ${$(offer!)} back` : kind === "fight" ? "Fight it" : "Refund it";
+  const what = kind === "offer" ? `Offer ${$(offer!)} back` : kind === "fight" ? "Fight it" : `Refund ${$(p.amountCents)} in full`;
   const interval = d.p_lo != null && d.p_hi != null ? ` (${pct(d.p_lo)}–${pct(d.p_hi)}%)` : "";
   const evOf = d.offer?.ev_cents;
   const why =
@@ -73,6 +73,12 @@ export function VerdictCard(p: Props) {
         </span>
       </div>
       <p className="why">{why}</p>
+      {d.buyer_flag && d.buyer_disputes != null && (
+        <p className="why">
+          Buyer has disputed {d.buyer_disputes} of {d.buyer_orders ?? d.buyer_disputes} orders with you: Parley would not
+          offer a partial refund.
+        </p>
+      )}
       <div className="reasons">
         <div className="reason">
           <span className="k">Cases like this</span>

@@ -4,6 +4,17 @@ import { money, pct, reasonWords, signed, unbracket } from "../lib/format";
 
 const words = (id: string) => id.replaceAll("_", " ").replace(/^./, (c) => c.toUpperCase());
 
+const plain = (t: string) => unbracket(t).replace(/^transaction\s+/i, "");
+
+/** An assumption's value in the units a seller reads: dollars, percents or plain numbers. */
+const valueOf = (x: Assumption, cur: string) => {
+  const v = Number(x.value);
+  if (!Number.isFinite(v)) return String(x.value);
+  if (x.unit === "cents") return money(v, cur);
+  if (x.unit === "probability" || x.unit === "share of amount") return `${pct(v)}%`;
+  return `${v}${x.unit ? ` ${x.unit}` : ""}`;
+};
+
 /** "How Parley decided": the only place with the math, in plain terms */
 export function ShowTheMath({ analysis: a, cost }: { analysis: Analysis; cost: number }) {
   const c = a.case;
@@ -42,11 +53,11 @@ export function ShowTheMath({ analysis: a, cost }: { analysis: Analysis; cost: n
       : `${reasonWords(c.reason).toLowerCase()} disputes`;
   const p0line =
     d.n > 0
-      ? `Sellers win about ${pct(d.p0)}% of ${kind} on average. Your ${d.n} similar past case${d.n === 1 ? "" : "s"}${Number.isFinite(d.wins) ? ` (${d.wins} won)` : ""} move your chance to ${pct(d.p)}%.`
+      ? `Sellers win about ${pct(d.p0)}% of ${kind} on average. Your ${d.n} similar past case${d.n === 1 ? "" : "s"}${Number.isFinite(d.wins) ? ` (${d.wins} won)` : ""} ${d.n === 1 ? "moves" : "move"} your chance to ${pct(d.p)}%.`
       : `About ${pct(d.p0)}% of ${kind} are won by sellers; with no similar past cases, your chance stays at ${pct(d.p)}%.`;
   const precs = new Map<string, { p: Analysis["precedents"][number]; n: number }>();
   for (const p of a.precedents.filter((p) => p.outcome != null)) {
-    const k = `${p.won}|${unbracket(p.snippet)}`;
+    const k = `${p.won}|${plain(p.snippet)}`;
     precs.set(k, { p, n: (precs.get(k)?.n ?? 0) + 1 });
   }
   return (
@@ -83,7 +94,7 @@ export function ShowTheMath({ analysis: a, cost }: { analysis: Analysis; cost: n
                   {p.won ? "You won" : "Buyer won"}
                   {n > 1 ? ` · ${n} cases` : ""}
                 </td>
-                <td>{unbracket(p.snippet)}</td>
+                <td>{plain(p.snippet)}</td>
               </tr>
             ))}
           </tbody>
@@ -103,12 +114,9 @@ export function ShowTheMath({ analysis: a, cost }: { analysis: Analysis; cost: n
               </tr>
               {assumptions.map((x) => (
                 <tr key={x.id}>
-                  <td>{words(x.id)}</td>
-                  <td>
-                    {x.value}
-                    {x.unit ? ` ${x.unit}` : ""}
-                  </td>
-                  <td>{x.source ?? ""}</td>
+                  <td>{x.label ?? words(x.id)}</td>
+                  <td>{valueOf(x, cur)}</td>
+                  <td>{x.source?.startsWith("Parley's starting table") ? "Parley's starting table" : (x.source ?? "")}</td>
                 </tr>
               ))}
             </tbody>

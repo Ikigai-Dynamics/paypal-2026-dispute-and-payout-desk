@@ -1,6 +1,7 @@
 [
   {
     "expect": {
+      "buyer_flag": false,
       "call": "offer",
       "ev_accept_cents": -12000,
       "ev_fight_cents": -6900,
@@ -27,6 +28,8 @@
     "request": {
       "ai_cost_cents": 0,
       "amount_cents": 12000,
+      "buyer_disputes": 0,
+      "buyer_orders": 0,
       "contract": "decide.v2",
       "currency": "USD",
       "evidence_on_file": true,
@@ -40,6 +43,7 @@
   },
   {
     "expect": {
+      "buyer_flag": false,
       "call": "accept",
       "ev_accept_cents": -900,
       "ev_fight_cents": -2085,
@@ -66,6 +70,8 @@
     "request": {
       "ai_cost_cents": 0,
       "amount_cents": 900,
+      "buyer_disputes": 0,
+      "buyer_orders": 0,
       "contract": "decide.v2",
       "currency": "USD",
       "evidence_on_file": false,
@@ -79,6 +85,7 @@
   },
   {
     "expect": {
+      "buyer_flag": false,
       "call": "offer",
       "ev_accept_cents": -6400,
       "ev_fight_cents": -5980,
@@ -105,6 +112,8 @@
     "request": {
       "ai_cost_cents": 0,
       "amount_cents": 6400,
+      "buyer_disputes": 0,
+      "buyer_orders": 0,
       "contract": "decide.v2",
       "currency": "USD",
       "evidence_on_file": false,
@@ -118,6 +127,7 @@
   },
   {
     "expect": {
+      "buyer_flag": false,
       "call": "fight",
       "ev_accept_cents": -900,
       "ev_fight_cents": -785,
@@ -144,6 +154,8 @@
     "request": {
       "ai_cost_cents": 0,
       "amount_cents": 900,
+      "buyer_disputes": 0,
+      "buyer_orders": 0,
       "contract": "decide.v2",
       "currency": "USD",
       "evidence_on_file": false,
@@ -157,6 +169,7 @@
   },
   {
     "expect": {
+      "buyer_flag": false,
       "call": "fight",
       "ev_accept_cents": -12000,
       "ev_fight_cents": -5700,
@@ -183,6 +196,8 @@
     "request": {
       "ai_cost_cents": 0,
       "amount_cents": 12000,
+      "buyer_disputes": 0,
+      "buyer_orders": 0,
       "contract": "decide.v2",
       "currency": "USD",
       "evidence_on_file": true,
@@ -213,21 +228,18 @@
   },
   {
     "expect": {
-      "call": "offer",
+      "buyer_flag": false,
+      "call": "fight",
       "ev_accept_cents": -20000,
       "ev_fight_cents": -16857,
-      "ev_offer_cents": -13348,
+      "ev_offer_cents": null,
       "fight_cost_cents": 1500,
       "k": 4,
-      "keep_cents": 6652,
+      "keep_cents": 3143,
       "margin_cents": 3143,
       "marginal": false,
       "n": 3,
-      "offer": {
-        "amount_cents": 10800,
-        "ev_cents": -13348,
-        "q": 0.5793
-      },
+      "offer": null,
       "p": 0.2857,
       "p0": 0.25,
       "p_hi": 0.5103,
@@ -239,6 +251,8 @@
     "request": {
       "ai_cost_cents": 0,
       "amount_cents": 20000,
+      "buyer_disputes": 0,
+      "buyer_orders": 0,
       "contract": "decide.v2",
       "currency": "USD",
       "evidence_on_file": false,
@@ -265,6 +279,7 @@
   },
   {
     "expect": {
+      "buyer_flag": false,
       "call": "offer",
       "ev_accept_cents": -15000,
       "ev_fight_cents": -8000,
@@ -291,6 +306,8 @@
     "request": {
       "ai_cost_cents": 0,
       "amount_cents": 15000,
+      "buyer_disputes": 0,
+      "buyer_orders": 0,
       "contract": "decide.v2",
       "currency": "USD",
       "evidence_on_file": true,
@@ -313,6 +330,7 @@
   },
   {
     "expect": {
+      "buyer_flag": false,
       "call": "offer",
       "ev_accept_cents": -5000,
       "ev_fight_cents": -4750,
@@ -339,6 +357,8 @@
     "request": {
       "ai_cost_cents": 0,
       "amount_cents": 5000,
+      "buyer_disputes": 0,
+      "buyer_orders": 0,
       "contract": "decide.v2",
       "currency": "USD",
       "evidence_on_file": false,
@@ -352,13 +372,14 @@
   },
   {
     "expect": {
-      "call": "fight",
+      "buyer_flag": false,
+      "call": "accept",
       "ev_accept_cents": -5,
       "ev_fight_cents": -2,
       "ev_offer_cents": null,
       "fight_cost_cents": 0,
       "k": 4,
-      "keep_cents": 3,
+      "keep_cents": 0,
       "margin_cents": 3,
       "marginal": true,
       "n": 0,
@@ -374,6 +395,8 @@
     "request": {
       "ai_cost_cents": 0,
       "amount_cents": 5,
+      "buyer_disputes": 0,
+      "buyer_orders": 0,
       "contract": "decide.v2",
       "currency": "USD",
       "evidence_on_file": false,
@@ -387,32 +410,31 @@
   },
   {
     "expect": {
-      "call": "offer",
+      "buyer_flag": false,
+      "call": "accept",
       "ev_accept_cents": -16400,
       "ev_fight_cents": -17080,
-      "ev_offer_cents": -12079,
+      "ev_offer_cents": null,
       "fight_cost_cents": 1500,
       "k": 4,
-      "keep_cents": 4321,
+      "keep_cents": 0,
       "margin_cents": -680,
       "marginal": false,
       "n": 0,
-      "offer": {
-        "amount_cents": 9950,
-        "ev_cents": -12079,
-        "q": 0.7013
-      },
+      "offer": null,
       "p": 0.05,
       "p0": 0.05,
       "p_hi": 0.1622,
       "p_lo": 0.0,
       "wins": 0
     },
-    "name": "duplicate-no-evidence-164-offer",
+    "name": "duplicate-no-evidence-164-accept",
     "note": "",
     "request": {
       "ai_cost_cents": 0,
       "amount_cents": 16400,
+      "buyer_disputes": 0,
+      "buyer_orders": 0,
       "contract": "decide.v2",
       "currency": "USD",
       "evidence_on_file": false,
@@ -426,6 +448,7 @@
   },
   {
     "expect": {
+      "buyer_flag": false,
       "call": "offer",
       "ev_accept_cents": -12000,
       "ev_fight_cents": -6925,
@@ -452,6 +475,8 @@
     "request": {
       "ai_cost_cents": 25,
       "amount_cents": 12000,
+      "buyer_disputes": 0,
+      "buyer_orders": 0,
       "contract": "decide.v2",
       "currency": "USD",
       "evidence_on_file": true,
@@ -460,6 +485,120 @@
       "precedents": [],
       "prior": 0.55,
       "reason": "MERCHANDISE_OR_SERVICE_NOT_RECEIVED",
+      "stage": "INQUIRY"
+    }
+  },
+  {
+    "expect": {
+      "buyer_flag": false,
+      "call": "fight",
+      "ev_accept_cents": -20300,
+      "ev_fight_cents": -16725,
+      "ev_offer_cents": null,
+      "fight_cost_cents": 1500,
+      "k": 4,
+      "keep_cents": 3575,
+      "margin_cents": 3575,
+      "marginal": false,
+      "n": 0,
+      "offer": null,
+      "p": 0.25,
+      "p0": 0.25,
+      "p_hi": 0.5358,
+      "p_lo": 0.0345,
+      "wins": 0
+    },
+    "name": "unauthorised-never-offered",
+    "note": "Fight or refund only; PayPal's offer flow does not apply.",
+    "request": {
+      "ai_cost_cents": 0,
+      "amount_cents": 20300,
+      "buyer_disputes": 0,
+      "buyer_orders": 0,
+      "contract": "decide.v2",
+      "currency": "USD",
+      "evidence_on_file": false,
+      "fee_if_lost_cents": 0,
+      "handling_cost_cents": 1500,
+      "precedents": [],
+      "prior": null,
+      "reason": "UNAUTHORISED",
+      "stage": "INQUIRY"
+    }
+  },
+  {
+    "expect": {
+      "buyer_flag": false,
+      "call": "accept",
+      "ev_accept_cents": -16400,
+      "ev_fight_cents": -17080,
+      "ev_offer_cents": null,
+      "fight_cost_cents": 1500,
+      "k": 4,
+      "keep_cents": 0,
+      "margin_cents": -680,
+      "marginal": false,
+      "n": 0,
+      "offer": null,
+      "p": 0.05,
+      "p0": 0.05,
+      "p_hi": 0.1622,
+      "p_lo": 0.0,
+      "wins": 0
+    },
+    "name": "duplicate-without-evidence-is-refunded",
+    "note": "A real duplicate is refunded in full; no partial offer.",
+    "request": {
+      "ai_cost_cents": 0,
+      "amount_cents": 16400,
+      "buyer_disputes": 0,
+      "buyer_orders": 0,
+      "contract": "decide.v2",
+      "currency": "USD",
+      "evidence_on_file": false,
+      "fee_if_lost_cents": 0,
+      "handling_cost_cents": 1500,
+      "precedents": [],
+      "prior": null,
+      "reason": "DUPLICATE_TRANSACTION",
+      "stage": "INQUIRY"
+    }
+  },
+  {
+    "expect": {
+      "buyer_flag": true,
+      "call": "fight",
+      "ev_accept_cents": -58800,
+      "ev_fight_cents": -33840,
+      "ev_offer_cents": null,
+      "fight_cost_cents": 1500,
+      "k": 4,
+      "keep_cents": 24960,
+      "margin_cents": 24960,
+      "marginal": false,
+      "n": 0,
+      "offer": null,
+      "p": 0.45,
+      "p0": 0.45,
+      "p_hi": 0.7595,
+      "p_lo": 0.1551,
+      "wins": 0
+    },
+    "name": "serial-disputer-gets-no-offer",
+    "note": "8 of 8 orders disputed: no offer, p0 +10 points.",
+    "request": {
+      "ai_cost_cents": 0,
+      "amount_cents": 58800,
+      "buyer_disputes": 8,
+      "buyer_orders": 8,
+      "contract": "decide.v2",
+      "currency": "USD",
+      "evidence_on_file": false,
+      "fee_if_lost_cents": 0,
+      "handling_cost_cents": 1500,
+      "precedents": [],
+      "prior": null,
+      "reason": "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED",
       "stage": "INQUIRY"
     }
   }

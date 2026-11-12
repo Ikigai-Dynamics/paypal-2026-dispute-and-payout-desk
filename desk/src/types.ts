@@ -67,6 +67,8 @@ export interface Precedent {
 
 export interface Assumption {
   id: string;
+  /** plain-language name for screens */
+  label: string;
   value: number;
   unit: string;
   source: string;
@@ -104,6 +106,10 @@ export interface Decision {
   call: "fight" | "accept" | "offer";
   /** the money the seller likely keeps: amount plus the EV of the call */
   keep_cents: number;
+  /** the buyer disputes so often that no partial refund is offered */
+  buyer_flag?: boolean;
+  buyer_orders?: number;
+  buyer_disputes?: number;
   assumptions: Assumption[];
   terms: string[];
 }
@@ -120,6 +126,9 @@ export interface DecideRequest {
   ai_cost_cents: number;
   fee_if_lost_cents: number;
   precedents: { dispute_id: string; won: boolean }[];
+  /** orders and disputes with this seller, counted as the Buyer tab counts them */
+  buyer_orders: number;
+  buyer_disputes: number;
 }
 
 export interface ChecklistItem {

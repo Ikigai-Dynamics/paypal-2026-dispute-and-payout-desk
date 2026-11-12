@@ -132,10 +132,14 @@ export interface Decision {
   keep_cents?: number;
   ai_cost_cents?: number;
   assumptions?: Assumption[];
+  buyer_flag?: boolean;
+  buyer_orders?: number;
+  buyer_disputes?: number;
 }
 
 export interface Assumption {
   id: string;
+  label?: string;
   value: string | number;
   unit?: string;
   source?: string;
