@@ -5,6 +5,7 @@ import "./chat.css";
 interface Staged {
   id: string;
   title: string;
+  note?: string;
   paypal: { method: string; path: string; body: unknown };
   desk: { method: string; path: string; body: unknown };
 }
@@ -21,6 +22,14 @@ interface Conv {
 }
 type Outcome = { ok: boolean; text: string } | "declined";
 
+const GREETING =
+  "Hi, I'm Parley. I've read your open disputes. Ask me which to fight, refund or offer on, or tell me to make an offer, and I'll get it ready for your OK.";
+const CHIPS = [
+  "Which cases should I just refund?",
+  "Offer on the Ember sleeping bag",
+  "Remember I refund gift cards under $50",
+];
+
 const fire = (name: string, detail?: unknown) =>
   window.dispatchEvent(new CustomEvent(name, { detail }));
 
@@ -35,11 +44,27 @@ function dispatchUi(actions: any[], reply: string) {
   fire("parley:say", { text: first });
 }
 
-function StagedCard({ s, settledBefore, onDone }: { s: Staged; settledBefore?: string; onDone: (ok: boolean, text: string) => void }) {
-  const [state, setState] = useState<Outcome | "busy" | null>(settledBefore ? (settledBefore.startsWith("Sent") ? { ok: true, text: "Sent through PayPal" } : "declined") : null);
+function StagedCard({
+  s,
+  settledBefore,
+  onDone,
+}: {
+  s: Staged;
+  settledBefore?: string;
+  onDone: (ok: boolean, text: string) => void;
+}) {
+  const [state, setState] = useState<Outcome | "busy" | null>(
+    settledBefore
+      ? settledBefore.startsWith("Sent")
+        ? { ok: true, text: "Sent through PayPal" }
+        : "declined"
+      : null,
+  );
   const settle = async (ok: boolean, text: string) => {
     setState(ok ? { ok, text } : "declined");
-    await post(`/api/chat/staged/${s.id}/approved`, { ok, result: text }).catch(() => undefined);
+    await post(`/api/chat/staged/${s.id}/approved`, { ok, result: text }).catch(
+      () => undefined,
+    );
     onDone(ok, text);
   };
   const send = async () => {
@@ -50,10 +75,15 @@ function StagedCard({ s, settledBefore, onDone }: { s: Staged; settledBefore?: s
         headers: { "content-type": "application/json" },
         body: JSON.stringify(s.desk.body),
       });
-      fire("parley:select-case", { id: s.desk.path.split("/")[3] });
+      const id = s.desk.path.split("/")[3];
+      fire("parley:select-case", { id });
+      fire("parley:changed", { id });
       await settle(true, "Sent through PayPal");
     } catch (e) {
-      const detail = e instanceof ApiError ? (e.body?.detail ?? "PayPal did not accept it") : "The request did not go through. Try again.";
+      const detail =
+        e instanceof ApiError
+          ? (e.body?.detail ?? "PayPal did not accept it")
+          : "The request did not go through. Try again.";
       setState({ ok: false, text: String(detail) });
     }
   };
@@ -68,12 +98,21 @@ function StagedCard({ s, settledBefore, onDone }: { s: Staged; settledBefore?: s
       {typeof state === "object" && state && (
         <div className={state.ok ? "ok" : "err"}>{state.text}</div>
       )}
+      {s.note && !done && <div className="note">{s.note}</div>}
       {(!done || (typeof state === "object" && state && !state.ok)) && (
         <div className="row">
-          <button className="primary" disabled={state === "busy"} onClick={send}>
+          <button
+            className="primary"
+            disabled={state === "busy"}
+            onClick={send}
+          >
             Send to PayPal
           </button>
-          <button className="pc-chip" disabled={state === "busy"} onClick={() => settle(false, "")}>
+          <button
+            className="pc-chip"
+            disabled={state === "busy"}
+            onClick={() => settle(false, "")}
+          >
             Not now
           </button>
         </div>
@@ -95,17 +134,24 @@ export function ChatPanel() {
   const log = useRef<HTMLDivElement>(null);
 
   const loadConvs = useCallback(async () => {
-    const r = await api("/api/chat/conversations").catch(() => ({ conversations: [] }));
+    const r = await api("/api/chat/conversations").catch(() => ({
+      conversations: [],
+    }));
     setConvs(r.conversations);
     return r.conversations as Conv[];
   }, []);
   const loadMem = useCallback(
-    () => api("/api/chat/memory").then((r) => setMemory(r.memory)).catch(() => undefined),
+    () =>
+      api("/api/chat/memory")
+        .then((r) => setMemory(r.memory))
+        .catch(() => undefined),
     [],
   );
   const choose = useCallback(async (id: string) => {
     setCid(id);
-    const r = await api(`/api/chat/conversations/${id}`).catch(() => ({ messages: [] }));
+    const r = await api(`/api/chat/conversations/${id}`).catch(() => ({
+      messages: [],
+    }));
     setMsgs(r.messages);
   }, []);
 
@@ -128,55 +174,89 @@ export function ChatPanel() {
   }, [cid, choose, loadConvs, loadMem]);
 
   useEffect(() => {
+    document.body.classList.toggle("chat-open", open);
+    return () => document.body.classList.remove("chat-open");
+  }, [open]);
+
+  useEffect(() => {
     log.current?.scrollTo({ top: log.current.scrollHeight });
   }, [msgs, open]);
 
   const newChat = async () => {
-    const r = await post("/api/chat/conversations", { case_id: caseId.current });
+    const r = await post("/api/chat/conversations", {
+      case_id: caseId.current,
+    });
     setMsgs([]);
     setCid(r.conversation.id);
     loadConvs();
   };
-  const sendText = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const t = text.trim();
+  const submit = async (raw: string) => {
+    const t = raw.trim();
     if (!t || busy) return;
     setBusy(true);
     setText("");
     let id = cid;
     try {
       if (!id) {
-        id = (await post("/api/chat/conversations", { case_id: caseId.current })).conversation.id as string;
+        id = (
+          await post("/api/chat/conversations", { case_id: caseId.current })
+        ).conversation.id as string;
         setCid(id);
       }
       setMsgs((m) => [...m, { id: `l${Date.now()}`, role: "user", text: t }]);
-      const r = await post(`/api/chat/conversations/${id}/messages`, { text: t, case_id: caseId.current ?? undefined });
+      const r = await post(`/api/chat/conversations/${id}/messages`, {
+        text: t,
+        case_id: caseId.current ?? undefined,
+      });
       setMsgs((m) => [...m, r.message]);
       dispatchUi(r.ui_actions, r.message.text);
       if (r.remembered?.length) loadMem();
       loadConvs();
     } catch {
-      setMsgs((m) => [...m, { id: `e${Date.now()}`, role: "parley", text: "I could not answer just now. Try again in a moment." }]);
+      setMsgs((m) => [
+        ...m,
+        {
+          id: `e${Date.now()}`,
+          role: "parley",
+          text: "I could not answer just now. Try again in a moment.",
+        },
+      ]);
     } finally {
       setBusy(false);
     }
+  };
+  const sendText = (e: React.FormEvent) => {
+    e.preventDefault();
+    return submit(text);
   };
   const logLine = () => cid && choose(cid);
 
   return (
     <aside className="parley-chat" hidden={!open} aria-label="Chat with Parley">
       <div className="pc-head">
-        <select className="pc-select" value={cid ?? ""} onChange={(e) => choose(e.target.value)} aria-label="Conversation">
+        <select
+          className="pc-select"
+          value={cid ?? ""}
+          onChange={(e) => choose(e.target.value)}
+          aria-label="Conversation"
+        >
           <option value="" disabled>
             Earlier chats
           </option>
           {convs.map((c) => (
             <option key={c.id} value={c.id}>
-              {(c.title ?? "Chat") + " · " + new Date(c.updated_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+              {(c.title ?? "Chat") +
+                " · " +
+                new Date(c.updated_at).toLocaleTimeString([], {
+                  hour: "numeric",
+                  minute: "2-digit",
+                })}
             </option>
           ))}
         </select>
-        <button className="pc-chip" onClick={newChat}>New chat</button>
+        <button className="pc-chip" onClick={newChat}>
+          New chat
+        </button>
         <button
           className="pc-chip"
           onClick={() => {
@@ -187,14 +267,21 @@ export function ChatPanel() {
         >
           Memory
         </button>
-        <button className="pc-x" type="button" onClick={() => setOpen(false)} aria-label="Close">
+        <button
+          className="pc-x"
+          type="button"
+          onClick={() => setOpen(false)}
+          aria-label="Close"
+        >
           ×
         </button>
       </div>
       {showMem && (
         <div className="pc-memory">
           {memory.length === 0 ? (
-            <span className="muted">Nothing remembered yet. Say "remember I ship with USPS".</span>
+            <span className="muted">
+              Nothing remembered yet. Say "remember I ship with USPS".
+            </span>
           ) : (
             <ul>
               {memory.map((m) => (
@@ -203,7 +290,9 @@ export function ChatPanel() {
                   <button
                     className="pc-chip small"
                     onClick={async () => {
-                      await api(`/api/chat/memory/${m.id}`, { method: "DELETE" });
+                      await api(`/api/chat/memory/${m.id}`, {
+                        method: "DELETE",
+                      });
                       loadMem();
                     }}
                   >
@@ -216,7 +305,23 @@ export function ChatPanel() {
         </div>
       )}
       <div className="pc-log" ref={log}>
-        {msgs.length === 0 && <div className="muted">Ask me about a case, or tell me what to do.</div>}
+        {msgs.length === 0 && (
+          <>
+            <div className="pc-msg parley">{GREETING}</div>
+            <div className="pc-chips">
+              {CHIPS.map((c) => (
+                <button
+                  key={c}
+                  className="pc-chip"
+                  disabled={busy}
+                  onClick={() => submit(c)}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
         {msgs.map((m) => (
           <div key={m.id} style={{ display: "contents" }}>
             <div className={`pc-msg ${m.role}`}>{m.text}</div>
@@ -224,7 +329,14 @@ export function ChatPanel() {
               <StagedCard
                 key={s.id}
                 s={s}
-                settledBefore={msgs.find((x) => x.role === "parley" && (x.text.startsWith(`Sent to PayPal: ${s.title}`) || x.text.startsWith(`Not sent: ${s.title}`)))?.text}
+                settledBefore={
+                  msgs.find(
+                    (x) =>
+                      x.role === "parley" &&
+                      (x.text.startsWith(`Sent to PayPal: ${s.title}`) ||
+                        x.text.startsWith(`Not sent: ${s.title}`)),
+                  )?.text
+                }
                 onDone={logLine}
               />
             ))}
@@ -233,7 +345,12 @@ export function ChatPanel() {
         {busy && <div className="pc-msg parley muted">Thinking…</div>}
       </div>
       <form className="pc-form" onSubmit={sendText}>
-        <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Message Parley…" aria-label="Message Parley" />
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Message Parley…"
+          aria-label="Message Parley"
+        />
         <button className="primary" disabled={busy || !text.trim()}>
           Send
         </button>

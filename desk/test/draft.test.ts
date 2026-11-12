@@ -6,6 +6,7 @@ import {
   explanationOf,
   sentencesOf,
   draftResponse,
+  endsWithAsk,
   fallbackDraft,
   groundingProblems,
   invalidReason,
@@ -354,7 +355,7 @@ describe("response validator", () => {
 });
 
 const REPLY =
-  "We ask PayPal to review whether the order was fulfilled as placed. The order was for 2 × Hardware kit #1234. We ask PayPal to find in our favour.";
+  "We ask PayPal to review whether the order was fulfilled as placed. The order was for 2 × Hardware kit #1234. We ask PayPal to find in our favor.";
 describe("draftResponse", () => {
   it("uses the fallback offline and labels it", async () => {
     const d = await draftResponse(createLlm({ env: {} }), base, decision, []);
@@ -505,7 +506,7 @@ describe("grounding", () => {
     const d = await draftResponse(
       fake(
         [
-          "Re: Sofia's claim. The charge was made through the buyer's PayPal account. We hold the order as it was placed. We ask PayPal to find in our favour.",
+          "Re: Sofia's claim. The charge was made through the buyer's PayPal account. We hold the order as it was placed. We ask PayPal to find in our favor.",
         ],
         seen,
       ),
@@ -640,7 +641,7 @@ describe("grounded drafting over the seeded cases", () => {
     ],
   });
   const GOOD =
-    "The charge was made through the buyer's PayPal account. We hold the order as it was placed. We ask PayPal to find in our favour.";
+    "The charge was made through the buyer's PayPal account. We hold the order as it was placed. We ask PayPal to find in our favor.";
   const cases: [string, CaseView, string][] = [
     ["Marcus Bell sleeping bag", bag, GOOD],
     ["Marcus Bell tent", tent, GOOD],
@@ -649,10 +650,10 @@ describe("grounded drafting over the seeded cases", () => {
   ];
   const bad = [
     "We are providing the item in evidence we still lack. There is no evidence on file. We have enclosed the available documentation.",
-    "We provide the email log, which is included in our evidence we still lack. We ask PayPal to find in our favour.",
+    "We provide the email log, which is included in our evidence we still lack. We ask PayPal to find in our favor.",
     "We are providing the items in evidence we still lack, without claiming what they show.",
     "The buyer has proof that the two charges are related to the same transaction. We apologise for the duplicate charge.",
-    "Our position is clear. We have attached the delivery confirmation. We ask PayPal to find in our favour.",
+    "Our position is clear. We have attached the delivery confirmation. We ask PayPal to find in our favor.",
   ];
   const fake = (texts: string[], seen: string[] = []) => {
     let n = 0;
@@ -748,7 +749,7 @@ describe("grounded drafting over the seeded cases", () => {
     const d = await draftResponse(
       fake(
         [
-          "The charge was made through the buyer's PayPal account. We hold the order as it was placed. We have enclosed the documentation. We ask PayPal to find in our favour.",
+          "The charge was made through the buyer's PayPal account. We hold the order as it was placed. We have enclosed the documentation. We ask PayPal to find in our favor.",
         ],
         seen,
       ),
@@ -771,7 +772,7 @@ describe("grounded drafting over the seeded cases", () => {
     ];
     const seen: string[] = [];
     const text =
-      "The buyer authorised this payment. We enclose the prior orders from this buyer on the same PayPal account. We ask PayPal to find in our favour.";
+      "The buyer authorised this payment. We enclose the prior orders from this buyer on the same PayPal account. We ask PayPal to find in our favor.";
     const d = await draftResponse(
       fake([text], seen),
       hana,
@@ -897,7 +898,7 @@ describe("grounded drafting over the seeded cases", () => {
     ) => draftResponse(fake(texts), c, decision, [], undefined, added);
     it("Priya, fight anyway: no admission, shipments or same cardholder", async () => {
       const d = await run(priya, [
-        "Both transactions were authorized by the same cardholder within minutes of each other. The buyer has acknowledged receiving both items in separate shipments. The charge was made through the buyer's PayPal account. We hold the order as it was placed. We ask PayPal to find in our favour.",
+        "Both transactions were authorized by the same cardholder within minutes of each other. The buyer has acknowledged receiving both items in separate shipments. The charge was made through the buyer's PayPal account. We hold the order as it was placed. We ask PayPal to find in our favor.",
       ]);
       assert.equal(d.source, "llm");
       assert.doesNotMatch(
@@ -912,14 +913,14 @@ describe("grounded drafting over the seeded cases", () => {
     });
     it("drops 'our system shows' with nothing on file", async () => {
       const d = await run(bag, [
-        "Our system shows the transaction completed successfully with no reported issues. The charge was made through the buyer's PayPal account. We hold the order as it was placed. We ask PayPal to find in our favour.",
+        "Our system shows the transaction completed successfully with no reported issues. The charge was made through the buyer's PayPal account. We hold the order as it was placed. We ask PayPal to find in our favor.",
       ]);
       assert.equal(d.source, "llm");
       assert.doesNotMatch(d.response, /our system|no reported issues/i);
     });
     it("Sofia before attach: 'as recorded in our system' is dropped", async () => {
       const d = await run(sofia, [
-        "The code was sent to the buyer's email address, as recorded in our system. The charge was made through the buyer's PayPal account. We hold the order as it was placed. We ask PayPal to find in our favour.",
+        "The code was sent to the buyer's email address, as recorded in our system. The charge was made through the buyer's PayPal account. We hold the order as it was placed. We ask PayPal to find in our favor.",
       ]);
       assert.equal(d.source, "llm");
       assert.doesNotMatch(d.response, /recorded/i);
@@ -934,7 +935,7 @@ describe("grounded drafting over the seeded cases", () => {
       const d = await run(
         sofia,
         [
-          "The gift card code was emailed to the buyer's PayPal email address on Nov 2, 2026, the day of purchase. We enclose the email log. We ask PayPal to find in our favour.",
+          "The gift card code was emailed to the buyer's PayPal email address on Nov 2, 2026, the day of purchase. We enclose the email log. We ask PayPal to find in our favor.",
         ],
         added,
       );
@@ -953,7 +954,7 @@ describe("grounded drafting over the seeded cases", () => {
       const d = await draftResponse(
         fake(
           [
-            "The buyer opened the gift card page at 10:05 on Nov 2. The code redemption record shows this. We ask PayPal to find in our favour.",
+            "The buyer opened the gift card page at 10:05 on Nov 2. The code redemption record shows this. We ask PayPal to find in our favor.",
           ],
           seen,
         ),
@@ -973,7 +974,7 @@ describe("grounded drafting over the seeded cases", () => {
       const d = await run(
         sofia,
         [
-          `${note} The gift card code was emailed to the buyer's PayPal email address on Nov 2, 2026. We enclose the email log. We ask PayPal to find in our favour. We ask PayPal to rule in our favour.`,
+          `${note} The gift card code was emailed to the buyer's PayPal email address on Nov 2, 2026. We enclose the email log. We ask PayPal to find in our favor. We ask PayPal to rule in our favor.`,
         ],
         [{ item: "Proof the code was sent (email log)", note }],
       );
@@ -983,7 +984,7 @@ describe("grounded drafting over the seeded cases", () => {
     });
     it("tent: a clean reply is an AI draft (position text no longer needs a keyword)", async () => {
       const d = await run(tent, [
-        `${positionFor(tent)} We hold the order as it was placed. We ask PayPal to find in our favour.`,
+        `${positionFor(tent)} We hold the order as it was placed. We ask PayPal to find in our favor.`,
       ]);
       assert.equal(d.source, "llm");
       assert.equal(d.label, "Written by Parley's AI. Check it before sending.");
@@ -1150,14 +1151,21 @@ describe("grounded, readable draft", () => {
     }
   });
 
-  it("adds the buyer pattern at 3 open disputes and not at 2", () => {
-    const at = (n: number) =>
-      fallbackDraft({ ...marcus, buyer_open_disputes: n }, decision).response;
-    assert.match(
-      at(3),
-      /Marcus Bell has 3 open disputes with us at the same time; we ask PayPal to take this pattern into account\./,
+  it("never argues the buyer's open-dispute count to PayPal", () => {
+    const d = fallbackDraft({ ...marcus, buyer_open_disputes: 3 }, decision);
+    assert.doesNotMatch(d.response, /open disputes/);
+  });
+
+  it("adds one closing only when the draft does not already end with a request", () => {
+    assert.ok(
+      endsWithAsk(
+        "We ask PayPal to review all evidence and rule in our favor.",
+      ),
     );
-    assert.doesNotMatch(at(2), /open disputes/);
+    assert.ok(!endsWithAsk("We hold the order as it was placed."));
+    const d = fallbackDraft(marcus, decision).response;
+    assert.equal(d.match(/favor/g)?.length, 1);
+    assert.doesNotMatch(d, /favour/);
   });
 
   it("keeps the model's three sentences and strips a Re: header", async () => {
@@ -1171,7 +1179,7 @@ describe("grounded, readable draft", () => {
                 message: {
                   content: JSON.stringify({
                     response:
-                      "Re: Ava Chen's claim about 2 × Hardware kit #1234 (USD 120.00). We ask PayPal to review whether the order was fulfilled as placed. The order was for 2 × Hardware kit #1234. We ask PayPal to find in our favour.",
+                      "Re: Ava Chen's claim about 2 × Hardware kit #1234 (USD 120.00). We ask PayPal to review whether the order was fulfilled as placed. The order was for 2 × Hardware kit #1234. We ask PayPal to find in our favor.",
                   }),
                 },
               },
@@ -1183,7 +1191,31 @@ describe("grounded, readable draft", () => {
     assert.equal(d.source, "llm");
     assert.doesNotMatch(d.response, /Re:/);
     assert.equal(sentencesOf(d.response).length, 3);
-    assert.ok(d.response.endsWith("We ask PayPal to find in our favour."));
+    assert.ok(d.response.endsWith("We ask PayPal to find in our favor."));
+  });
+
+  it("adds no second closing when the model already asks PayPal to rule", async () => {
+    const llm = createLlm({
+      env: { LLM_BASE_URL: "http://x", LLM_API_KEY: "k", LLM_MODEL: "m1" },
+      fetch: async () =>
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    response:
+                      "Re: Ava Chen's claim about 2 × Hardware kit #1234 (USD 120.00). The order was for 2 × Hardware kit #1234. We hold the order as it was placed. We ask PayPal to review all evidence and rule in our favor.",
+                  }),
+                },
+              },
+            ],
+          }),
+        ),
+    });
+    const d = await draftResponse(llm, base, decision, []);
+    assert.equal(d.source, "llm");
+    assert.equal(d.response.match(/favor/g)?.length, 1, d.response);
   });
 });
 
@@ -1320,7 +1352,7 @@ describe("model drafting over the seeded cases", () => {
 
   it("falls back to the template when the model leaves out an evidence item", async () => {
     const reply =
-      "We ask PayPal to review the two charges. We hold the order as it was placed. We ask PayPal to find in our favour.";
+      "We ask PayPal to review the two charges. We hold the order as it was placed. We ask PayPal to find in our favor.";
     const d = await draftResponse(
       model(reply),
       priya,

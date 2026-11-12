@@ -96,7 +96,7 @@ describe("billing address", () => {
 
 describe("merchant-added statements", () => {
   const base =
-    "We ask PayPal to review the two charges. We hold one order record. We ask PayPal to find in our favour.";
+    "We ask PayPal to review the two charges. We hold one order record. We ask PayPal to find in our favor.";
   const lie =
     "The buyer received a full refund already and signed for delivery twice.";
   it("lists every added or changed sentence and none of the draft's own", () => {
