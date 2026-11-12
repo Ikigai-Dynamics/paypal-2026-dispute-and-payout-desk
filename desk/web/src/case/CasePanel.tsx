@@ -1,9 +1,10 @@
 import { useEffect, useRef } from "react";
-import type { ActivityCall, CaseSummary } from "../lib/api";
+import type { ActivityCall, CaseSummary, Decision } from "../lib/api";
 import {
   afterSendWords,
   dayDiff,
   dueWords,
+  isWaiting,
   money,
   needsResponse,
   reasonIcon,
@@ -39,12 +40,16 @@ export interface CasePanelProps {
   highlight: number;
   onWritten(): Promise<void>;
   onAiDraft(): void;
+  /** the opened case's own decision, so the owl can say what the card shows */
+  onDecision?(id: string, d: Decision | null): void;
 }
 
 const say = (text: string) => window.dispatchEvent(new CustomEvent("parley:say", { detail: { text } }));
 
-export function CasePanel({ id, cases, calls, tab, onTab, highlight, onWritten, onAiDraft }: CasePanelProps) {
+export function CasePanel({ id, cases, calls, tab, onTab, highlight, onWritten, onAiDraft, onDecision }: CasePanelProps) {
   const s = useCase(id, { onWritten, onAiDraft });
+  const latest = useRef(s);
+  latest.current = s;
   const panel = useRef<HTMLDivElement>(null);
   const first = useRef(true);
 
@@ -79,6 +84,19 @@ export function CasePanel({ id, cases, calls, tab, onTab, highlight, onWritten, 
   const a = s.analysis;
   const c = a?.case;
   const d = a?.decision ?? null;
+  useEffect(() => {
+    if (a) onDecision?.(id, d);
+  }, [a?.decision, id]);
+  // the chat approved a send on this case: look again
+  useEffect(() => {
+    const on = (e: Event) => {
+      if ((e as CustomEvent<{ id?: string }>).detail?.id === id) void latest.current.refresh();
+    };
+    window.addEventListener("parley:changed", on);
+    return () => window.removeEventListener("parley:changed", on);
+  }, [id]);
+  // added evidence counts at once in the strength meter
+  const strength = (a?.draft.checklist ?? []).map((i) => (s.added.has(i.item) ? { ...i, status: "present" as const } : i));
   const card = cases.find((x) => x.dispute_id === id);
   const cur = c?.currency ?? card?.currency ?? "USD";
   const amt = c ? money(c.amount_cents, c.currency) : card ? money(card.amount_cents, cur) : "";
@@ -100,7 +118,17 @@ export function CasePanel({ id, cases, calls, tab, onTab, highlight, onWritten, 
     `POST /v1/customer/disputes/${id}/make-offer {"offer_amount": {"currency_code": "${cur}", "value": "${(cents / 100).toFixed(2)}"}, "offer_type": "REFUND"}`;
 
   const body = () => {
-    if (!a || !c) return <p className="muted">Loading this dispute…</p>;
+    if (!a || !c)
+      return s.loadFailed ? (
+        <div>
+          <p className="errbox">Couldn't load this dispute.</p>
+          <button type="button" className="btn" onClick={() => void s.retry()}>
+            Retry
+          </button>
+        </div>
+      ) : (
+        <p className="muted">Loading this dispute…</p>
+      );
     if (tab === "buyer") return <BuyerTab id={id} name={c.buyer} />;
     if (tab === "activity") return <ActivityTab id={id} calls={calls} decision={d} currency={cur} />;
     if (tab === "math") return <ShowTheMath analysis={a} cost={s.cost} />;
@@ -164,8 +192,8 @@ export function CasePanel({ id, cases, calls, tab, onTab, highlight, onWritten, 
         ) : (
           <ul className="checklist">
             {a.draft.checklist.map((i) => (
-              <li key={i.item} className={i.status === "missing" ? "no" : "ok"}>
-                <span className="ico">{i.status === "missing" ? "✗" : "✓"}</span>
+              <li key={i.item} className={i.status !== "missing" ? "ok" : i.required === false ? "opt" : "no"}>
+                <span className="ico">{i.status !== "missing" ? "✓" : i.required === false ? "○" : "✗"}</span>
                 <b>{i.item}</b>
                 <span className="why">{i.why}</span>
               </li>
@@ -211,7 +239,7 @@ export function CasePanel({ id, cases, calls, tab, onTab, highlight, onWritten, 
         {!open && c && <span className="due">{s.sent ? afterSendWords(s.sentKind) : afterSendWords(null, c)}</span>}
       </div>
       {(c ?? card) && <p className="case-ref">PayPal case {id}</p>}
-      {s.error && <div className="errbox">{s.error}</div>}
+      {s.error && !s.loadFailed && <div className="errbox">{s.error}</div>}
       {(c ?? card) && (
         <dl className="facts">
           <div>
@@ -238,11 +266,11 @@ export function CasePanel({ id, cases, calls, tab, onTab, highlight, onWritten, 
           amountCents={c.amount_cents}
           currency={cur}
           precedents={a.precedents}
-          checklist={a.draft.checklist}
+          checklist={strength}
           canAct={s.canAct}
           fightAnyway={s.fightAnyway}
           busy={s.busy || !!s.pending}
-          sent={s.sent}
+          sent={s.sent ?? (isWaiting(c) ? afterSendWords(null, c) : null)}
           onOffer={(cents) => void s.act("offer", cents)}
           onFight={() => {
             s.setFightAnyway();

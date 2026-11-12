@@ -73,10 +73,12 @@ export function VerdictCard(p: Props) {
         </span>
       </div>
       <p className="why">{why}</p>
-      {d.buyer_flag && d.buyer_disputes != null && (
+      {d.buyer_flag && d.buyer_disputes != null && d.buyer_disputes >= 3 && (
         <p className="why">
-          Buyer has disputed {d.buyer_disputes} of {d.buyer_orders ?? d.buyer_disputes} orders with you: Parley would not
-          offer a partial refund.
+          {d.buyer_orders != null && d.buyer_orders >= d.buyer_disputes
+            ? `Buyer has disputed ${d.buyer_disputes} of ${d.buyer_orders} orders with you`
+            : `Buyer has ${d.buyer_disputes} disputes with you`}
+          : Parley would not offer a partial refund.
         </p>
       )}
       <div className="reasons">

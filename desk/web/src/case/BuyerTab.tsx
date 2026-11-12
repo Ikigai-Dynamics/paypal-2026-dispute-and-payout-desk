@@ -18,34 +18,32 @@ export function BuyerTab({ id, name }: { id: string; name: string }) {
   if (!b) return <p className="muted">Loading buyer details…</p>;
   if (b === "missing") return <p className="muted">Buyer details unavailable for this dispute.</p>;
   const more = (b.disputes_with_you ?? 0) > 1;
+  const ship = b.ship_to ? [b.ship_to.city, b.ship_to.state].filter(Boolean).join(", ") : "";
+  // a field PayPal did not share is left out, not printed as a blank
+  const facts = (
+    [
+      ["Name", b.name ?? name],
+      ["PayPal account", b.account_status],
+      ["Payer ID", b.payer_id, true],
+      ["Email", b.email_masked],
+      ["Country", b.country],
+      ["Ships to", ship],
+    ] as [string, string | undefined, boolean?][]
+  ).filter(([, v]) => !!v);
   return (
     <div className="tabpanel">
-      <dl className="facts">
-        <div>
-          <dt>Name</dt>
-          <dd>{b.name ?? name}</dd>
-        </div>
-        <div>
-          <dt>PayPal account</dt>
-          <dd>{b.account_status ?? "Not shown"}</dd>
-        </div>
-        <div>
-          <dt>Payer ID</dt>
-          <dd className="mono">{b.payer_id ?? "Not shown"}</dd>
-        </div>
-        <div>
-          <dt>Email</dt>
-          <dd>{b.email_masked ?? "Not shown"}</dd>
-        </div>
-        <div>
-          <dt>Country</dt>
-          <dd>{b.country ?? "Not shown"}</dd>
-        </div>
-        <div>
-          <dt>Ships to</dt>
-          <dd>{b.ship_to ? [b.ship_to.city, b.ship_to.state].filter(Boolean).join(", ") : "Not shown"}</dd>
-        </div>
-      </dl>
+      {facts.length >= 2 ? (
+        <dl className="facts">
+          {facts.map(([k, v, mono]) => (
+            <div key={k}>
+              <dt>{k}</dt>
+              <dd className={mono ? "mono" : undefined}>{v}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : (
+        <p className="muted">PayPal shares little about this buyer.</p>
+      )}
       <div className="reasons">
         <div className="reason">
           <span className="k">Orders with you</span>

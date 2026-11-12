@@ -100,8 +100,8 @@ function Row({ i, ad, onAdd, onUndo }: { i: ChecklistItem; ad?: AddedEvidence; o
     </a>
   );
   return (
-    <li className={ok || ad ? "ok" : "no"}>
-      <span className="ico">{ok || ad ? "✓" : "✗"}</span>
+    <li className={ok || ad ? "ok" : required(i) ? "no" : "opt"}>
+      <span className="ico">{ok || ad ? "✓" : required(i) ? "✗" : "○"}</span>
       <b>{i.item}</b>
       <span className={"pill " + (required(i) ? "amber" : "grey")}>{required(i) ? "Required" : "Optional"}</span>
       <span className="why" style={ad ? { color: "var(--green)" } : undefined}>

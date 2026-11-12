@@ -77,7 +77,7 @@ export const afterSendWords = (
     : kind === "evidence" || c?.status === "UNDER_REVIEW"
       ? "Evidence sent · PayPal reviewing"
       : kind === "offer" || c?.status === "WAITING_FOR_BUYER_RESPONSE"
-        ? "Offer sent · waiting for buyer"
+        ? "Offer sent · waiting on the buyer"
         : c
           ? statusWords(c)
           : "Sent";

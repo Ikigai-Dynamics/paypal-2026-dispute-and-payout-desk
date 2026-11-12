@@ -198,6 +198,7 @@ export function Owl({ speech, tucked }: { speech: { text: string; seq: number } 
         </div>
         <div id="say" ref={sayEl} aria-live="polite" />
       </div>
+      <div className="owlbox">
       <div
         id="owl"
         ref={owlEl}
@@ -221,6 +222,17 @@ export function Owl({ speech, tucked }: { speech: { text: string; seq: number } 
           speak(POKES[poke.current++ % POKES.length]!);
         }}
       />
+      <button
+        type="button"
+        className="talk-pill"
+        onClick={() => {
+          owl.current.play("arrive");
+          window.dispatchEvent(new CustomEvent("parley:open-chat"));
+        }}
+      >
+        Talk to Parley
+      </button>
+      </div>
     </div>
   );
 }
