@@ -215,7 +215,14 @@ details summary { cursor: pointer; color: var(--muted); font-weight: 700; font-s
   #chat { left: 0; right: 0; width: auto; bottom: var(--dock, 160px); max-height: 52vh; border-radius: 18px 18px 0 0; border-bottom: 0; box-shadow: none }
   body.chatting { padding-bottom: calc(var(--dock, 160px) + var(--chat, 0px) + 16px) }
 }
-@media (min-width: 721px) and (max-width: 1279px) { #owl { width: 110px; height: 145px } .bubble { font-size: 1rem } }
+/* Tablets: a slim dock (<= 80px). The owl or the bubble still opens the chat; the ask row and chips are hidden. */
+@media (min-width: 721px) and (max-width: 1279px) {
+  .companion { padding-top: 6px; padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px)); align-items: center }
+  #owl { width: 56px; height: 72px; align-self: center }
+  .bubble { font-size: .9rem; align-self: center }
+  #say { max-height: 1.5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+  .bubble .ask, .chips { display: none }
+}
 
 /* ── Desk pieces that are not in the prototype ───────────────── */
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0) }

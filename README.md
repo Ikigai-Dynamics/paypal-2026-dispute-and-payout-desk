@@ -15,13 +15,14 @@ docker compose up --build
 
 Then open <http://localhost:8080>. It starts Postgres, the PayPal mock, the decision core and the desk. Optional: set `LLM_BASE_URL`, `LLM_MODEL` and `LLM_API_KEY` in your shell first to turn the AI on; without them Parley uses template drafts and says so.
 
-**Walkthrough (about a minute):**
+**Walkthrough (about three minutes, on the seeded desk):**
 
-1. Open the top case in the list.
-2. Read Parley's call (fight, refund or offer) and the win chance next to it.
-3. Attach the evidence the checklist asks for.
-4. Click **Review my reply**, then **Send reply to PayPal** and confirm.
-5. Click the owl and ask: *Which cases should I just refund?*
+1. The top case is Alder boots, a refund: read **Parley says** and open **How Parley decided**.
+2. Open Ember 20F Sleeping Bag, click **Send $97.50 offer**, open **Show the PayPal call**, then click **Send offer**. The row moves to **Waiting on the buyer or PayPal** and the status line confirms the make-offer call.
+3. Open the Ikigai gift card and read the AI draft on the **Draft reply** tab.
+4. Click the owl and ask *Which case should I deal with first?*, then *Which cases should I just refund?*, and click a row.
+
+The PayPal side is the bundled simulated Disputes API; no sandbox run was done, and the status bar says so.
 
 ### Run on the dev cluster
 

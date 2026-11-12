@@ -12,6 +12,7 @@ import {
   dateShort,
   money,
   needsResponse,
+  reasonShort,
   reasonWords,
   callKind,
   callWords,
@@ -35,7 +36,8 @@ const columns: ColDef<CaseSummary>[] = [
     headerName: "Reason",
     flex: 1.2,
     minWidth: 160,
-    valueGetter: (p) => reasonWords(p.data!.reason),
+    valueGetter: (p) => reasonShort(p.data!.reason),
+    tooltipValueGetter: (p) => reasonWords(p.data!.reason),
   },
   {
     field: "amount_cents",
