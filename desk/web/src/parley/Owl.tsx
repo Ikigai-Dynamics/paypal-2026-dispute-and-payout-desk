@@ -31,6 +31,13 @@ export function Owl({ speech, tucked }: { speech: { text: string; seq: number } 
   voiceRef.current = voice;
   const poke = useRef(0);
   const click = useRef<ReturnType<typeof setTimeout>>();
+  const fade = useRef<ReturnType<typeof setTimeout>>();
+  const [faded, setFaded] = useState(false);
+  // the bubble fades 8 s after a line is finished; clicking the owl brings it back
+  const armFade = () => {
+    clearTimeout(fade.current);
+    fade.current = setTimeout(() => setFaded(true), 8000);
+  };
 
   const reduce = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -60,6 +67,8 @@ export function Owl({ speech, tucked }: { speech: { text: string; seq: number } 
     if (!el) return;
     last.current = text;
     clearTimeout(timer.current);
+    clearTimeout(fade.current);
+    setFaded(false);
     const tokens: [string, boolean][] = [];
     text.split(/(\*\*[^*]+\*\*)/).forEach((p) => {
       const b = p.startsWith("**");
@@ -84,6 +93,7 @@ export function Owl({ speech, tucked }: { speech: { text: string; seq: number } 
       if (i >= tokens.length) {
         el.innerHTML = render(i);
         owl.current.talk(false);
+        armFade();
         return;
       }
       const [c] = tokens[i++]!;
@@ -130,6 +140,7 @@ export function Owl({ speech, tucked }: { speech: { text: string; seq: number } 
       document.removeEventListener("focusout", stop);
       removeEventListener("parley:say", onSay);
       clearTimeout(timer.current);
+      clearTimeout(fade.current);
       try {
         o.destroy?.();
       } catch {}
@@ -157,7 +168,7 @@ export function Owl({ speech, tucked }: { speech: { text: string; seq: number } 
   if (tucked) return null;
   return (
     <div className="companion" ref={bar}>
-      <div className="bubble" id="bubble">
+      <div className={"bubble" + (faded ? " faded" : "")} id="bubble" aria-hidden={faded}>
         <div className="who">
           <span>Parley</span>
           <span className="acts">
@@ -195,6 +206,10 @@ export function Owl({ speech, tucked }: { speech: { text: string; seq: number } 
         onClick={() => {
           // a double-click is a poke, not two chat openings
           clearTimeout(click.current);
+          if (faded) {
+            setFaded(false);
+            armFade();
+          }
           click.current = setTimeout(() => {
             owl.current.play("arrive");
             window.dispatchEvent(new CustomEvent("parley:open-chat"));

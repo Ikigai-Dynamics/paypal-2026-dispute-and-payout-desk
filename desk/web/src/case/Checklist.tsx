@@ -82,7 +82,7 @@ function AddForm({ item, onAdd, onCancel }: { item: string; onAdd(ev: AddedEvide
       {err && <div className="formerr">{err}</div>}
       <div className="row">
         <button className="primary">Save</button>
-        <button type="button" className="cancel" onClick={onCancel}>
+        <button type="button" className="btn" onClick={onCancel}>
           Cancel
         </button>
       </div>
@@ -120,7 +120,7 @@ function Row({ i, ad, onAdd, onUndo }: { i: ChecklistItem; ad?: AddedEvidence; o
               {link("Write your own", () => setForm(true))}
             </>
           ) : (
-            <button type="button" onClick={() => setForm(true)}>
+            <button type="button" className="btn" onClick={() => setForm(true)}>
               Add
             </button>
           ))}

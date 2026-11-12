@@ -1,13 +1,13 @@
 import { useEffect, useRef } from "react";
 import type { ActivityCall, CaseSummary } from "../lib/api";
 import {
+  afterSendWords,
   dayDiff,
   dueWords,
   money,
   needsResponse,
   reasonIcon,
   reasonWords,
-  statusWords,
 } from "../lib/format";
 import { useCase } from "./useCase";
 import { VerdictCard } from "./VerdictCard";
@@ -201,14 +201,16 @@ export function CasePanel({ id, cases, calls, tab, onTab, highlight, onWritten, 
       <div className="case-head">
         <h2 className="title">
           {card || c ? `${reasonIcon((c ?? card)!.reason)} ${card?.item ?? c?.items[0]?.item_description ?? `Order from ${(c ?? card)!.buyer}`}` : "Loading…"}
+          {(c ?? card) && <span className="who-line"> · {(c ?? card)!.buyer}</span>}
         </h2>
         {open && left != null && (
           <span className={"due" + (left <= 3 ? " urgent" : "")}>
             {left < 0 ? "Overdue" : dueWords(left, "Respond")}
           </span>
         )}
-        {!open && c && <span className="due">{s.sent ? "Done" : statusWords(c)}</span>}
+        {!open && c && <span className="due">{s.sent ? afterSendWords(s.sentKind) : afterSendWords(null, c)}</span>}
       </div>
+      {(c ?? card) && <p className="case-ref">PayPal case {id}</p>}
       {s.error && <div className="errbox">{s.error}</div>}
       {(c ?? card) && (
         <dl className="facts">
@@ -227,10 +229,6 @@ export function CasePanel({ id, cases, calls, tab, onTab, highlight, onWritten, 
                 {(c ?? card)!.buyer} ›
               </button>
             </dd>
-          </div>
-          <div>
-            <dt>Case</dt>
-            <dd className="mono">{id}</dd>
           </div>
         </dl>
       )}

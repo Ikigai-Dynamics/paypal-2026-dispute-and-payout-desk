@@ -181,14 +181,24 @@ details summary { cursor: pointer; color: var(--muted); font-weight: 700; font-s
 @keyframes gesture { 0%,100% { transform: rotate(-4deg) } 50% { transform: rotate(-22deg) } }
 @media (prefers-reduced-motion: reduce) { #owl .bounce, #owl .arm-r, #owl.talk .arm-r, #owl.hop .bounce { animation: none } #owl { filter: none } }
 
+/* Wide screens: the page keeps a right gutter for Parley, so nothing sits under the owl or the bubble. */
+@media (min-width: 1280px) {
+  body { padding-right: 240px }
+  body.tucked { padding-right: max(16px, env(safe-area-inset-right, 0px)) }
+  .companion { flex-direction: column; align-items: flex-end; gap: 4px; width: 220px }
+  .bubble { width: 100%; margin: 0 0 14px; font-size: .92rem; padding: 10px 14px; max-height: calc(100vh - 270px); overflow-y: auto }
+  .bubble::after { right: 60px; bottom: -15px; border: 12px solid transparent; border-top: 15px solid var(--outline); border-bottom: 0; border-left-color: transparent }
+}
+.bubble { transition: opacity .6s }
+.bubble.faded { opacity: 0; visibility: hidden; transition: opacity .6s, visibility 0s .6s }
 @media (max-width: 860px) { .main { grid-template-columns: 1fr } }
 @media (max-width: 560px) {
   #owl { width: 110px; height: 145px } .bubble { width: calc(100vw - 150px); margin-bottom: 40px; font-size: .92rem }
   .days { grid-template-columns: repeat(7, minmax(0, 1fr)) }
 }
 
-/* Phones: Parley docks across the bottom and the page reserves that space, so he never covers the desk. */
-@media (max-width: 720px) {
+/* Phones and tablets: Parley docks across the bottom and the page reserves that space, so he never covers the desk. */
+@media (max-width: 1279px) {
   body { padding-bottom: calc(var(--dock, 160px) + 16px) }
   .companion { left: 0; right: 0; bottom: 0; flex-direction: row-reverse; align-items: stretch; gap: 8px;
     background: var(--card); border-top: 3px solid var(--outline);
@@ -205,6 +215,7 @@ details summary { cursor: pointer; color: var(--muted); font-weight: 700; font-s
   #chat { left: 0; right: 0; width: auto; bottom: var(--dock, 160px); max-height: 52vh; border-radius: 18px 18px 0 0; border-bottom: 0; box-shadow: none }
   body.chatting { padding-bottom: calc(var(--dock, 160px) + var(--chat, 0px) + 16px) }
 }
+@media (min-width: 721px) and (max-width: 1279px) { #owl { width: 110px; height: 145px } .bubble { font-size: 1rem } }
 
 /* ── Desk pieces that are not in the prototype ───────────────── */
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0) }
@@ -212,7 +223,14 @@ h3 { font: 800 .75rem var(--body); letter-spacing: .06em; text-transform: upperc
 .muted { color: var(--muted); font-size: .85rem; margin: 2px 0 }
 .hint { color: var(--muted); font-size: .72rem }
 a { color: var(--blue) }
-input, textarea, select { font: inherit; padding: 7px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--ink) }
+input:not([type=checkbox]):not([type=radio]), textarea, select { font: 500 .9rem var(--body); padding: 7px 10px; border-radius: 10px; border: 2px solid var(--line); background: var(--bg); color: var(--ink); max-width: 100% }
+input:not([type=checkbox]):not([type=radio]):focus-visible, select:focus-visible { outline: 3px solid var(--gold); outline-offset: 1px }
+input[type=file] { font-size: .8rem; padding: 4px 6px }
+input[type=file]::file-selector-button { font: 800 .8rem var(--body); padding: 5px 10px; margin-right: 8px; border-radius: 10px; border: 2px solid var(--outline); background: var(--card); color: var(--ink); cursor: pointer }
+/* buttons without a class inside the case panel look like .btn (secondary) */
+.tabpanel button:not([class]):not(.activity button), .confirm button:not([class]), .checklist button:not([class]), .checklist button.cancel {
+  font: 800 .85rem var(--body); padding: 6px 12px; border-radius: 12px; border: 2px solid var(--outline); background: var(--card); color: var(--ink); box-shadow: 3px 3px 0 var(--outline); transition: transform .08s, box-shadow .08s }
+.tabpanel button:not([class]):not(.activity button):hover, .confirm button:not([class]):hover, .checklist button:not([class]):hover, .checklist button.cancel:hover { transform: translate(-1px,-1px); box-shadow: 4px 4px 0 var(--outline) }
 textarea { width: 100%; line-height: 1.6 }
 textarea.dim { opacity: .5 }
 textarea.flagged { outline: 2px solid var(--bad) }
@@ -303,5 +321,22 @@ mark { background: color-mix(in srgb, var(--gold) 60%, transparent); color: inhe
 /* companion extras */
 .bubble .who .acts { display: flex; gap: 10px }
 body.tucked { padding-bottom: 18px }
-@media (max-width: 720px) { body.tucked { padding-bottom: 18px } .bubble .who .acts button { padding: 4px 0 } }
+@media (max-width: 1279px) { body.tucked { padding-bottom: 18px } .bubble .who .acts button { padding: 4px 0 } }
 .row-gap { display: grid; gap: 10px }
+
+/* strips and tile rows scroll inside their own box instead of widening the page */
+.strip, .tiles { max-width: 100% }
+.days { overflow-x: auto }
+.facts dd { overflow-wrap: anywhere }
+.case-ref { margin: -4px 0 0; color: var(--muted); font-size: .78rem }
+.group-head { font: 800 .72rem var(--body); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 10px 2px 2px; display: flex; gap: 6px; align-items: baseline }
+.group-head .n { font-weight: 700; color: var(--ink) }
+.drow.wait { opacity: .6 }
+.drow.wait:hover, .drow.wait[aria-current="true"] { opacity: 1 }
+.later > summary { list-style: none; cursor: pointer; margin: 10px 2px 2px }
+.later > summary::before { content: "▸ " } .later[open] > summary::before { content: "▾ " }
+.later > summary .group-head { display: inline-flex; margin: 0 }
+.call.wait { background: var(--bg); color: var(--muted) }
+.confirm pre { overflow-wrap: anywhere; white-space: pre-wrap; max-width: 100%; margin: 0 }
+.confirm details > summary { cursor: pointer; color: var(--muted); font-weight: 700; font-size: .85rem }
+.who-line { font-family: var(--body); font-size: 1rem; color: var(--muted) }
