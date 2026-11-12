@@ -204,7 +204,11 @@ export function useCase(
       });
     }
     if (!live()) return;
-    const patch: Partial<State> = { analysis: a, error: null, loadFailed: false };
+    const patch: Partial<State> = {
+      analysis: a,
+      error: null,
+      loadFailed: false,
+    };
     if (fresh) {
       const work = a.work ?? null;
       patch.work = work;
