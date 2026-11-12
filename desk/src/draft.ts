@@ -347,6 +347,8 @@ export function explanationOf(
     return "The decision core was unreachable, so no recommendation is shown.";
   const chance = `about ${Math.round(decision.p * 100)}% chance of winning`;
   const cost = cash(handlingCents, c.currency);
+  if (decision.call === "offer" && decision.offer)
+    return `We recommend offering ${cash(decision.offer.amount_cents, c.currency)} back: ${chance}, and an estimated ${Math.round(decision.offer.q * 100)}% of buyers take an offer like this, which keeps more of the sale than fighting or refunding in full.`;
   if (decision.call === "fight")
     return `We recommend fighting: ${chance}, a loss costs you only the refund you would give anyway, and fighting costs about ${cost}.`;
   return handlingCents >= c.amount_cents
@@ -770,8 +772,9 @@ export async function draftResponse(
       ),
     ]),
   ].join(" ");
-  const ask = async (content: string) =>
-    llm.complete<{ response: string }>(
+  let costUsd = 0;
+  const ask = async (content: string) => {
+    const r = await llm.complete<{ response: string }>(
       {
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content }],
@@ -780,6 +783,11 @@ export async function draftResponse(
       },
       () => ({ response: fb.response }),
     );
+    const usd = r.usage?.costUsd;
+    if (typeof usd === "number" && Number.isFinite(usd) && usd > 0)
+      costUsd += usd;
+    return r;
+  };
   const stripHead = (t: string) =>
     t.trim().replace(/^Re:(?:[^.]*?\([^)]*\)\.?|[^.]*\.)\s*/i, "");
   const factsText = facts.join(" ");
@@ -864,6 +872,7 @@ export async function draftResponse(
       source: "llm",
       label: added?.length ? LABEL_AI_UPDATED : LABEL_AI,
       ...(r.model ? { model: r.model } : {}),
+      cost_usd: costUsd,
     };
   const down = r.source !== "llm";
   return {
@@ -873,5 +882,6 @@ export async function draftResponse(
     fallback_reason: down ? "ai_down" : "grounding",
     label: down ? LABEL_TEMPLATE : LABEL_GROUNDED(!!added?.length),
     error: res?.bad ?? r.error ?? "AI draft unavailable",
+    cost_usd: costUsd,
   };
 }

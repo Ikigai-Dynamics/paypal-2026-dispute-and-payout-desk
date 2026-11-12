@@ -35,9 +35,9 @@ let
   fixtureCopiesMatch =
     pkgs.runCommand "decide-fixtures-identical"
       {
-        canonical = ../contracts/fixtures/decide.v1.cases.json;
-        rust = ../decide/fixtures/decide.v1.cases.json;
-        ts = ../desk/test/fixtures/decide.v1.cases.json;
+        canonical = ../contracts/fixtures/decide.v2.cases.json;
+        rust = ../decide/fixtures/decide.v2.cases.json;
+        ts = ../desk/test/fixtures/decide.v2.cases.json;
       }
       ''
         cmp $canonical $rust

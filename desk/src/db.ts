@@ -23,6 +23,7 @@ const SCHEMA = [
   `create table if not exists case_work (dispute_id text primary key, added jsonb not null default '[]', draft_text text, draft_label text, edited boolean not null default false, updated_at timestamptz not null default now())`,
   `alter table case_work add column if not exists draft_source text`,
   `create table if not exists case_generated (dispute_id text primary key, text text not null)`,
+  `create table if not exists case_ai_cost (dispute_id text primary key, usd numeric not null default 0)`,
   `create table if not exists case_sent (id bigserial primary key, dispute_id text not null, at timestamptz not null default now(), text text not null, added jsonb not null default '[]', vouched jsonb not null default '[]')`,
 ];
 
@@ -282,6 +283,26 @@ export class PgStore {
     );
   }
 
+  /** adds the USD one AI draft cost to the case's running total; never a negative or NaN value */
+  async addAiCost(id: string, usd: number): Promise<void> {
+    if (!Number.isFinite(usd) || usd <= 0) return;
+    await this.pool.query(
+      `insert into case_ai_cost (dispute_id, usd) values ($1,$2)
+       on conflict (dispute_id) do update set usd = case_ai_cost.usd + $2`,
+      [id, usd],
+    );
+  }
+
+  /** the case's AI cost so far, in whole cents */
+  async aiCostCents(id: string): Promise<number> {
+    const r = await this.pool.query(
+      "select usd from case_ai_cost where dispute_id=$1",
+      [id],
+    );
+    const usd = Number(r.rows[0]?.usd ?? 0);
+    return Number.isFinite(usd) && usd > 0 ? Math.round(usd * 100) : 0;
+  }
+
   async deleteWork(id: string): Promise<void> {
     await this.pool.query("delete from case_work where dispute_id=$1", [id]);
   }
@@ -316,7 +337,7 @@ export class PgStore {
 
   async resetWork(): Promise<void> {
     await this.pool.query(
-      "truncate case_work, case_generated, case_sent, paypal_calls",
+      "truncate case_work, case_generated, case_sent, case_ai_cost, paypal_calls",
     );
   }
 }

@@ -17,7 +17,7 @@ import {
   toView,
   viewOf,
 } from "./analysis.js";
-import { DEFAULT_HANDLING_CENTS } from "./decide-client.js";
+import { callAssumptions, DEFAULT_HANDLING_CENTS } from "./decide-client.js";
 import { PgStore, type AddedEv } from "./db.js";
 import {
   addedSentences,
@@ -25,7 +25,7 @@ import {
   gateEvidence,
   proofText,
 } from "./factcheck.js";
-import type { Added, CaseRow, Draft } from "./types.js";
+import type { Added, CaseRow, Decision, Draft } from "./types.js";
 import { evidenceOnFile, LABEL_GROUNDED } from "./draft.js";
 import { init as initActivity, list as listCalls, record } from "./activity.js";
 import { DraftCache, pool as runPool, stopAfterDown } from "./drafts.js";
@@ -113,14 +113,38 @@ const syncState: {
   cases: 0,
 };
 // decisions at the default c and F, shown in the grid's Call column
-const decisionCache = new Map<
-  string,
-  { call: string; margin_cents: number; marginal: boolean }
->();
+const decisionCache = new Map<string, CachedDecision>();
+interface CachedDecision {
+  call: string;
+  margin_cents: number;
+  marginal: boolean;
+  offer_cents: number | null;
+  p: number;
+  p_lo: number;
+  p_hi: number;
+  keep_cents: number;
+}
+const toCached = (d: Decision): CachedDecision => ({
+  call: d.call,
+  margin_cents: d.margin_cents,
+  marginal: d.marginal,
+  offer_cents: d.call === "offer" ? (d.offer?.amount_cents ?? null) : null,
+  p: d.p,
+  p_lo: d.p_lo,
+  p_hi: d.p_hi,
+  keep_cents: d.keep_cents,
+});
 
 // online = the last real completion worked, or a fresh probe of the gateway answered.
 // A failed draft only forces a new probe; it never turns the badge off by itself.
 let probe = { at: 0, ok: false };
+// the AI cost of a draft joins the case's fight cost; its cached call is then stale
+drafts.onCost = (id, usd) => {
+  void store
+    .addAiCost(id, usd)
+    .then(() => decisionCache.delete(id))
+    .catch((e) => log({ msg: "ai cost not stored", error: String(e) }));
+};
 drafts.onResult = (ok) => {
   if (!ok) probe.at = 0;
 };
@@ -176,17 +200,13 @@ const rank = (id: string) => {
 async function ensureDecision(row: CaseRow): Promise<boolean> {
   if (decisionCache.has(row.dispute_id)) return true;
   const d = await decideFor(
-    { decideUrl },
+    { decideUrl, store },
     row,
     await findPrecedents(store, row),
     {},
   );
   if (!d) return false;
-  decisionCache.set(row.dispute_id, {
-    call: d.call,
-    margin_cents: d.margin_cents,
-    marginal: d.marginal,
-  });
+  decisionCache.set(row.dispute_id, toCached(d));
   return true;
 }
 
@@ -222,7 +242,7 @@ async function preDraft(only?: Set<string>, attempt = 0): Promise<void> {
       handlingCostCents: DEFAULT_HANDLING_CENTS,
       feeIfLostCents: 0,
     };
-    const decision = await decideFor({ decideUrl }, row, precedents, o);
+    const decision = await decideFor({ decideUrl, store }, row, precedents, o);
     const d = await drafts.get(
       await viewOf(store, row),
       decision,
@@ -450,7 +470,7 @@ async function addedByMerchant(
       handlingCostCents: DEFAULT_HANDLING_CENTS,
       feeIfLostCents: 0,
     };
-    const decision = await decideFor({ decideUrl }, row, precedents, o);
+    const decision = await decideFor({ decideUrl, store }, row, precedents, o);
     const work = await store.getWork(id);
     base = (
       await drafts.get(
@@ -586,10 +606,36 @@ async function route(
             due_at: v.due_at,
             days_left: v.days_left,
             evidence_on_file: v.evidence_on_file,
-            call: d ? (d.marginal ? `${d.call} (marginal)` : d.call) : null,
+            call: d
+              ? d.marginal && d.call !== "offer"
+                ? `${d.call} (marginal)`
+                : d.call
+              : null,
             margin_cents: d?.margin_cents ?? null,
+            offer_cents: d?.offer_cents ?? null,
+            p: d?.p ?? null,
+            p_lo: d?.p_lo ?? null,
+            p_hi: d?.p_hi ?? null,
+            keep_cents: d?.keep_cents ?? null,
           };
         }),
+      },
+    };
+  }
+  if (m === "GET" && p === "/api/assumptions")
+    return { status: 200, body: await callAssumptions(decideUrl) };
+  const one = /^\/api\/cases\/([^/]+)$/.exec(p);
+  if (m === "GET" && one) {
+    const row = await loadRow(decodeURIComponent(one[1]!));
+    const precedents = await findPrecedents(store, row);
+    const decision = await decideFor({ decideUrl, store }, row, precedents, {});
+    return {
+      status: 200,
+      body: {
+        case: await viewOf(store, row),
+        precedents,
+        decision,
+        ...(decision ? {} : { degraded: true }),
       },
     };
   }
@@ -673,11 +719,7 @@ async function route(
         c === undefined &&
         fee === undefined
       )
-        decisionCache.set(id, {
-          call: out.decision.call,
-          margin_cents: out.decision.margin_cents,
-          marginal: out.decision.marginal,
-        });
+        decisionCache.set(id, toCached(out.decision));
       // a slow gateway call must not leave the fallback as final: try the model once more in the background
       let drafting = false;
       if (
@@ -760,7 +802,12 @@ async function route(
         handlingCostCents: DEFAULT_HANDLING_CENTS,
         feeIfLostCents: 0,
       };
-      const decision = await decideFor({ decideUrl }, row, precedents, o);
+      const decision = await decideFor(
+        { decideUrl, store },
+        row,
+        precedents,
+        o,
+      );
       const draft = await drafts.get(
         await viewOf(store, row),
         decision,
@@ -927,7 +974,9 @@ const server = createServer((req, res) => {
       }
       if (
         req.method === "GET" &&
-        (url.pathname === "/app.js" || url.pathname === "/app.css")
+        (url.pathname === "/app.js" ||
+          url.pathname === "/app.css" ||
+          url.pathname === "/owl.js")
       ) {
         if (
           !serveFile(

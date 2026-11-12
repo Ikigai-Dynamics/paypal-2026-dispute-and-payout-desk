@@ -1,0 +1,466 @@
+[
+  {
+    "expect": {
+      "call": "offer",
+      "ev_accept_cents": -12000,
+      "ev_fight_cents": -6900,
+      "ev_offer_cents": -6249,
+      "fight_cost_cents": 1500,
+      "k": 4,
+      "keep_cents": 5751,
+      "margin_cents": 5100,
+      "marginal": false,
+      "n": 0,
+      "offer": {
+        "amount_cents": 4700,
+        "ev_cents": -6249,
+        "q": 0.2959
+      },
+      "p": 0.55,
+      "p0": 0.55,
+      "p_hi": 0.8449,
+      "p_lo": 0.2405,
+      "wins": 0
+    },
+    "name": "proposal-120-offer",
+    "note": "",
+    "request": {
+      "ai_cost_cents": 0,
+      "amount_cents": 12000,
+      "contract": "decide.v2",
+      "currency": "USD",
+      "evidence_on_file": true,
+      "fee_if_lost_cents": 0,
+      "handling_cost_cents": 1500,
+      "precedents": [],
+      "prior": 0.55,
+      "reason": "MERCHANDISE_OR_SERVICE_NOT_RECEIVED",
+      "stage": "INQUIRY"
+    }
+  },
+  {
+    "expect": {
+      "call": "accept",
+      "ev_accept_cents": -900,
+      "ev_fight_cents": -2085,
+      "ev_offer_cents": -835,
+      "fight_cost_cents": 1500,
+      "k": 4,
+      "keep_cents": 0,
+      "margin_cents": -1185,
+      "marginal": false,
+      "n": 0,
+      "offer": {
+        "amount_cents": 700,
+        "ev_cents": -835,
+        "q": 0.9022
+      },
+      "p": 0.35,
+      "p0": 0.35,
+      "p_hi": 0.6576,
+      "p_lo": 0.0858,
+      "wins": 0
+    },
+    "name": "proposal-9-accept",
+    "note": "",
+    "request": {
+      "ai_cost_cents": 0,
+      "amount_cents": 900,
+      "contract": "decide.v2",
+      "currency": "USD",
+      "evidence_on_file": false,
+      "fee_if_lost_cents": 0,
+      "handling_cost_cents": 1500,
+      "precedents": [],
+      "prior": 0.35,
+      "reason": "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED",
+      "stage": "INQUIRY"
+    }
+  },
+  {
+    "expect": {
+      "call": "offer",
+      "ev_accept_cents": -6400,
+      "ev_fight_cents": -5980,
+      "ev_offer_cents": -4495,
+      "fight_cost_cents": 1500,
+      "k": 4,
+      "keep_cents": 1905,
+      "margin_cents": 420,
+      "marginal": true,
+      "n": 0,
+      "offer": {
+        "amount_cents": 3700,
+        "ev_cents": -4495,
+        "q": 0.6514
+      },
+      "p": 0.3,
+      "p0": 0.3,
+      "p_hi": 0.5995,
+      "p_lo": 0.0577,
+      "wins": 0
+    },
+    "name": "proposal-64-offer",
+    "note": "",
+    "request": {
+      "ai_cost_cents": 0,
+      "amount_cents": 6400,
+      "contract": "decide.v2",
+      "currency": "USD",
+      "evidence_on_file": false,
+      "fee_if_lost_cents": 0,
+      "handling_cost_cents": 1500,
+      "precedents": [],
+      "prior": 0.3,
+      "reason": "CANCELED_RECURRING_BILLING",
+      "stage": "INQUIRY"
+    }
+  },
+  {
+    "expect": {
+      "call": "fight",
+      "ev_accept_cents": -900,
+      "ev_fight_cents": -785,
+      "ev_offer_cents": -611,
+      "fight_cost_cents": 200,
+      "k": 4,
+      "keep_cents": 115,
+      "margin_cents": 115,
+      "marginal": true,
+      "n": 0,
+      "offer": {
+        "amount_cents": 500,
+        "ev_cents": -611,
+        "q": 0.6093
+      },
+      "p": 0.35,
+      "p0": 0.35,
+      "p_hi": 0.6576,
+      "p_lo": 0.0858,
+      "wins": 0
+    },
+    "name": "nine-dollars-low-cost-flips-to-fight",
+    "note": "",
+    "request": {
+      "ai_cost_cents": 0,
+      "amount_cents": 900,
+      "contract": "decide.v2",
+      "currency": "USD",
+      "evidence_on_file": false,
+      "fee_if_lost_cents": 0,
+      "handling_cost_cents": 200,
+      "precedents": [],
+      "prior": 0.35,
+      "reason": "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED",
+      "stage": "INQUIRY"
+    }
+  },
+  {
+    "expect": {
+      "call": "fight",
+      "ev_accept_cents": -12000,
+      "ev_fight_cents": -5700,
+      "ev_offer_cents": -5344,
+      "fight_cost_cents": 1500,
+      "k": 4,
+      "keep_cents": 6300,
+      "margin_cents": 6300,
+      "marginal": false,
+      "n": 4,
+      "offer": {
+        "amount_cents": 3750,
+        "ev_cents": -5344,
+        "q": 0.1824
+      },
+      "p": 0.65,
+      "p0": 0.55,
+      "p_hi": 0.8501,
+      "p_lo": 0.4309,
+      "wins": 3
+    },
+    "name": "precedents-smooth-the-prior",
+    "note": "",
+    "request": {
+      "ai_cost_cents": 0,
+      "amount_cents": 12000,
+      "contract": "decide.v2",
+      "currency": "USD",
+      "evidence_on_file": true,
+      "fee_if_lost_cents": 0,
+      "handling_cost_cents": 1500,
+      "precedents": [
+        {
+          "dispute_id": "PP-D-0",
+          "won": true
+        },
+        {
+          "dispute_id": "PP-D-1",
+          "won": true
+        },
+        {
+          "dispute_id": "PP-D-2",
+          "won": true
+        },
+        {
+          "dispute_id": "PP-D-3",
+          "won": false
+        }
+      ],
+      "prior": 0.55,
+      "reason": "MERCHANDISE_OR_SERVICE_NOT_RECEIVED",
+      "stage": "INQUIRY"
+    }
+  },
+  {
+    "expect": {
+      "call": "offer",
+      "ev_accept_cents": -20000,
+      "ev_fight_cents": -16857,
+      "ev_offer_cents": -13348,
+      "fight_cost_cents": 1500,
+      "k": 4,
+      "keep_cents": 6652,
+      "margin_cents": 3143,
+      "marginal": false,
+      "n": 3,
+      "offer": {
+        "amount_cents": 10800,
+        "ev_cents": -13348,
+        "q": 0.5793
+      },
+      "p": 0.2857,
+      "p0": 0.25,
+      "p_hi": 0.5103,
+      "p_lo": 0.0926,
+      "wins": 1
+    },
+    "name": "unauthorised-with-fee-if-lost",
+    "note": "",
+    "request": {
+      "ai_cost_cents": 0,
+      "amount_cents": 20000,
+      "contract": "decide.v2",
+      "currency": "USD",
+      "evidence_on_file": false,
+      "fee_if_lost_cents": 1500,
+      "handling_cost_cents": 1500,
+      "precedents": [
+        {
+          "dispute_id": "PP-D-0",
+          "won": false
+        },
+        {
+          "dispute_id": "PP-D-1",
+          "won": false
+        },
+        {
+          "dispute_id": "PP-D-2",
+          "won": true
+        }
+      ],
+      "prior": null,
+      "reason": "UNAUTHORISED",
+      "stage": "CHARGEBACK"
+    }
+  },
+  {
+    "expect": {
+      "call": "offer",
+      "ev_accept_cents": -15000,
+      "ev_fight_cents": -8000,
+      "ev_offer_cents": -7360,
+      "fight_cost_cents": 1500,
+      "k": 4,
+      "keep_cents": 7640,
+      "margin_cents": 7000,
+      "marginal": false,
+      "n": 2,
+      "offer": {
+        "amount_cents": 5400,
+        "ev_cents": -7360,
+        "q": 0.246
+      },
+      "p": 0.5667,
+      "p0": 0.6,
+      "p_hi": 0.8114,
+      "p_lo": 0.3101,
+      "wins": 1
+    },
+    "name": "table-prior-with-evidence",
+    "note": "",
+    "request": {
+      "ai_cost_cents": 0,
+      "amount_cents": 15000,
+      "contract": "decide.v2",
+      "currency": "USD",
+      "evidence_on_file": true,
+      "fee_if_lost_cents": 0,
+      "handling_cost_cents": 1500,
+      "precedents": [
+        {
+          "dispute_id": "PP-D-0",
+          "won": true
+        },
+        {
+          "dispute_id": "PP-D-1",
+          "won": false
+        }
+      ],
+      "prior": null,
+      "reason": "MERCHANDISE_OR_SERVICE_NOT_RECEIVED",
+      "stage": "INQUIRY"
+    }
+  },
+  {
+    "expect": {
+      "call": "offer",
+      "ev_accept_cents": -5000,
+      "ev_fight_cents": -4750,
+      "ev_offer_cents": -3539,
+      "fight_cost_cents": 1500,
+      "k": 4,
+      "keep_cents": 1461,
+      "margin_cents": 250,
+      "marginal": true,
+      "n": 0,
+      "offer": {
+        "amount_cents": 2900,
+        "ev_cents": -3539,
+        "q": 0.6548
+      },
+      "p": 0.35,
+      "p0": 0.35,
+      "p_hi": 0.6576,
+      "p_lo": 0.0858,
+      "wins": 0
+    },
+    "name": "table-prior-other-reason",
+    "note": "",
+    "request": {
+      "ai_cost_cents": 0,
+      "amount_cents": 5000,
+      "contract": "decide.v2",
+      "currency": "USD",
+      "evidence_on_file": false,
+      "fee_if_lost_cents": 0,
+      "handling_cost_cents": 1500,
+      "precedents": [],
+      "prior": null,
+      "reason": "OTHER",
+      "stage": "INQUIRY"
+    }
+  },
+  {
+    "expect": {
+      "call": "fight",
+      "ev_accept_cents": -5,
+      "ev_fight_cents": -2,
+      "ev_offer_cents": null,
+      "fight_cost_cents": 0,
+      "k": 4,
+      "keep_cents": 3,
+      "margin_cents": 3,
+      "marginal": true,
+      "n": 0,
+      "offer": null,
+      "p": 0.7,
+      "p0": 0.7,
+      "p_hi": 0.9423,
+      "p_lo": 0.4005,
+      "wins": 0
+    },
+    "name": "rounding-half-away-from-zero",
+    "note": "",
+    "request": {
+      "ai_cost_cents": 0,
+      "amount_cents": 5,
+      "contract": "decide.v2",
+      "currency": "USD",
+      "evidence_on_file": false,
+      "fee_if_lost_cents": 0,
+      "handling_cost_cents": 0,
+      "precedents": [],
+      "prior": 0.7,
+      "reason": "DUPLICATE_TRANSACTION",
+      "stage": "INQUIRY"
+    }
+  },
+  {
+    "expect": {
+      "call": "offer",
+      "ev_accept_cents": -16400,
+      "ev_fight_cents": -17080,
+      "ev_offer_cents": -12079,
+      "fight_cost_cents": 1500,
+      "k": 4,
+      "keep_cents": 4321,
+      "margin_cents": -680,
+      "marginal": false,
+      "n": 0,
+      "offer": {
+        "amount_cents": 9950,
+        "ev_cents": -12079,
+        "q": 0.7013
+      },
+      "p": 0.05,
+      "p0": 0.05,
+      "p_hi": 0.1622,
+      "p_lo": 0.0,
+      "wins": 0
+    },
+    "name": "duplicate-no-evidence-164-offer",
+    "note": "",
+    "request": {
+      "ai_cost_cents": 0,
+      "amount_cents": 16400,
+      "contract": "decide.v2",
+      "currency": "USD",
+      "evidence_on_file": false,
+      "fee_if_lost_cents": 0,
+      "handling_cost_cents": 1500,
+      "precedents": [],
+      "prior": null,
+      "reason": "DUPLICATE_TRANSACTION",
+      "stage": "INQUIRY"
+    }
+  },
+  {
+    "expect": {
+      "call": "offer",
+      "ev_accept_cents": -12000,
+      "ev_fight_cents": -6925,
+      "ev_offer_cents": -6266,
+      "fight_cost_cents": 1525,
+      "k": 4,
+      "keep_cents": 5734,
+      "margin_cents": 5075,
+      "marginal": false,
+      "n": 0,
+      "offer": {
+        "amount_cents": 4750,
+        "ev_cents": -6266,
+        "q": 0.3029
+      },
+      "p": 0.55,
+      "p0": 0.55,
+      "p_hi": 0.8449,
+      "p_lo": 0.2405,
+      "wins": 0
+    },
+    "name": "ai-cost-adds-to-fight-cost-offer",
+    "note": "a partial refund beats both fighting and accepting",
+    "request": {
+      "ai_cost_cents": 25,
+      "amount_cents": 12000,
+      "contract": "decide.v2",
+      "currency": "USD",
+      "evidence_on_file": true,
+      "fee_if_lost_cents": 0,
+      "handling_cost_cents": 1500,
+      "precedents": [],
+      "prior": 0.55,
+      "reason": "MERCHANDISE_OR_SERVICE_NOT_RECEIVED",
+      "stage": "INQUIRY"
+    }
+  }
+]

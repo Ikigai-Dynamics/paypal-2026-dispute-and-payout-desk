@@ -29,6 +29,8 @@ show() { # show <label> <analysis-json>
   echo "decision terms:"
   echo "$2" | jq -r '.decision.terms[] | "  " + .'
   echo "call: $(echo "$2" | jq -r '.decision.call') (margin $(echo "$2" | jq -r '.decision.margin_cents') cents, marginal $(echo "$2" | jq -r '.decision.marginal'))"
+  echo "$2" | jq -r '.decision | "win chance (estimated): \(.p * 100 | round)% (\(.p_lo * 100 | round)-\(.p_hi * 100 | round)%), keeps \(.keep_cents) cents, AI cost \(.ai_cost_cents) cents, core \(.core_version)"'
+  echo "$2" | jq -r '.decision | if .offer then "best offer: \(.offer.amount_cents) cents (buyer accepts about \(.offer.q * 100 | round)%, EV \(.offer.ev_cents))\(if .call == "offer" then " <- the call" else "" end)" else "no offer possible" end'
   echo "precedents: $(echo "$2" | jq -r '.precedents | length') (won $(echo "$2" | jq -r '[.precedents[] | select(.won)] | length'))"
   echo "draft source: $(echo "$2" | jq -r '.draft.source') $(echo "$2" | jq -r '.draft.model // ""')"
   echo "draft response:"
@@ -42,7 +44,8 @@ ACCEPT=PP-D-DUPLICATE-0003
 echo "== analysis: the large chargeback (Marcus Bell, USD 1,317; recommended fight)"
 fight=$(desk "http://${H}/api/cases/${FIGHT}/analysis")
 show "$FIGHT" "$fight"
-assert "call is fight" "$(echo "$fight" | jq '.decision.call == "fight"')"
+assert "call is fight or offer" "$(echo "$fight" | jq '.decision.call == "fight" or .decision.call == "offer"')"
+assert "decision is decide.v2 with a range" "$(echo "$fight" | jq '.decision.contract == "decide.v2" and .decision.p_lo < .decision.p and .decision.p < .decision.p_hi')"
 # a billing address is not an address match, so that item stays missing
 assert "checklist: the address item is missing" "$(echo "$fight" | jq '[.draft.checklist[] | select(.status == "missing") | .item] | index("Shipping address matches the buyer") != null')"
 assert "explanation is plain English" "$(echo "$fight" | jq '.draft.explanation | test("p =|EV") | not')"
@@ -53,14 +56,14 @@ assert "draft never says 'record shows'" "$(echo "$fight" | jq '.draft.response 
 assert "response names no dispute id" "$(echo "$fight" | jq '.draft.response | contains("PP-D-") | not')"
 
 echo "== the case 'Fight the most urgent dispute' opens"
-urgent=$(desk "http://${H}/api/cases" | jq -r '[.cases[] | select((.status == "WAITING_FOR_SELLER_RESPONSE" or .status == "OPEN") and ((.call // "") | startswith("fight")) and .due_at != null and ((.due_at | sub("\\.[0-9]+"; "") | fromdateiso8601) > now))] | sort_by(.due_at) | .[0] | "\(.buyer)|\(.dispute_id)"')
+urgent=$(desk "http://${H}/api/cases" | jq -r '[.cases[] | select((.status == "WAITING_FOR_SELLER_RESPONSE" or .status == "OPEN") and ((.call // "") | test("^(fight|offer)")) and .due_at != null and ((.due_at | sub("\\.[0-9]+"; "") | fromdateiso8601) > now))] | sort_by(.due_at) | .[0] | "\(.buyer)|\(.dispute_id)"')
 echo "urgent fight case: ${urgent%%|*} (${urgent##*|})"
 assert "an urgent fight case has a buyer name" "$([ -n "${urgent%%|*}" ] && [ "${urgent%%|*}" != null ] && echo true || echo false)"
 
 echo "== analysis: the accept case (Priya Nair, USD 164)"
 acc=$(desk "http://${H}/api/cases/${ACCEPT}/analysis")
 show "$ACCEPT" "$acc"
-assert "a call is made" "$(echo "$acc" | jq '.decision.call == "fight" or .decision.call == "accept"')"
+assert "a call is made" "$(echo "$acc" | jq '.decision.call == "fight" or .decision.call == "accept" or .decision.call == "offer"')"
 assert "no tracking number invented" "$(echo "$acc" | jq '(.draft.response | test("[0-9][A-Z0-9]{9,}")) | not')"
 
 echo "== changing the cost to fight (c) to 0.01 never makes accept more likely"
