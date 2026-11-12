@@ -12,18 +12,20 @@ export interface Call {
   currency: string | null;
   /** 'paypal' for a call to PayPal, 'webhook' for an event PayPal sent us. */
   kind: "paypal" | "webhook";
+  /** what the call was for, e.g. "offer" */
+  note: string | null;
 }
 
 const KEEP = 200;
 let pool: pg.Pool | undefined;
 let kindColumn = false;
 
-/** Additive column, added on first use because PgStore makes the table itself. */
+/** Additive columns, added on first use because PgStore makes the table itself. */
 async function ensureKind(p: pg.Pool): Promise<void> {
   if (kindColumn) return;
   try {
     await p.query(
-      "alter table paypal_calls add column if not exists kind text",
+      "alter table paypal_calls add column if not exists kind text, add column if not exists amount_cents bigint, add column if not exists currency text, add column if not exists note text",
     );
     kindColumn = true;
   } catch {
@@ -40,6 +42,10 @@ export function init(p: pg.Pool): void {
 export function record(
   c: Pick<Call, "method" | "path" | "status" | "ms"> & {
     kind?: Call["kind"];
+    /** the amount this call moved, when it is not the disputed amount */
+    amount_cents?: number;
+    currency?: string;
+    note?: string;
   },
 ): void {
   if (!pool) return;
@@ -48,10 +54,19 @@ export function record(
     .then(() =>
       p.query(
         kindColumn
-          ? "insert into paypal_calls (method, path, status, ms, kind) values ($1,$2,$3,$4,$5)"
+          ? "insert into paypal_calls (method, path, status, ms, kind, amount_cents, currency, note) values ($1,$2,$3,$4,$5,$6,$7,$8)"
           : "insert into paypal_calls (method, path, status, ms) values ($1,$2,$3,$4)",
         kindColumn
-          ? [c.method, c.path, c.status, c.ms, c.kind ?? "paypal"]
+          ? [
+              c.method,
+              c.path,
+              c.status,
+              c.ms,
+              c.kind ?? "paypal",
+              c.amount_cents ?? null,
+              c.currency ?? null,
+              c.note ?? null,
+            ]
           : [c.method, c.path, c.status, c.ms],
       ),
     )
@@ -77,7 +92,7 @@ export async function list(limit = 20): Promise<Call[]> {
   if (!pool) return [];
   await ensureKind(pool);
   const r = await pool.query(
-    `select at, method, path, status, ms, ${kindColumn ? "kind" : "null as kind"} from paypal_calls order by id desc limit $1`,
+    `select at, method, path, status, ms, ${kindColumn ? "kind, amount_cents::float8 as own_cents, currency as own_cur, note" : "null as kind, null as own_cents, null as own_cur, null as note"} from paypal_calls order by id desc limit $1`,
     [limit],
   );
   const ids = [...new Set(r.rows.map((x) => disputeIdOf(x.path)))].filter(
@@ -101,9 +116,16 @@ export async function list(limit = 20): Promise<Call[]> {
       ms: Number(x.ms),
       dispute_id: c ? id : null,
       buyer: c?.buyer ?? null,
-      amount_cents: c ? Number(c.amount_cents) : null,
-      currency: c?.currency ?? null,
+      // an offer moves less than the disputed amount: the stored amount wins
+      amount_cents:
+        x.own_cents != null
+          ? Number(x.own_cents)
+          : c
+            ? Number(c.amount_cents)
+            : null,
+      currency: x.own_cur ?? c?.currency ?? null,
       kind: x.kind === "webhook" ? "webhook" : "paypal",
+      note: x.note ?? null,
     };
   });
 }

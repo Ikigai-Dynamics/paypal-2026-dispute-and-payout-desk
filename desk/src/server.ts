@@ -18,7 +18,13 @@ import {
   viewOf,
 } from "./analysis.js";
 import { chatRoutes } from "./chat.js";
-import { callAssumptions, DEFAULT_HANDLING_CENTS } from "./decide-client.js";
+import {
+  buildDecideRequest,
+  callAssumptions,
+  callDecide,
+  DEFAULT_HANDLING_CENTS,
+} from "./decide-client.js";
+import openapi from "./openapi.json" with { type: "json" };
 import { PgStore, type AddedEv } from "./db.js";
 import {
   addedSentences,
@@ -117,6 +123,7 @@ const syncState: {
 // decisions at the default c and F, shown in the grid's Call column
 const decisionCache = new Map<string, CachedDecision>();
 interface CachedDecision {
+  at: string;
   call: string;
   margin_cents: number;
   marginal: boolean;
@@ -127,6 +134,7 @@ interface CachedDecision {
   keep_cents: number;
 }
 const toCached = (d: Decision): CachedDecision => ({
+  at: new Date().toISOString(),
   call: d.call,
   margin_cents: d.margin_cents,
   marginal: d.marginal,
@@ -172,9 +180,114 @@ async function llmOnline(): Promise<boolean> {
   return ok;
 }
 
+/** The display name is all the page ever shows of the model; cost is the sum of the stored per-case AI costs. */
 async function llmStatus() {
   const online = await llmOnline();
-  return { online, label: online ? `AI (${llm.model})` : "offline fallback" };
+  const cost = await pool
+    .query("select coalesce(sum(usd),0)::float8 as usd from case_ai_cost")
+    .then((r) => Number(r.rows[0]?.usd ?? 0))
+    .catch(() => 0);
+  return {
+    online,
+    label: online ? "AI" : "offline fallback",
+    model: "Parley AI",
+    costUsd: cost,
+  };
+}
+
+/** Raw (non-JSON) body: a CSV download. */
+class Raw {
+  constructor(
+    public type: string,
+    public text: string,
+    public file?: string,
+  ) {}
+}
+// a leading = + - @ makes a spreadsheet read a cell as a formula
+const cell = (v: unknown): string => {
+  let t = v == null ? "" : String(v);
+  if (typeof v === "string" && /^[=+\-@]/.test(t)) t = `'${t}`;
+  return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+};
+const toCsv = (rows: Record<string, unknown>[], cols: string[]): string =>
+  [cols, ...rows.map((r) => cols.map((c) => r[c]))]
+    .map((r) => r.map(cell).join(","))
+    .join("\n") + "\n";
+/** ?format=csv returns a file; anything else the JSON body. */
+const asFormat = (
+  url: URL,
+  body: unknown,
+  rows: Record<string, unknown>[],
+  cols: string[],
+  file: string,
+) =>
+  url.searchParams.get("format") === "csv"
+    ? new Raw("text/csv; charset=utf-8", toCsv(rows, cols), file)
+    : body;
+const dollars = (c: number | null | undefined) =>
+  c == null ? "" : (c / 100).toFixed(2);
+
+let BUILD = "dev";
+try {
+  BUILD = JSON.parse(readFileSync(join(here, "..", "package.json"), "utf8")).version;
+} catch {
+  /* keep dev */
+}
+
+/** Everything the desk did, newest first: PayPal calls, Parley's calls, human approvals. */
+async function activityEvents() {
+  const [calls, rows, sent] = await Promise.all([
+    listCalls(200),
+    store.list(),
+    pool
+      .query("select dispute_id, at from case_sent order by id desc limit 200")
+      .then((r) => r.rows)
+      .catch(() => []),
+  ]);
+  const by = new Map(rows.map((r) => [r.dispute_id, r]));
+  const ev = (
+    at: string,
+    kind: string,
+    id: string | null,
+    detail: string,
+    status: string | number,
+    amount?: number | null,
+    currency?: string | null,
+  ) => ({
+    time: at,
+    kind,
+    case: id,
+    buyer: (id && by.get(id)?.buyer) || null,
+    amount: dollars(amount ?? (id ? by.get(id)?.amount_cents : null)),
+    currency: currency ?? (id ? (by.get(id)?.currency ?? "") : ""),
+    status,
+    detail,
+  });
+  return [
+    ...calls.map((c) =>
+      ev(
+        c.at,
+        c.kind,
+        c.dispute_id,
+        `${c.method} ${c.path}${c.note ? ` (${c.note})` : ""}`,
+        c.status,
+        c.amount_cents,
+        c.currency,
+      ),
+    ),
+    ...[...decisionCache].map(([id, d]) =>
+      ev(
+        d.at,
+        "decision",
+        id,
+        d.call + (d.offer_cents != null ? ` ${dollars(d.offer_cents)}` : ""),
+        "decided",
+      ),
+    ),
+    ...sent.map((x) =>
+      ev(new Date(x.at).toISOString(), "approval", x.dispute_id, "evidence approved and sent", "approved"),
+    ),
+  ].sort((a, b) => Date.parse(b.time) - Date.parse(a.time));
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -570,9 +683,37 @@ async function route(
         decide: { url: decideUrl, reachable: await decideReachable() },
         search: "Postgres full-text",
         sync: syncState,
+        version: BUILD,
         pod: process.env["POD_NAME"] ?? null,
       },
     };
+  if (m === "GET" && p === "/api/openapi.json")
+    return { status: 200, body: openapi };
+  if (m === "GET" && p === "/api/activity") {
+    const events = await activityEvents();
+    return {
+      status: 200,
+      body: asFormat(
+        url,
+        { events },
+        events,
+        ["time", "kind", "case", "buyer", "amount", "currency", "status", "detail"],
+        "parley-activity.csv",
+      ),
+    };
+  }
+  if (m === "POST" && p === "/api/decide") {
+    // the decision core, asked directly: same request shape the desk sends
+    const b = await readJson(req);
+    try {
+      return {
+        status: 200,
+        body: await callDecide(decideUrl, b as never),
+      };
+    } catch {
+      throw new HttpError(502, "decide_unavailable", "the decision core did not accept or answer this request");
+    }
+  }
   if (m === "GET" && p === "/api/paypal-activity")
     return { status: 200, body: { calls: await listCalls(20) } };
   if (m === "POST" && p === "/api/sync") {
@@ -600,9 +741,7 @@ async function route(
     const late = (v: { days_left: number | null }) =>
       v.days_left !== null && v.days_left < 0;
     const needs = views.filter((v) => open(v) && !late(v));
-    return {
-      status: 200,
-      body: {
+    const out = {
         summary: {
           total: views.length,
           needs_response: needs.length,
@@ -658,11 +797,38 @@ async function route(
             keep_cents: d?.keep_cents ?? null,
           };
         }),
-      },
+    };
+    return {
+      status: 200,
+      body: asFormat(
+        url,
+        out,
+        out.cases,
+        ["dispute_id", "buyer", "reason", "status", "amount_cents", "currency", "due_at", "call", "offer_cents", "margin_cents"],
+        "parley-disputes.csv",
+      ),
     };
   }
   if (m === "GET" && p === "/api/assumptions")
     return { status: 200, body: await callAssumptions(decideUrl) };
+  const rec = /^\/api\/cases\/([^/]+)\/decision$/.exec(p);
+  if (m === "GET" && rec) {
+    const row = await loadRow(decodeURIComponent(rec[1]!));
+    const precedents = await findPrecedents(store, row);
+    const aiCostCents = await store.aiCostCents(row.dispute_id);
+    const request = buildDecideRequest(row, precedents, { aiCostCents });
+    const response = await decideFor({ decideUrl, store }, row, precedents, { aiCostCents });
+    return {
+      status: 200,
+      body: {
+        case: row.dispute_id,
+        request,
+        response,
+        core: { contract: request.contract, version: BUILD },
+        ...(response ? {} : { degraded: true }),
+      },
+    };
+  }
   const one = /^\/api\/cases\/([^/]+)$/.exec(p);
   if (m === "GET" && one) {
     const row = await loadRow(decodeURIComponent(one[1]!));
@@ -993,6 +1159,16 @@ async function decideReachable(): Promise<boolean> {
 }
 
 function send(res: ServerResponse, status: number, body: unknown): void {
+  if (body instanceof Raw) {
+    res.writeHead(status, {
+      "content-type": body.type,
+      ...(body.file
+        ? { "content-disposition": `attachment; filename="${body.file}"` }
+        : {}),
+    });
+    res.end(body.text);
+    return;
+  }
   res.writeHead(status, { "content-type": "application/json" });
   res.end(JSON.stringify(body));
 }

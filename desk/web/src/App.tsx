@@ -4,6 +4,7 @@ import { needing, useCases } from "./hooks/useCases";
 import { useInfo } from "./hooks/useInfo";
 import { AllCases } from "./components/AllCases";
 import { DeadlinesTimeline } from "./components/DeadlinesTimeline";
+import { DeveloperPage } from "./components/DeveloperPage";
 import { DisputeList } from "./components/DisputeList";
 import { PayPalFooter } from "./components/PayPalFooter";
 import { Tiles } from "./components/Tiles";
@@ -28,6 +29,7 @@ export function App() {
   const info = useInfo();
   const { cases, error, retry, failure, reload } = useCases();
   const activity = useActivity();
+  const [dev, setDev] = useState(() => location.hash === "#developers");
   const [openId, setOpenId] = useState<string | null>(hashId);
   const [reopen, setReopen] = useState(0); // bumps when the open case is opened again
   const [tab, setTab] = useState<Tab>("evidence");
@@ -51,7 +53,10 @@ export function App() {
 
   useEffect(() => setWasReset(false), [openId]);
   useEffect(() => {
-    const onHash = () => setOpenId(hashId());
+    const onHash = () => {
+      setDev(location.hash === "#developers");
+      setOpenId(hashId());
+    };
     addEventListener("hashchange", onHash);
     return () => removeEventListener("hashchange", onHash);
   }, []);
@@ -63,12 +68,12 @@ export function App() {
 
   // the first screen tells the story: the soonest-due dispute is open on load
   useEffect(() => {
-    if (openId || !loaded) return;
+    if (openId || !loaded || dev) return;
     const first = needing(cases)[0] ?? cases.find(needsResponse) ?? cases[0];
     if (!first) return;
     history.replaceState(null, "", `#case=${encodeURIComponent(first.dispute_id)}`);
     setOpenId(first.dispute_id);
-  }, [openId, loaded]);
+  }, [openId, loaded, dev]);
 
   // a new case: Parley says his line, and the chat (if any) is told
   useEffect(() => {
@@ -108,7 +113,6 @@ export function App() {
     await activity.reload();
     await reload().catch(() => {});
   }, [activity.reload, reload]);
-  const env = info ? (info.paypalEnv === "mock" ? "PayPal Mock" : "PayPal Sandbox") : null;
 
   return (
     <>
@@ -125,14 +129,20 @@ export function App() {
           <div className="brand">
             <h1>Parley</h1>
             <small>your dispute desk</small>
-            {env && <span className="tag">{env}</span>}
           </div>
           <div className="btns">
+            <a className="chip" href="#developers">
+              Developers
+            </a>
             <button type="button" className="chip" onClick={() => setTucked(!tucked)}>
               {tucked ? "Bring Parley back" : "Tuck Parley away"}
             </button>
           </div>
         </header>
+        {dev ? (
+          <DeveloperPage />
+        ) : (
+          <>
         <Tiles cases={cases} />
         <DeadlinesTimeline cases={cases} onOpen={openCase} selectedId={openId} />
         <section className="main">
@@ -168,7 +178,9 @@ export function App() {
           )}
         </section>
         <AllCases cases={cases} onOpen={openCase} onReload={reload} />
-        <PayPalFooter calls={activity.calls} failed={failure} />
+          </>
+        )}
+        <PayPalFooter calls={activity.calls} failed={failure} info={info} />
       </div>
       <Owl speech={speech} tucked={tucked} />
     </>

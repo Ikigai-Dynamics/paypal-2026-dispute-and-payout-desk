@@ -1,9 +1,62 @@
-import type { ActivityCall, Decision } from "../lib/api";
+import { useState } from "react";
+import { api, type ActivityCall, type Decision, type DecisionRecord } from "../lib/api";
+import "../components/trust.css";
 import { callWords } from "../lib/format";
 import { callLabel } from "../components/PayPalFooter";
 
 const when = (iso: string) =>
   new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+
+/** the decision core's request and answer for one case, with copy buttons for the JSON and a ready-to-run curl */
+function DecisionRecordBox({ id }: { id: string }) {
+  const [rec, setRec] = useState<DecisionRecord | null>(null);
+  const [err, setErr] = useState(false);
+  const [done, setDone] = useState("");
+  const load = () => {
+    if (!rec)
+      api<DecisionRecord>(`/api/cases/${encodeURIComponent(id)}/decision`).then(setRec, () => setErr(true));
+  };
+  const json = rec ? JSON.stringify(rec, null, 2) : "";
+  const curl = rec
+    ? `curl -X POST ${location.origin}/api/decide -H 'content-type: application/json' -d '${JSON.stringify(rec.request).replace(/'/g, "'\\''")}'`
+    : "";
+  const copy = async (what: string, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setDone(what);
+      setTimeout(() => setDone(""), 2000);
+    } catch {
+      setDone("Copy blocked by the browser");
+    }
+  };
+  return (
+    <details className="record" onToggle={(e) => e.currentTarget.open && load()}>
+      <summary>Decision record</summary>
+      {err && <p className="muted">The decision record is not available right now.</p>}
+      {rec && (
+        <>
+          <p className="muted">
+            Decision core {rec.core.contract} · build {rec.core.version}
+          </p>
+          <div className="btns">
+            <button type="button" className="chip" onClick={() => copy("Copied JSON", json)}>
+              Copy JSON
+            </button>
+            <button type="button" className="chip" onClick={() => copy("Copied curl", curl)}>
+              Copy as curl
+            </button>
+            <span className="muted" role="status">
+              {done}
+            </span>
+          </div>
+          <pre className="json" tabIndex={0}>
+            {json}
+          </pre>
+        </>
+      )}
+    </details>
+  );
+}
 
 /** this case's PayPal calls (newest first) and Parley's own events */
 export function ActivityTab({
@@ -33,7 +86,12 @@ export function ActivityTab({
           Parley's call:{" "}
           {callWords({ call: decision.call, offer_cents: decision.offer?.amount_cents, currency })}
           <br />
-          <small>{decision.n} similar past cases · decided by the desk's core</small>
+          <small>{decision.n} similar past case{decision.n === 1 ? "" : "s"} · decided by the desk's core</small>
+        </li>
+      )}
+      {decision && (
+        <li>
+          <DecisionRecordBox id={id} />
         </li>
       )}
       {!mine.length && !decision && <li>Nothing has happened on this dispute yet.</li>}

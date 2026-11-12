@@ -197,6 +197,9 @@ async function offer(
       path: `${D}/${id}/make-offer`,
       status,
       ms: Date.now() - t,
+      amount_cents: ck.cents,
+      currency: row0.currency,
+      note: "offer",
     });
   }
   const row = await refreshCase(paypal, deps.store, id);

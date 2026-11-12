@@ -220,6 +220,26 @@ export interface ActivityCall {
 export interface Info {
   bootId?: string;
   paypalEnv: string;
-  llm: { online: boolean; label?: string };
-  sync: { error?: string | null };
+  version?: string;
+  llm: { online: boolean; label?: string; model?: string; costUsd?: number };
+  decide?: { reachable: boolean };
+  sync: { error?: string | null; lastOk?: string | null };
+}
+
+/** GET /api/cases/:id/decision: what the desk asked the decision core and what it answered */
+export interface DecisionRecord {
+  case: string;
+  request: Record<string, unknown>;
+  response: Record<string, unknown> | null;
+  core: { contract: string; version: string };
+  degraded?: boolean;
+}
+
+/** save text as a file in the browser */
+export function download(name: string, text: string, type: string) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], { type }));
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
