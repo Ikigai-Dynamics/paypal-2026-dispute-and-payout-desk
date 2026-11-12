@@ -19,6 +19,9 @@ pub const ACCEPT_M: f64 = 0.5;
 pub const ACCEPT_S: f64 = 8.0;
 /// An offer is only worth making when it beats the best alternative by at least this much.
 pub const OFFER_MIN_GAIN_CENTS: i64 = 500;
+/// Disputes from one buyer (this one included) from which they count as a repeat disputer, with at
+/// least half of their orders disputed (assumption, in disputes; the demo desk's buyers have 2 to 8).
+pub const SERIAL_MIN_DISPUTES: u32 = 7;
 pub const DEFAULT_HANDLING_CENTS: i64 = 1500;
 
 #[derive(Deserialize, Debug, Clone)]
@@ -48,6 +51,12 @@ pub struct Request {
     pub fee_if_lost_cents: i64,
     #[serde(default)]
     pub precedents: Vec<Precedent>,
+    /// orders this buyer has placed with the seller (optional; 0 = unknown)
+    #[serde(default)]
+    pub buyer_orders: u32,
+    /// disputes this buyer has opened with the seller, this one included (optional)
+    #[serde(default)]
+    pub buyer_disputes: u32,
 }
 
 #[derive(Serialize, Debug, PartialEq, Clone)]
@@ -61,6 +70,7 @@ pub struct Offer {
 #[derive(Serialize, Debug, PartialEq, Clone)]
 pub struct Assumption {
     pub id: String,
+    pub label: String,
     pub value: f64,
     pub unit: &'static str,
     pub source: String,
@@ -89,6 +99,11 @@ pub struct Response {
     pub marginal: bool,
     pub call: &'static str,
     pub keep_cents: i64,
+    /// the buyer disputes so often that Parley does not offer them a partial refund
+    pub buyer_flag: bool,
+    /// echoes of the request, so a screen can say "8 of 8"
+    pub buyer_orders: u32,
+    pub buyer_disputes: u32,
     pub assumptions: Vec<Assumption>,
     pub terms: Vec<String>,
 }
@@ -152,22 +167,59 @@ fn pct(x: f64) -> String {
     format!("{}%", (x * 100.0).round() as i64)
 }
 
-/// The assumptions behind a decision; `used` carries the p0 entry of this request.
-pub fn assumptions(used: Option<(f64, &str)>, handling: i64, fee: i64) -> Vec<Assumption> {
-    let a = |id: &str, value: f64, unit: &'static str, source: &str| Assumption {
+fn words(reason: &str) -> String {
+    reason.replace('_', " ").to_lowercase()
+}
+
+/// Reason in words for labels, e.g. "item not received".
+fn reason_words(reason: &str) -> String {
+    match reason {
+        "MERCHANDISE_OR_SERVICE_NOT_RECEIVED" => "item not received".into(),
+        "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED" => "item not as described".into(),
+        "UNAUTHORISED" => "unauthorised charge".into(),
+        "DUPLICATE_TRANSACTION" => "duplicate charge".into(),
+        "CREDIT_NOT_PROCESSED" => "refund not received".into(),
+        "CANCELED_RECURRING_BILLING" => "cancelled subscription".into(),
+        other => words(other),
+    }
+}
+
+/// The assumptions behind a decision; `used` carries the p0 entry of this request
+/// (value, source, reason, evidence on file).
+pub fn assumptions(
+    used: Option<(f64, &str, &str, bool)>,
+    handling: i64,
+    fee: i64,
+) -> Vec<Assumption> {
+    let a = |id: &str, label: &str, value: f64, unit: &'static str, source: &str| Assumption {
         id: id.into(),
+        label: label.into(),
         value,
         unit,
         source: source.into(),
     };
+    let p0_label = |reason: &str, ev: bool| {
+        format!(
+            "Typical seller win rate: {}, {}",
+            reason_words(reason),
+            if ev {
+                "evidence on file"
+            } else {
+                "no evidence"
+            }
+        )
+    };
     let mut v = vec![a(
         "k",
+        "Weight of the starting guess",
         K as f64,
         "cases",
         "Weight of the starting guess, as if it were this many similar cases. Estimated.",
     )];
     match used {
-        Some((p0, source)) => v.push(a("p0", p0, "probability", source)),
+        Some((p0, source, reason, ev)) => {
+            v.push(a("p0", &p0_label(reason, ev), p0, "probability", source))
+        }
         None => {
             for reason in priors::REASONS {
                 for ev in [false, true] {
@@ -176,6 +228,7 @@ pub fn assumptions(used: Option<(f64, &str)>, handling: i64, fee: i64) -> Vec<As
                             "p0.{reason}.{}",
                             if ev { "evidence" } else { "no_evidence" }
                         ),
+                        &p0_label(reason, ev),
                         priors::prior_bp(reason, ev) as f64 / BP as f64,
                         "probability",
                         priors::SOURCE,
@@ -187,51 +240,94 @@ pub fn assumptions(used: Option<(f64, &str)>, handling: i64, fee: i64) -> Vec<As
     v.extend([
         a(
             "fee_if_lost",
+            "Fee if you lose",
             fee as f64,
             "cents",
             "Extra fee charged when a dispute is lost. Estimated; set per seller.",
         ),
         a(
             "handling",
+            "Your time per fight",
             handling as f64,
             "cents",
             "Your time to prepare and send a response. Estimated.",
         ),
         a(
             "accept_m",
+            "Offer size half of buyers accept",
             ACCEPT_M,
             "share of amount",
             "Share of the amount at which half of buyers accept an offer. Estimated, not PayPal data.",
         ),
         a(
             "accept_s",
+            "How quickly acceptance rises",
             ACCEPT_S,
             "steepness",
             "How quickly buyers go from refusing to accepting around that share. Estimated, not PayPal data.",
         ),
         a(
             "offer_step",
+            "Offer step",
             STEP_CENTS as f64,
             "cents",
             "Offers are tried in steps of this size.",
         ),
         a(
             "offer_min_gain",
+            "Smallest gain that justifies an offer",
             OFFER_MIN_GAIN_CENTS as f64,
             "cents",
             "An offer is only suggested when it beats fighting or accepting by at least this much.",
+        ),
+        a(
+            "serial_min_disputes",
+            "Disputes before a buyer counts as a repeat disputer",
+            SERIAL_MIN_DISPUTES as f64,
+            "disputes",
+            "A buyer with at least this many disputes, covering at least half of their orders, gets no partial offer. Estimated.",
         ),
     ]);
     v
 }
 
+/// Why a partial refund is off the table for this case, if it is (a term for the working).
+fn no_offer_reason(req: &Request, serial: bool) -> Option<String> {
+    if serial {
+        return Some(format!(
+            "This buyer has disputed {} of {} orders with you, so Parley does not offer a partial refund.",
+            req.buyer_disputes,
+            req.buyer_orders.max(req.buyer_disputes)
+        ));
+    }
+    match (req.reason.as_str(), req.evidence_on_file) {
+        ("UNAUTHORISED", _) => Some(
+            "PayPal's offer flow does not apply to unauthorised-transaction claims, so the call is to fight or refund."
+                .into(),
+        ),
+        ("DUPLICATE_TRANSACTION" | "CREDIT_NOT_PROCESSED", false) => Some(
+            "A real duplicate charge is refunded in full; a partial offer would not settle it."
+                .into(),
+        ),
+        _ => None,
+    }
+}
+
 pub fn decide(req: &Request) -> Response {
+    // a pattern of disputes is evidence for the seller: p0 up 10 points, capped at 0.9
+    let serial =
+        req.buyer_disputes >= SERIAL_MIN_DISPUTES && req.buyer_disputes * 2 >= req.buyer_orders;
     let (p0_bp, source) = match req.prior {
         Some(p) => ((p * BP as f64).round() as i128, priors::OVERRIDE_SOURCE),
         None => (
             priors::prior_bp(&req.reason, req.evidence_on_file) as i128,
             priors::SOURCE,
         ),
+    };
+    let p0_bp = if serial {
+        (p0_bp + 1000).min(9000)
+    } else {
+        p0_bp
     };
     let n = req.precedents.len() as i128;
     let wins = req.precedents.iter().filter(|p| p.won).count() as i128;
@@ -260,9 +356,10 @@ pub fn decide(req: &Request) -> Response {
     let (ev_accept, ev_fight, margin) = (ev_accept as i64, ev_fight as i64, margin as i64);
 
     // Offer scan: EV(x) = q(x)(-x) + (1-q(x)) EV_fight, x from 50c to A-50c.
+    let blocked = no_offer_reason(req, serial);
     let mut best: Option<Offer> = None;
     let mut x = STEP_CENTS;
-    while x <= req.amount_cents - STEP_CENTS {
+    while blocked.is_none() && x <= req.amount_cents - STEP_CENTS {
         let q = accept_q(x, req.amount_cents);
         let ev = (q * -(x as f64) + (1.0 - q) * ev_fight as f64).round() as i64;
         if best.as_ref().is_none_or(|b| ev > b.ev_cents) {
@@ -274,7 +371,12 @@ pub fn decide(req: &Request) -> Response {
         }
         x += STEP_CENTS;
     }
-    let base_call = if ev_fight > ev_accept {
+    // a real duplicate or unprocessed refund with nothing on file is refunded, not fought
+    let refund_due = matches!(
+        (req.reason.as_str(), req.evidence_on_file),
+        ("DUPLICATE_TRANSACTION" | "CREDIT_NOT_PROCESSED", false)
+    );
+    let base_call = if ev_fight > ev_accept && !refund_due {
         "fight"
     } else {
         "accept"
@@ -313,7 +415,11 @@ pub fn decide(req: &Request) -> Response {
             "The best partial refund to offer is {}: an estimated {} of buyers take it, and the average result is {}.",
             money(o.amount_cents), pct(o.q), money(o.ev_cents)
         )),
-        None => terms.push("The amount is too small to offer a partial refund.".into()),
+        None => terms.push(
+            blocked
+                .clone()
+                .unwrap_or_else(|| "The amount is too small to offer a partial refund.".into()),
+        ),
     }
     terms.push(format!(
         "Call: {call}. Likely kept: {} of {}.{}",
@@ -348,8 +454,11 @@ pub fn decide(req: &Request) -> Response {
         marginal,
         call,
         keep_cents: keep,
+        buyer_flag: serial,
+        buyer_orders: req.buyer_orders.max(req.buyer_disputes),
+        buyer_disputes: req.buyer_disputes,
         assumptions: assumptions(
-            Some((p0, source)),
+            Some((p0, source, &req.reason, req.evidence_on_file)),
             req.handling_cost_cents,
             req.fee_if_lost_cents,
         ),
@@ -382,6 +491,8 @@ mod tests {
                     won: i < wins,
                 })
                 .collect(),
+            buyer_orders: 0,
+            buyer_disputes: 0,
         }
     }
 
@@ -498,8 +609,75 @@ mod tests {
         .unwrap();
         let out = decide(&r);
         assert_eq!(out.p0, 0.25);
-        assert!(out.p0_source.starts_with("assumed prior"));
+        assert!(out.p0_source.starts_with("Parley"));
         assert!(out.assumptions.iter().any(|a| a.id == "accept_m"));
+    }
+
+    fn with(reason: &str, evidence: bool, a: i64, orders: u32, disputes: u32) -> Request {
+        let mut r = req(a, 0.3, 1500, 0, 0);
+        r.prior = None;
+        r.reason = reason.into();
+        r.evidence_on_file = evidence;
+        r.buyer_orders = orders;
+        r.buyer_disputes = disputes;
+        r
+    }
+
+    #[test]
+    fn unauthorised_is_never_offered() {
+        for a in [900, 5000, 20300, 131_700] {
+            let out = decide(&with("UNAUTHORISED", true, a, 0, 0));
+            assert!(out.offer.is_none() && out.call != "offer", "a={a}");
+            assert!(out.terms.iter().any(|t| t.contains("unauthorised")));
+        }
+    }
+
+    #[test]
+    fn duplicate_or_credit_without_evidence_is_refunded() {
+        for reason in ["DUPLICATE_TRANSACTION", "CREDIT_NOT_PROCESSED"] {
+            let out = decide(&with(reason, false, 16400, 0, 0));
+            for a in [1500, 16400, 58800] {
+                let out = decide(&with(reason, false, a, 0, 0));
+                assert_eq!(out.call, "accept", "{reason} {a}");
+                assert_eq!(out.keep_cents, 0);
+            }
+            assert!(out.offer.is_none());
+            assert!(out.terms.iter().any(|t| t.contains("refunded in full")));
+        }
+    }
+
+    #[test]
+    fn serial_disputer_gets_no_offer_and_a_higher_prior() {
+        let base = decide(&with(
+            "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED",
+            false,
+            58800,
+            20,
+            2,
+        ));
+        assert!(!base.buyer_flag);
+        let out = decide(&with(
+            "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED",
+            false,
+            58800,
+            8,
+            8,
+        ));
+        assert!(out.buyer_flag && out.offer.is_none() && out.call != "offer");
+        assert!((out.p0 - base.p0 - 0.10).abs() < 1e-9);
+        assert!(out
+            .terms
+            .iter()
+            .any(|t| t.contains("disputed 8 of 8 orders with you")));
+        // fewer than 3 disputes, or under half of the orders: not serial
+        let n = SERIAL_MIN_DISPUTES;
+        assert!(!decide(&with("OTHER", false, 5000, n - 1, n - 1)).buyer_flag);
+        assert!(!decide(&with("OTHER", false, 5000, 3 * n, n)).buyer_flag);
+        assert!(decide(&with("OTHER", false, 5000, 2 * n, n)).buyer_flag);
+        // capped at 0.9
+        let mut r = with("OTHER", true, 5000, 7, 7);
+        r.prior = Some(0.85);
+        assert_eq!(decide(&r).p0, 0.9);
     }
 
     #[test]

@@ -1,6 +1,6 @@
 //! Assumed prior win probability p0 per dispute reason. An assumption, not PayPal data.
 
-pub const SOURCE: &str = "assumed prior for reason (table in decide/src/priors.rs)";
+pub const SOURCE: &str = "Parley's starting table for this reason";
 pub const OVERRIDE_SOURCE: &str = "prior supplied in the request";
 
 /// p0 in basis points of one (0..=10000).

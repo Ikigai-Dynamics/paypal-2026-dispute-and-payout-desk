@@ -214,9 +214,15 @@ export async function decideFor(
     // the AI cost already spent on this case goes into the fight cost
     const aiCostCents =
       o.aiCostCents ?? (await deps.store?.aiCostCents(row.dispute_id)) ?? 0;
+    // orders and disputes are the same count here, as on the Buyer tab: this case and the buyer's others
+    const others = (await deps.store?.byBuyer(row.buyer, row.dispute_id)) ?? [];
     return await callDecide(
       deps.decideUrl,
-      buildDecideRequest(row, precedents, { ...o, aiCostCents }),
+      buildDecideRequest(row, precedents, {
+        ...o,
+        aiCostCents,
+        buyerCases: 1 + others.length,
+      }),
     );
   } catch {
     return null;

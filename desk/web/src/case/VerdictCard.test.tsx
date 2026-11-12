@@ -48,4 +48,33 @@ describe("VerdictCard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send $30.00 offer" }));
     expect(onOffer).toHaveBeenCalledWith(3000);
   });
+
+  const props = {
+    amountCents: 8000,
+    currency: "USD",
+    precedents: [],
+    checklist: [],
+    canAct: true,
+    fightAnyway: false,
+    busy: false,
+    sent: null,
+    onOffer: () => {},
+    onFight: () => {},
+    onReview: () => {},
+    onRefund: () => {},
+  };
+
+  it("says Refund $X in full for an accept call and explains a flagged buyer", () => {
+    const d = { ...offerDecision, call: "accept", offer: null, buyer_flag: true, buyer_orders: 8, buyer_disputes: 8 } as Decision;
+    render(<VerdictCard {...props} decision={d} />);
+    expect(screen.getByText("Parley says: Refund $80.00 in full")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Buyer has disputed 8 of 8 orders with you: Parley would not offer a partial refund\./),
+    ).toBeInTheDocument();
+  });
+
+  it("shows no buyer line when the buyer is not flagged", () => {
+    render(<VerdictCard {...props} decision={offerDecision} />);
+    expect(screen.queryByText(/Buyer has disputed/)).toBeNull();
+  });
 });

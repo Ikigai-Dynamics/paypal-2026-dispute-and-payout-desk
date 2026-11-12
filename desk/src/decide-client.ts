@@ -12,6 +12,8 @@ export interface DecideOptions {
   feeIfLostCents?: number;
   /** what the AI work on this case cost so far, in cents */
   aiCostCents?: number;
+  /** the buyer's orders and disputes with this seller; both count this case */
+  buyerCases?: number;
 }
 
 export const DEFAULT_HANDLING_CENTS = 1500;
@@ -19,6 +21,9 @@ export const DEFAULT_HANDLING_CENTS = 1500;
 /** A whole, non-negative number of cents; anything else is 0. */
 export const safeCents = (c: number | undefined): number =>
   Number.isFinite(c) && c! > 0 ? Math.round(c!) : 0;
+
+const safeCount = (n: number | undefined): number =>
+  Number.isFinite(n) && n! > 0 ? Math.floor(n!) : 0;
 
 /** Builds the decide.v2 request. Field names are the contract (contracts/decide.v2.md). */
 export function buildDecideRequest(
@@ -37,6 +42,8 @@ export function buildDecideRequest(
     handling_cost_cents: o.handlingCostCents ?? DEFAULT_HANDLING_CENTS,
     ai_cost_cents: safeCents(o.aiCostCents),
     fee_if_lost_cents: o.feeIfLostCents ?? 0,
+    buyer_orders: safeCount(o.buyerCases),
+    buyer_disputes: safeCount(o.buyerCases),
     precedents: precedents.map((p) => ({
       dispute_id: p.dispute_id,
       won: p.won,
@@ -71,6 +78,8 @@ export function parseDecision(body: unknown): Decision {
   if (!Array.isArray(b["terms"])) throw new Error("decide.v2: terms missing");
   if (!Array.isArray(b["assumptions"]))
     throw new Error("decide.v2: assumptions missing");
+  if (b["buyer_flag"] !== undefined && typeof b["buyer_flag"] !== "boolean")
+    throw new Error("decide.v2: buyer_flag invalid");
   if (b["offer"] !== null && typeof b["offer"] !== "object")
     throw new Error("decide.v2: offer missing");
   return b as unknown as Decision;
