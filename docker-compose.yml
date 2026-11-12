@@ -1,0 +1,53 @@
+# Runs Parley without Nix. The platform repo (shared packages) must sit next to this one,
+# or set PLATFORM_DIR to its path. Optional LLM_* values come from your shell or a .env file.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: parley
+      POSTGRES_PASSWORD: parley
+      POSTGRES_DB: parley
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U parley"]
+      interval: 3s
+      retries: 20
+
+  paypal-mock:
+    build:
+      context: .
+      dockerfile: mock/Dockerfile
+      additional_contexts:
+        platform: ${PLATFORM_DIR:-../paypal-hackathon-2026}
+
+  decide:
+    build:
+      context: ./decide
+
+  desk:
+    build:
+      context: .
+      dockerfile: desk/Dockerfile
+      additional_contexts:
+        platform: ${PLATFORM_DIR:-../paypal-hackathon-2026}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      paypal-mock:
+        condition: service_started
+      decide:
+        condition: service_started
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: "8080"
+      DATABASE_URL: postgresql://parley:parley@postgres:5432/parley
+      DECIDE_URL: http://decide:8080
+      PAYPAL_ENV: mock
+      PAYPAL_BASE_URL: http://paypal-mock:8080
+      PAYPAL_CLIENT_ID: mock-client
+      PAYPAL_CLIENT_SECRET: mock-secret
+      DEMO_RESET_ON_BOOT: "1"
+      # optional: set all three to turn the AI on; without them the desk uses template drafts and says so
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
