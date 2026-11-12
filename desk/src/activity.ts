@@ -10,10 +10,26 @@ export interface Call {
   buyer: string | null;
   amount_cents: number | null;
   currency: string | null;
+  /** 'paypal' for a call to PayPal, 'webhook' for an event PayPal sent us. */
+  kind: "paypal" | "webhook";
 }
 
 const KEEP = 200;
 let pool: pg.Pool | undefined;
+let kindColumn = false;
+
+/** Additive column, added on first use because PgStore makes the table itself. */
+async function ensureKind(p: pg.Pool): Promise<void> {
+  if (kindColumn) return;
+  try {
+    await p.query(
+      "alter table paypal_calls add column if not exists kind text",
+    );
+    kindColumn = true;
+  } catch {
+    /* table not made yet: the next call tries again */
+  }
+}
 
 /** The log lives in Postgres (table paypal_calls, made by PgStore.ensureSchema) so every pod shows the same list. */
 export function init(p: pg.Pool): void {
@@ -22,14 +38,22 @@ export function init(p: pg.Pool): void {
 
 /** Fire and forget: a failed write is logged, never thrown. */
 export function record(
-  c: Pick<Call, "method" | "path" | "status" | "ms">,
+  c: Pick<Call, "method" | "path" | "status" | "ms"> & {
+    kind?: Call["kind"];
+  },
 ): void {
   if (!pool) return;
   const p = pool;
-  void p
-    .query(
-      "insert into paypal_calls (method, path, status, ms) values ($1,$2,$3,$4)",
-      [c.method, c.path, c.status, c.ms],
+  void ensureKind(p)
+    .then(() =>
+      p.query(
+        kindColumn
+          ? "insert into paypal_calls (method, path, status, ms, kind) values ($1,$2,$3,$4,$5)"
+          : "insert into paypal_calls (method, path, status, ms) values ($1,$2,$3,$4)",
+        kindColumn
+          ? [c.method, c.path, c.status, c.ms, c.kind ?? "paypal"]
+          : [c.method, c.path, c.status, c.ms],
+      ),
     )
     .then(() =>
       p.query(
@@ -46,13 +70,14 @@ export function record(
 
 /** The dispute a call is about, only when its path names one: the list call has none. */
 export const disputeIdOf = (path: string): string | null =>
-  /\/v1\/customer\/disputes\/([^/?]+)/.exec(path)?.[1] ?? null;
+  /\/v1\/customer\/disputes\/([^/?#]+)/.exec(path)?.[1] ?? null;
 
 /** Newest first. Buyer and amount are joined on the exact dispute id in the path. */
 export async function list(limit = 20): Promise<Call[]> {
   if (!pool) return [];
+  await ensureKind(pool);
   const r = await pool.query(
-    "select at, method, path, status, ms from paypal_calls order by id desc limit $1",
+    `select at, method, path, status, ms, ${kindColumn ? "kind" : "null as kind"} from paypal_calls order by id desc limit $1`,
     [limit],
   );
   const ids = [...new Set(r.rows.map((x) => disputeIdOf(x.path)))].filter(
@@ -78,6 +103,7 @@ export async function list(limit = 20): Promise<Call[]> {
       buyer: c?.buyer ?? null,
       amount_cents: c ? Number(c.amount_cents) : null,
       currency: c?.currency ?? null,
+      kind: x.kind === "webhook" ? "webhook" : "paypal",
     };
   });
 }

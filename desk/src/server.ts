@@ -28,6 +28,7 @@ import {
 import type { Added, CaseRow, Draft } from "./types.js";
 import { evidenceOnFile, LABEL_GROUNDED } from "./draft.js";
 import { init as initActivity, list as listCalls, record } from "./activity.js";
+import { paypalRoutes } from "./paypal-routes.js";
 import { DraftCache, pool as runPool, stopAfterDown } from "./drafts.js";
 import {
   acceptClaim,
@@ -494,6 +495,14 @@ async function route(
 ): Promise<{ status: number; body: unknown } | "handled"> {
   const m = req.method ?? "GET";
   const p = url.pathname;
+  const pr = await paypalRoutes(req, url, {
+    store,
+    paypal,
+    HttpError,
+    readJson,
+    loadRow,
+  });
+  if (pr) return pr;
   if (m === "GET" && p === "/healthz")
     return { status: 200, body: { status: "ok" } };
   if (m === "GET" && p === "/readyz") {
