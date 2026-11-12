@@ -22,7 +22,7 @@ Then open <http://localhost:8080>. It starts Postgres, the PayPal mock, the deci
 3. Open the Ikigai gift card and read the AI draft on the **Draft reply** tab.
 4. Click the owl and ask *Which case should I deal with first?*, then *Which cases should I just refund?*, and click a row.
 
-The PayPal side is the bundled simulated Disputes API; no sandbox run was done, and the status bar says so.
+The PayPal side is the bundled simulated Disputes API (the status bar says so); see below for what was checked against the real sandbox.
 
 ### Run on the dev cluster
 
@@ -45,7 +45,7 @@ Tear down: `nix run .#undeploy -- dispute-and-payout-desk` or `nix run .#cluster
 
 ## What is real and what is simulated
 
-- **PayPal is the bundled PayPal mock**, which implements the Disputes v1 shapes (and Transaction Search, webhooks). Runs against the bundled PayPal mock; a live sandbox run was not done for this submission (no sandbox credentials in the build environment). The client and the desk have a sandbox path (`PAYPAL_ENV=sandbox` with a client id and secret) that has not been exercised.
+- **PayPal is the bundled PayPal mock**, which implements the Disputes v1 shapes (and Transaction Search, webhooks). The demo runs against the bundled mock. Against the real PayPal sandbox, our app's credentials got an OAuth token and `GET /v1/customer/disputes` returned HTTP 200 with no disputes (2026-11-12). Opening a sandbox dispute needs a buyer to file one in the sandbox web UI, which we did not manage, so the write calls (make-offer, provide-evidence, accept-claim) were exercised only against the mock. The desk's sandbox path is `PAYPAL_ENV=sandbox` with a client id and secret.
 - **The AI is a real LLM** reached through an OpenAI-compatible endpoint (`@jeirslab/llm-client`). It drafts replies and answers in the chat. Without a key the desk falls back to template drafts and labels them as such.
 - **The money decision is integer-cent arithmetic in the Rust core**, not a model.
 - **Win chances are estimated**: a beta posterior from similar past cases, pulled toward an assumed starting guess. They are not calibrated against PayPal outcomes.
